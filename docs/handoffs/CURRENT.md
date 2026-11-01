@@ -1,9 +1,9 @@
 # Current handoff | Vektor-9
 
 Updated: 2026-11-02
-Milestone: M0a, foundation (done locally, nothing committed yet)
-Branch: main (no commits, no remote)
-Working tree: everything untracked
+Milestone: M0a, foundation (done)
+Branch: main, tracking origin/main (https://github.com/baselnasser99/vektor-9, public)
+Working tree: clean
 
 ## Done
 - Planning: `PROJECT_PLAN.md`, `docs/STYLE_GUIDE.md`, ADR-0001, ADR-0002.
@@ -14,15 +14,17 @@ Working tree: everything untracked
 - `.github/workflows/ci.yml`: uv sync, ruff check, ruff format --check, pytest.
 - Commands section of `CLAUDE.md` filled in.
 
+- First commit `7d0f83f` pushed to GitHub; repo is public.
+
 ## Not done
-- First commit, GitHub repo, push. CI has never run on GitHub.
+- No branch protection on `main`. No `.gitattributes` (local `core.autocrlf=true`).
 
 ## Checks
 - Tests: `uv run pytest`, 1 passed (local, 2026-11-02)
 - Lint: `ruff check` and `ruff format --check` clean (local)
+- CI: first GitHub Actions run on `7d0f83f` passed
 - CDK synth: n/a
 - Deployed: no
 
 ## Next
-1. First commit, create the GitHub repo, push, confirm CI goes green.
-2. Start M0b: simulation package and snapshot schema (ADR-0003).
+1. Start M0b: simulation package and snapshot schema (ADR-0003).
