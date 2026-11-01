@@ -22,7 +22,7 @@ Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5
 
 <!-- Fill in during M0a and keep accurate. -->
 - Install: `uv sync`
-- Run the simulation locally (N ticks → snapshots): not yet (M0b)
+- Run the simulation locally (N ticks → snapshots): `uv run python -m sim --ticks 288 --seed 7 --out snapshots`
 - Serve the site locally: not yet (M0c)
 - Tests: `uv run pytest`
 - Lint/format: `uv run ruff check .` and `uv run ruff format .` (CI runs `ruff format --check .`)
