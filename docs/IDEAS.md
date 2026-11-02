@@ -4,14 +4,6 @@ A running list of things that could make the city more fun to watch. One line ea
 
 Features can show up in the city two ways: **right away** when deployed, or **at a milestone** (the code ships, but switches on when the city reaches some point, like a population number).
 
-## Next simulation update (agreed, not built yet)
-
-- **Start small, grow outward.** The city begins as a small powered core in the center and spreads district by district. Visitors watch it take shape instead of seeing noise.
-- **New power when needed.** When plants get close to their limit, the city builds a new one at its edge. Overload pauses growth instead of cutting power, so there's no flicker.
-- **Three blackouts a day.** 30 minutes each, at least 2 hours apart, hitting whichever plant is under the most strain. Rare enough to be an event.
-- **Grow upward once the land is used.** Low housing gets replaced by taller towers, so the skyline keeps changing for months after the map fills (target: map full in about two weeks).
-- **District waves.** Each district slowly moves through boom, peak, decline, and rebuild over days, so there's always a hot spot and a district in trouble.
-
 ## Later
 
 - **Corporate towers** that buy up neighboring blocks. Gives the skyline landmarks and a slow takeover story.

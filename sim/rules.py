@@ -1,8 +1,9 @@
-"""Constants for sim v1. Tuning these changes behavior, not the snapshot schema."""
+"""Constants for the simulation. Tuning these changes behavior, not the snapshot schema."""
 
-SCHEMA = 1
+SCHEMA = 2
 SIZE = 48
 BLOCK = 8  # sectors are BLOCK x BLOCK tiles; streets run between them and are renderer-only
+TICKS_PER_DAY = 288  # one tick every 5 minutes
 
 KINDS = ("lot", "build", "house", "market", "plant")
 EVENT_KINDS = (
@@ -11,6 +12,7 @@ EVENT_KINDS = (
     "collapse",
     "market_opened",
     "market_closed",
+    "plant_opened",
     "blackout",
     "power_restored",
 )
@@ -21,30 +23,53 @@ MARK_IDS_KEEP = 5000
 
 STYLE_SEED_MAX = 2**31
 
-# Starting city
-START_PLANTS = 4
-START_MARKETS = 8
-START_HOUSE_CHANCE = 0.3
-START_FLOORS = (3, 8)
+# Starting city: a small core around the center
+START_RADIUS = 4  # Chebyshev distance from the center
+START_MARKETS = 2
+START_HOUSE_CHANCE = 0.4
+START_FLOORS = (2, 4)
 
 # Buildings
-FLOORS = (3, 20)  # construction target range, inclusive
+FLOORS_MIN = 2
+FLOORS_MAX = 60
+HEIGHT_STEP = 8  # new buildings reach up to this many floors above their neighbors' average
+HEIGHT_RADIUS = 2
 PEOPLE_PER_FLOOR = 10
-TALL = 12  # only towers at least this tall make a topped_out event
+TALL = 20  # only towers at least this tall make a topped_out event
 
 # Power
-PLANT_RADIUS = 10  # Chebyshev distance
-PLANT_CAPACITY = 4000
+PLANT_RADIUS = 8  # Chebyshev distance
+PLANT_CAPACITY = 6000  # a plant at capacity keeps the lights on but its area stops growing
 BUILD_LOAD = 5
 MARKET_LOAD = 20
+PLANT_STRAIN = 0.8  # share of capacity at which the city starts building another plant
+PLANT_BUILD_CHANCE = 0.006  # per tick while any plant is strained
+PLANT_SPACING = 7  # new plants keep at least this distance from existing ones
+PLANT_REACH = PLANT_RADIUS + 3  # how far from the strained plant a new one may go
+
+# Blackouts: scheduled, and they hit the most loaded plant
+BLACKOUTS_PER_DAY = 3
+BLACKOUT_TICKS = 6  # 30 minutes
+BLACKOUT_GAP = 24  # at least 2 hours between blackouts, including across midnight
+
+# District waves: each sector slowly cycles through boom and decline
+WAVE_PERIOD = TICKS_PER_DAY * 8
+WAVE_JITTER = TICKS_PER_DAY * 2
+BOOM = 33  # wave level above which a sector booms
+DECLINE = -33  # wave level below which a sector declines
+DECLINE_MIN_BUILT = 75  # percent of a sector built before decline can set in
+BOOM_BUILD_BONUS = 2  # construction chance multiplier while booming
+DECLINE_LOSS = 1  # residents lost per tick in a declining sector
 
 # Per-tick behavior
 MARKET_RADIUS = 4  # Chebyshev distance
-BUILD_CHANCE = 0.02  # powered lot near a market starts construction
+BUILD_CHANCE = 0.004  # powered lot near a market starts construction
 GROWTH = 3  # max new residents per tick for a powered house near a market
 DECAY = 2  # residents lost per tick without power
 OVERCROWD_DECAY_CHANCE = 0.1  # overcrowded house loses a floor
-EMPTY_DECAY_CHANCE = 0.02  # empty house loses a floor
-MARKET_OPEN_CHANCE = 0.01  # lot with enough houses nearby and no market opens one
+EMPTY_DECAY_CHANCE = 0.02  # empty house with no market nearby, or in decline, loses a floor
+MARKET_OPEN_CHANCE = 0.003  # lot with enough houses nearby and no market opens one
 MARKET_OPEN_HOUSES = 12
 MARKET_CLOSE_CHANCE = 0.1  # market with no houses nearby closes
+REDEVELOP_BUILT = 60  # percent of a sector built before old towers get replaced
+REDEVELOP_CHANCE = 0.003  # per tick, a house in a busy sector is torn down for a taller one

@@ -37,49 +37,67 @@ def load(tile):
     return {"house": tile["p"], "build": R.BUILD_LOAD, "market": R.MARKET_LOAD}.get(tile["k"], 0)
 
 
-def apply_power(tiles):
-    """Set each tile's `on` flag in place and return the power summary.
+def power_grid(tiles):
+    """Plant tile indexes, which plant serves each tile (index into plants, or None), plant loads.
 
     Each tile draws from its nearest plant in range (ties go to the first plant in row order).
-    A plant whose load exceeds its capacity blacks out every tile it serves.
     """
-    plants = [xy(i) for i, t in enumerate(tiles) if t["k"] == "plant"]
+    plants = [i for i, t in enumerate(tiles) if t["k"] == "plant"]
+    plant_xy = [xy(i) for i in plants]
     loads = [0] * len(plants)
     serving = [None] * len(tiles)
     for i, t in enumerate(tiles):
         x, y = xy(i)
         best = None
-        for j, (px, py) in enumerate(plants):
+        for j, (px, py) in enumerate(plant_xy):
             d = chebyshev(x, y, px, py)
             if d <= R.PLANT_RADIUS and (best is None or d < best[0]):
                 best = (d, j)
         if best:
             serving[i] = best[1]
             loads[best[1]] += load(t)
-    ok = [plant_load <= R.PLANT_CAPACITY for plant_load in loads]
+    return plants, serving, loads
+
+
+def apply_power(tiles, dark=None):
+    """Set each tile's `on` flag in place and return the power summary.
+
+    Every tile a plant reaches has power, except those served by plant tile `dark` (a scheduled
+    blackout). A plant past capacity still keeps the lights on; it only stops growth (see step).
+    """
+    plants, serving, loads = power_grid(tiles)
     for i, t in enumerate(tiles):
-        t["on"] = serving[i] is not None and ok[serving[i]]
+        t["on"] = serving[i] is not None and plants[serving[i]] != dark
     return {
         "capacity": R.PLANT_CAPACITY * len(plants),
         "demand": sum(loads),
-        "supplied": sum(plant_load for plant_load, o in zip(loads, ok, strict=True) if o),
+        "supplied": sum(
+            min(plant_load, R.PLANT_CAPACITY)
+            for i, plant_load in zip(plants, loads, strict=True)
+            if i != dark
+        ),
     }
 
 
 def new_city(seed):
+    """A small core around the center: one plant, a couple of markets, a few low houses."""
     rng = random.Random(seed)
-    n_plants = R.START_PLANTS
-    spots = rng.sample(range(R.SIZE * R.SIZE), n_plants + R.START_MARKETS)
-    plants, markets = set(spots[:n_plants]), set(spots[n_plants:])
+    c = R.SIZE // 2
+    core = [i for i in range(R.SIZE * R.SIZE) if 0 < chebyshev(*xy(i), c, c) <= R.START_RADIUS]
+    markets = set(rng.sample(core, R.START_MARKETS))
     market_xy = [xy(i) for i in markets]
     tiles = []
     for i in range(R.SIZE * R.SIZE):
         x, y = xy(i)
-        if i in plants:
+        if (x, y) == (c, c):
             tiles.append(new_tile("plant", rng))
         elif i in markets:
             tiles.append(new_tile("market", rng))
-        elif near(x, y, market_xy, R.MARKET_RADIUS) and rng.random() < R.START_HOUSE_CHANCE:
+        elif (
+            chebyshev(x, y, c, c) <= R.START_RADIUS
+            and near(x, y, market_xy, R.MARKET_RADIUS)
+            and rng.random() < R.START_HOUSE_CHANCE
+        ):
             f = rng.randint(*R.START_FLOORS)
             tiles.append(new_tile("house", rng, f, f, f * R.PEOPLE_PER_FLOOR // 2))
         else:
