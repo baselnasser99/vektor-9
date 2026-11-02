@@ -45,19 +45,19 @@ This split keeps the server simple and cheap while the city looks alive.
 
 ### Version 1 (deliberately small)
 
-Grid: 48 × 48 tiles, with a street layout. Five tile types:
+Grid: 48 × 48 tiles, with a street layout. The city starts as a small core in the center (one plant, a couple of markets, a few low houses) and spreads outward district by district, aiming to fill the map in about two weeks. After that it keeps changing: it grows upward and districts rise and fall in slow waves. Five tile types:
 
 | Tile | Behavior |
 | --- | --- |
-| Empty lot | Can become a construction site if near power and a market, or via a visitor mark |
-| Construction site | Gains floors each tick until its target height, then becomes housing |
-| Housing stack | Grows with demand; decays when overcrowded or unpowered |
+| Empty lot | Can become a construction site if powered and near a market, or via a visitor mark |
+| Construction site | Gains floors each tick until its target height (a few floors above its neighbors), then becomes housing |
+| Housing stack | Fills with residents; decays when overcrowded, unpowered, or its district declines; in busy districts gets rebuilt taller |
 | Night market | Boosts nearby housing; closes if its district empties |
-| Power plant | Supplies a radius; demand above capacity triggers a blackout |
+| Power plant | Supplies a radius; at capacity its area stops growing until the city builds a new plant at its edge |
 
 Each tile also carries a deterministic **style seed** so the renderer always draws the same building the same way (facade type, silhouette, rooftop props) without the simulation knowing anything about visuals.
 
-Events emerge from rules (blackouts, booms, decay waves, completions). They aren't scripted.
+Most events emerge from rules (booms, decay waves, completions, new plants). Blackouts are the exception: three a day, 30 minutes each, at least 2 hours apart, at times picked from the seed. Each hits the most loaded plant, so the busiest district goes dark. They are scheduled so they stay rare enough to be an event.
 
 ### Later versions (one at a time)
 
@@ -68,6 +68,7 @@ Corporate towers that acquire adjacent blocks, transit growth, district names, s
 - The grid is always 48 × 48; no tile outside known types.
 - Floors and populations are never negative; construction progress never exceeds its target.
 - Power supplied never exceeds total plant capacity.
+- Exactly three 30-minute blackouts a day, at least 2 hours apart.
 - Determinism: replaying from a snapshot with the same marks and seed reproduces the same next state.
 - A visitor mark is applied at most once, even if delivered twice.
 

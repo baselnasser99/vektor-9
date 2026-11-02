@@ -1,4 +1,4 @@
-# ADR-0003: Snapshot schema v1
+# ADR-0003: Snapshot schema
 
 **Status:** Accepted (2026-11-02)
 
@@ -10,7 +10,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "tick": 288,
   "seed": 7,
   "size": 48,
@@ -30,10 +30,14 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
   - `s`: style seed in `[0, 2^31)`; the renderer derives facade, silhouette, and rooftop props from it. It changes only when the tile becomes a new building.
 - **Streets are not tiles.** The grid is split into 8 × 8 blocks; the renderer draws streets between blocks. Block number is the **sector** (1–36, row-major), used in event text.
 - **power:** totals for the tick; `supplied <= min(capacity, demand)`.
-- **events:** what happened during this tick only. Kinds: `commissioned`, `topped_out`, `collapse`, `market_opened`, `market_closed`, `blackout`, `power_restored`. Display text is the renderer's job.
+- **events:** what happened during this tick only. Kinds: `commissioned`, `topped_out`, `collapse`, `market_opened`, `market_closed`, `plant_opened`, `blackout`, `power_restored`. Display text is the renderer's job.
 - **mark_ids:** IDs of visitor marks already handled (most recent 5000), so a mark delivered twice is applied once.
 - **Randomness:** tick `n` uses `random.Random(f"{seed}:{n}")`, so any tick can be replayed from the previous snapshot alone.
 - **Validation:** `sim.state.validate(state)` returns the list of violations. Tests run it on every tick; the tick Lambda will run it before writing.
+
+## Versions
+- **1** (2026-11-02): first version.
+- **2** (2026-11-02): adds the `plant_opened` event kind; `power.supplied` now counts an overloaded plant as supplying its capacity instead of nothing, since overload no longer cuts power. Blackout schedule and district waves are derived from `seed` and `tick`, so no new fields.
 
 ## Alternatives considered
 - **Columnar arrays** (one array per field): about half the raw size, but harder to read and debug; gzip closes most of the gap.
@@ -41,6 +45,6 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 - **Streets as a sixth tile type:** more realistic layouts, but breaks the five-type v1 and adds rules about what may border a street.
 
 ## Consequences
-- Measured: a day-288 snapshot for seed 7 is ~131 KB raw, ~20 KB gzipped.
+- Measured (schema 2): a day-14 snapshot for seed 7, with the map mostly built, is ~130 KB raw, ~20 KB gzipped.
 - Any change to keys, kinds, or meaning bumps `schema`, needs a branch, and updates `validate()` and its tests.
 - Rule constants (`sim/rules.py`) can be tuned without a schema change.

@@ -7,7 +7,8 @@ from hypothesis import strategies as st
 
 from sim import rules as R
 from sim.__main__ import main
-from sim.state import apply_power, new_city, new_tile, validate
+from sim.cycles import blackout_starts, wave
+from sim.state import apply_power, chebyshev, new_city, new_tile, validate, xy
 from sim.step import mark_error, step, tick_rng
 
 seeds = st.integers(0, 2**32)
@@ -36,7 +37,7 @@ def random_city(seed):
     tiles = []
     for _ in range(R.SIZE * R.SIZE):
         kind = rng.choice(R.KINDS)
-        target = rng.randint(1, R.FLOORS[1]) if kind in ("build", "house") else 0
+        target = rng.randint(1, R.FLOORS_MAX) if kind in ("build", "house") else 0
         floors = rng.randrange(target) if kind == "build" else target
         people = rng.randint(0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0
         tiles.append(new_tile(kind, rng, floors, target, people))
@@ -141,3 +142,94 @@ def test_cli_writes_valid_snapshots(tmp_path, capsys):
     assert [f.name for f in files] == [f"{n:06d}.json" for n in range(4)]
     assert all(validate(json.loads(f.read_text())) == [] for f in files)
     assert "tick 3" in capsys.readouterr().out
+
+
+@given(seeds, st.integers(0, 10_000))
+def test_blackout_schedule_keeps_its_spacing(seed, day):
+    today = blackout_starts(seed, day)
+    assert len(today) == R.BLACKOUTS_PER_DAY
+    assert all(0 <= s and s + R.BLACKOUT_TICKS <= R.TICKS_PER_DAY for s in today)
+    starts = [s + day * R.TICKS_PER_DAY for s in today]
+    starts += [s + (day + 1) * R.TICKS_PER_DAY for s in blackout_starts(seed, day + 1)]
+    for a, b in zip(starts, starts[1:], strict=False):
+        assert b - (a + R.BLACKOUT_TICKS) >= R.BLACKOUT_GAP
+
+
+def test_a_day_has_three_half_hour_blackouts():
+    state = new_city(7)
+    blackouts, runs, run = 0, [], 0
+    for _ in range(R.TICKS_PER_DAY):
+        state, events = step(state, [], tick_rng(state))
+        blackouts += [e["kind"] for e in events].count("blackout")
+        if any(t["k"] == "plant" and not t["on"] for t in state["tiles"]):
+            run += 1
+        elif run:
+            runs, run = runs + [run], 0
+    assert blackouts == R.BLACKOUTS_PER_DAY
+    assert runs == [R.BLACKOUT_TICKS] * R.BLACKOUTS_PER_DAY
+
+
+def test_replay_mid_blackout_keeps_the_same_plant_dark():
+    state = new_city(7)
+    start = blackout_starts(7, 0)[0]
+    for _ in range(start + 1):
+        state, _ = step(state, [], tick_rng(state))
+    dark = [i for i, t in enumerate(state["tiles"]) if t["k"] == "plant" and not t["on"]]
+    assert dark
+    snapshot = roundtrip(state)
+    first, _ = step(snapshot, [], tick_rng(snapshot))
+    again, _ = step(roundtrip(state), [], tick_rng(snapshot))
+    assert first == again
+    assert not first["tiles"][dark[0]]["on"]
+
+
+def overloaded_city():
+    """New city (next tick is never in a blackout window), one house drawing full capacity."""
+    state = new_city(7)
+    tiles = [dict(t) for t in state["tiles"]]
+    house = next(i for i, t in enumerate(tiles) if t["k"] == "house")
+    tiles[house]["p"] = R.PLANT_CAPACITY
+    return {**state, "tiles": tiles, "power": apply_power(tiles)}, house
+
+
+def test_overloaded_plant_keeps_power_but_stops_growth(monkeypatch):
+    monkeypatch.setattr(R, "PLANT_BUILD_CHANCE", 0)
+    state, house = overloaded_city()
+    new, events = step(state, [], tick_rng(state))
+    assert "blackout" not in [e["kind"] for e in events]
+    for old_t, new_t in zip(state["tiles"], new["tiles"], strict=True):
+        assert new_t["on"] == old_t["on"]
+        if old_t["k"] == "lot":
+            assert new_t["k"] in ("lot", "market")
+        if old_t["k"] == "house" and new_t["k"] == "house":
+            assert new_t["p"] <= old_t["p"]
+
+
+def test_strained_plant_gets_a_new_plant_at_the_edge(monkeypatch):
+    monkeypatch.setattr(R, "PLANT_BUILD_CHANCE", 1.0)
+    state, _ = overloaded_city()
+    c = R.SIZE // 2
+    tiles = state["tiles"]
+    edge = (c + R.PLANT_SPACING) * R.SIZE + c  # a house past the spacing, so there's a spot by it
+    tiles[edge] = new_tile("house", random.Random(0), 3, 3, 0)
+    new, events = step(state, [], tick_rng(state))
+    opened = [e for e in events if e["kind"] == "plant_opened"]
+    assert len(opened) == 1
+    x, y = opened[0]["x"], opened[0]["y"]
+    assert new["tiles"][y * R.SIZE + x]["k"] == "plant"
+    assert R.PLANT_SPACING <= chebyshev(x, y, c, c) <= R.PLANT_REACH
+
+
+def test_new_city_starts_small_in_the_center():
+    city = new_city(7)
+    c = R.SIZE // 2
+    built = [xy(i) for i, t in enumerate(city["tiles"]) if t["k"] != "lot"]
+    assert [t["k"] for t in city["tiles"]].count("plant") == 1
+    assert all(chebyshev(x, y, c, c) <= R.START_RADIUS for x, y in built)
+
+
+@given(seeds, st.integers(1, (R.SIZE // R.BLOCK) ** 2), st.integers(0, 10**6))
+def test_district_wave_is_bounded_and_slow(seed, sector, tick):
+    a, b = wave(seed, sector, tick), wave(seed, sector, tick + 1)
+    assert -100 <= a <= 100
+    assert abs(a - b) <= 1
