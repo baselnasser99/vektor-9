@@ -77,6 +77,13 @@ export function streetLamp(kit, parent, x, z, facing = 0) {
   return new THREE.Vector3(1.7, 6.4, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), facing).add(g.position);
 }
 
+// Tree: a slim trunk and a low-poly crown, `h` metres tall.
+export function tree(kit, parent, x, z, h = 6) {
+  part(parent, cyl(0.12, 0.18, h * 0.55, 6), kit.steel(palette.charcoal, 0.8), x, h * 0.275, z);
+  const crown = part(parent, new THREE.IcosahedronGeometry(h * 0.28, 0), kit.concrete(palette.teal), x, h * 0.7, z);
+  crown.scale.set(1, 0.8, 1);
+}
+
 // close: false is city detail (cheap chamfers, fewer segments), as in plant.js.
 export function dronePad(kit, parent, r, x, y, z, close = true) {
   const b = close ? 3 : 1, n = close ? 1 : 0.5;

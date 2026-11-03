@@ -9,6 +9,7 @@ export const ALLEY = 5; // service alley through the middle of every sector, aft
 export const HALF = 4;
 export const F = 3.5; // floor height
 export const TALL = 20; // floors; towers this tall get a crown (sim/rules.py TALL)
+export const TERRAIN = ['rail', 'park', 'works']; // laid out by the sim, never built on (sim/rules.py TERRAIN)
 
 export const WORDS = ['ODEN 24', 'NOVA', 'VX9', 'KORU', 'SEIRA', 'ZENKO', 'NEXA', 'TOKU']; // invented sign text
 export const WARM = [palette.neonRed, palette.neonPink, palette.sodium, palette.neonOrange];

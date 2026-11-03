@@ -233,7 +233,7 @@ def test_strained_plant_gets_a_new_plant_at_the_edge(monkeypatch):
 def test_new_city_starts_small_in_the_center():
     city = new_city(7)
     c = R.SIZE // 2
-    built = [xy(i) for i, t in enumerate(city["tiles"]) if t["k"] != "lot"]
+    built = [xy(i) for i, t in enumerate(city["tiles"]) if t["k"] not in ("lot", *R.TERRAIN)]
     assert [t["k"] for t in city["tiles"]].count("plant") == 1
     assert all(chebyshev(x, y, c, c) <= R.START_RADIUS for x, y in built)
 
@@ -260,3 +260,46 @@ def test_grid_lookups_match_a_full_scan(seed, radius):
         best = min(d, default=R.PLANT_RADIUS + 1)
         assert serving[i] == (d.index(best) if best <= R.PLANT_RADIUS else None)
     assert sum(loads) == sum(load(t) for i, t in enumerate(tiles) if serving[i] is not None)
+
+
+@settings(max_examples=20, deadline=None)
+@given(seeds)
+def test_new_city_lays_out_terrain_around_the_core(seed):
+    tiles = new_city(seed)["tiles"]
+    c = R.SIZE // 2
+    where = {k: [xy(i) for i, t in enumerate(tiles) if t["k"] == k] for k in R.TERRAIN}
+    assert all(where[k] for k in R.TERRAIN)
+    for k in R.TERRAIN:
+        assert all(chebyshev(x, y, c, c) > R.START_RADIUS + 1 for x, y in where[k])
+    # The railway runs edge to edge in one piece (each tile touches the next one by a side).
+    rail = set(where["rail"])
+    last = R.SIZE - 1
+    sides = {s for x, y in rail for s, hit in (("W", x == 0), ("E", x == last), ("N", y == 0),
+             ("S", y == last)) if hit}  # fmt: skip
+    assert len(sides) >= 2
+    start = next(iter(rail))
+    seen, todo = {start}, [start]
+    while todo:
+        x, y = todo.pop()
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if n in rail and n not in seen:
+                seen.add(n)
+                todo.append(n)
+    assert seen == rail
+
+
+@settings(max_examples=5, deadline=None)
+@given(seeds)
+def test_terrain_never_changes_and_age_tracks_change(seed):
+    state = new_city(seed)
+    terrain = {i: dict(t) for i, t in enumerate(state["tiles"]) if t["k"] in R.TERRAIN}
+    for n in range(150):
+        x, y = xy(next(iter(terrain)) if n % 2 else n * 37 % (R.SIZE * R.SIZE))
+        mark = {"id": f"m{n}", "kind": "commission", "x": x, "y": y}
+        old = state["tiles"]
+        state, _ = step(state, [mark], tick_rng(state))
+        for i, t in terrain.items():
+            assert {**state["tiles"][i], "on": t["on"]} == t
+        for a, b in zip(old, state["tiles"], strict=True):
+            changed = (a["k"], a["s"]) != (b["k"], b["s"])  # a new building, or one topped out
+            assert b["b"] == (state["tick"] if changed else a["b"])

@@ -1,11 +1,12 @@
 """Constants for the simulation. Tuning these changes behavior, not the snapshot schema."""
 
-SCHEMA = 2
+SCHEMA = 3
 SIZE = 48
 BLOCK = 8  # sectors are BLOCK x BLOCK tiles; streets run between them and are renderer-only
 TICKS_PER_DAY = 288  # one tick every 5 minutes
 
-KINDS = ("lot", "build", "house", "market", "plant")
+TERRAIN = ("rail", "park", "works")  # laid out by new_city; never built on, never changed
+KINDS = ("lot", "build", "house", "market", "plant", *TERRAIN)
 EVENT_KINDS = (
     "commissioned",
     "topped_out",
@@ -28,6 +29,23 @@ START_RADIUS = 4  # Chebyshev distance from the center
 START_MARKETS = 2
 START_HOUSE_CHANCE = 0.4
 START_FLOORS = (2, 4)
+
+# Terrain the city grows around: a railway edge to edge, a few parks, an old industrial site.
+# Placement is integer math only, so every machine lays out the same map.
+RAIL_SLOPES = (
+    (1, 1),
+    (1, 2),
+    (2, 1),
+    (2, 3),
+    (3, 2),
+)  # rail direction (dx, dy), before a random flip
+RAIL_OFFSET = (8, 12)  # the line passes this many tiles from the center
+PARKS = 2
+PARK_RADIUS = (2, 3)  # half-axes of each park's two overlapping ellipses
+PARK_DISTANCE = (9, 17)  # Chebyshev distance of a park's center from the city center
+PARK_SPACING = 8
+WORKS_SIZE = (5, 4)
+WORKS_DISTANCE = (13, 19)  # the industrial site sits beside the railway this far out
 
 # Buildings
 FLOORS_MIN = 2

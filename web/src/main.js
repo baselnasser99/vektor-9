@@ -9,7 +9,7 @@ import { traffic } from './life.js';
 import { airships, cloudDeck, horizon, mist, moon, rain, rainAmount, searchlights, stars } from './atmosphere.js';
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
-const SCHEMA = 2;
+const SCHEMA = 3;
 
 const params = new URLSearchParams(location.search);
 const snapUrl = params.get('snap') ?? '../snapshots/004032.json';

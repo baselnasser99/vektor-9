@@ -55,16 +55,18 @@ def height_cap(x, y, tiles):
     return max(R.FLOORS_MIN + 2, min(R.FLOORS_MAX, avg + R.HEIGHT_STEP))
 
 
-def new_build(x, y, tiles, rng, low=R.FLOORS_MIN):
-    return new_tile("build", rng, target=rng.randint(low, height_cap(x, y, tiles)))
+def new_build(x, y, tiles, rng, tick, low=R.FLOORS_MIN):
+    return new_tile("build", rng, target=rng.randint(low, height_cap(x, y, tiles)), tick=tick)
 
 
 def built_percent(tiles):
-    """Percent of each sector's tiles that are not empty lots, keyed by sector number."""
-    counts = {}
+    """Percent of each sector's buildable tiles (not terrain) that are built on, keyed by sector."""
+    built, room = {}, {}
     for s, t in zip(SECTORS, tiles, strict=True):
-        counts[s] = counts.get(s, 0) + (t["k"] != "lot")
-    return {s: 100 * n // (R.BLOCK * R.BLOCK) for s, n in counts.items()}
+        if t["k"] not in R.TERRAIN:
+            built[s] = built.get(s, 0) + (t["k"] != "lot")
+            room[s] = room.get(s, 0) + 1
+    return {s: 100 * built.get(s, 0) // room[s] if s in room else 0 for s in sorted(set(SECTORS))}
 
 
 def step(state, marks, rng):
@@ -83,7 +85,7 @@ def step(state, marks, rng):
         mark_ids.append(m["id"])
         i = m["y"] * R.SIZE + m["x"]
         if tiles[i]["k"] == "lot":
-            tiles[i] = new_build(m["x"], m["y"], old, rng)
+            tiles[i] = new_build(m["x"], m["y"], old, rng, tick)
             events.append(event("commissioned", m["x"], m["y"]))
 
     # Growth and decay read last tick's layout and power: a change shows up for neighbors next tick.
@@ -105,19 +107,19 @@ def step(state, marks, rng):
         if k == "lot":
             chance = R.BUILD_CHANCE * (R.BOOM_BUILD_BONUS if booming else 1)
             if can_grow and not declining and rng.random() < chance and has_market:
-                tiles[i] = new_build(x, y, old, rng)
+                tiles[i] = new_build(x, y, old, rng, tick)
             elif (
                 rng.random() < R.MARKET_OPEN_CHANCE
                 and not has_market
                 and houses_near(x, y, R.MARKET_RADIUS) >= R.MARKET_OPEN_HOUSES
             ):
-                tiles[i] = new_tile("market", rng)
+                tiles[i] = new_tile("market", rng, tick=tick)
                 events.append(event("market_opened", x, y))
         elif k == "build":
             if powered:
                 t["f"] += 1
                 if t["f"] >= t["t"]:
-                    t.update(k="house", f=t["t"], p=0)
+                    t.update(k="house", f=t["t"], p=0, b=tick)
                     if t["t"] >= R.TALL:
                         events.append(event("topped_out", x, y))
         elif k == "house":
@@ -138,7 +140,7 @@ def step(state, marks, rng):
             ):
                 t["f"] -= 1
             if t["f"] == 0:
-                tiles[i] = new_tile("lot", rng)
+                tiles[i] = new_tile("lot", rng, tick=tick)
                 events.append(event("collapse", x, y))
             elif (
                 can_grow
@@ -147,10 +149,10 @@ def step(state, marks, rng):
                 and rng.random() < R.REDEVELOP_CHANCE
                 and height_cap(x, y, old) >= t["f"] + 2
             ):
-                tiles[i] = new_build(x, y, old, rng, low=t["f"] + 2)
+                tiles[i] = new_build(x, y, old, rng, tick, low=t["f"] + 2)
         elif k == "market":
             if not houses_near(x, y, R.MARKET_RADIUS) and rng.random() < R.MARKET_CLOSE_CHANCE:
-                tiles[i] = new_tile("lot", rng)
+                tiles[i] = new_tile("lot", rng, tick=tick)
                 events.append(event("market_closed", x, y))
 
     # A strained plant gets a new neighbor at the city's edge, extending where the city can grow.
@@ -170,7 +172,7 @@ def step(state, marks, rng):
         ]
         if spots:
             i = rng.choice(spots)
-            tiles[i] = new_tile("plant", rng)
+            tiles[i] = new_tile("plant", rng, tick=tick)
             events.append(event("plant_opened", *xy(i)))
 
     # Scheduled blackout: the most loaded plant goes dark for the whole window.
