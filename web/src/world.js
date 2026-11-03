@@ -1,9 +1,12 @@
 // World measurements and shared lists for every builder. Grid numbers mirror sim/rules.py; all sizes in metres.
 import { palette } from './palette.js';
 
-export const TILE = 14; // metres per tile; buildings fill 12 m of it
-export const STREET = 17; // street width between sectors
+export const TILE = 14; // metres per tile; buildings take up to 12.5 m of it
 export const BLOCK = 8; // tiles per sector side (sim/rules.py BLOCK)
+export const STREET = 24; // main street between sectors: two 4 m sidewalks and a 16 m roadway, two lanes each way
+export const SIDEWALK = 4;
+export const ALLEY = 5; // service alley through the middle of every sector, after HALF tiles
+export const HALF = 4;
 export const F = 3.5; // floor height
 export const TALL = 20; // floors; towers this tall get a crown (sim/rules.py TALL)
 

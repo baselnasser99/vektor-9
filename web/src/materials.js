@@ -59,7 +59,7 @@ export async function loadKit(renderer, base = './assets') {
       const glow = lit ? { emissive: 0xffffff, emissiveMap: fit(windowTexture(seed)), emissiveIntensity: 1 } : {};
       return concrete
         ? new THREE.MeshStandardMaterial({ map: fit(once('punched', punchedTexture)), color: palette.slate, roughness: 0.85, ...glow })
-        : new THREE.MeshStandardMaterial({ color: palette.charcoal, metalness: 0.15, roughness: 0.45, ...glow });
+        : new THREE.MeshStandardMaterial({ color: palette.slate, metalness: 0.15, roughness: 0.5, ...glow });
     }),
     // Lit sign with an invented word: glowing text and frame on a dark panel.
     sign: (text, color, vertical = false) => once(`sign:${text}:${color}:${vertical}`, () => {
