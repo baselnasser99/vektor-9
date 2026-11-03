@@ -52,8 +52,9 @@ export function part(parent, geo, mat, x = 0, y = 0, z = 0) {
   parent.add(m);
   return m;
 }
-export const ring = (parent, r, tube, mat, x, y, z) => {
-  const m = part(parent, new THREE.TorusGeometry(r, tube, 8, 40), mat, x, y, z);
+// Flat torus; tubular segments go around the ring, radial ones around the tube.
+export const ring = (parent, r, tube, mat, x, y, z, tubular = 40, radial = 8) => {
+  const m = part(parent, new THREE.TorusGeometry(r, tube, radial, tubular), mat, x, y, z);
   m.rotation.x = Math.PI / 2;
   return m;
 };

@@ -20,21 +20,13 @@ const ROAD = 40; // half-width of the flat corridor kept around each highway
 export function buildDesert(kit, edge, lines, onFrame) {
   const root = new THREE.Group(), rand = rng(9001);
   const height = duneHeight(edge);
-  // A random spot in a ring around the centre, off the highway corridors.
-  const scatter = (rMin, rMax) => {
-    for (;;) {
-      const [a, r] = [rand() * Math.PI * 2, rMin + rand() * (rMax - rMin)];
-      const [x, z] = [Math.cos(a) * r, Math.sin(a) * r];
-      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD + 20 && Math.max(Math.abs(x), Math.abs(z)) > edge + SPRAWL) return [x, z];
-    }
-  };
   ground(kit, root, edge, height);
   sandDrifts(root, edge, rand);
   dirtTracks(kit, root, edge, lines);
   const lanes = highways(kit, root, edge);
   wastes(kit, root, edge, lines, height, rand);
   pylons(kit, root, edge, height);
-  mesas(kit, root, height, scatter, rand);
+  mesas(kit, root, edge, height, rand);
   return { desert: mergeByMaterial(root), lanes };
 }
 
@@ -234,9 +226,17 @@ function pylons(kit, root, edge, height) {
 }
 
 // Mesas far out, read as silhouettes through the haze.
-function mesas(kit, root, height, scatter, rand) {
+function mesas(kit, root, edge, height, rand) {
+  // A random spot 1100–1600 m from the centre, past the sprawl and off the highway corridors.
+  const spot = () => {
+    for (;;) {
+      const [a, r] = [rand() * Math.PI * 2, 1100 + rand() * 500];
+      const [x, z] = [Math.cos(a) * r, Math.sin(a) * r];
+      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD + 20 && Math.max(Math.abs(x), Math.abs(z)) > edge + SPRAWL) return [x, z];
+    }
+  };
   for (let k = 0; k < 10; k++) {
-    const [x, z] = scatter(1100, 1600), r = 90 + rand() * 160, h = 60 + rand() * 120;
+    const [x, z] = spot(), r = 90 + rand() * 160, h = 60 + rand() * 120;
     // Wide sloped flanks and a small top, so they read as eroded buttes rather than slabs.
     part(root, cyl(r * 0.6, r * 1.5, h, 18), kit.concrete(palette.charcoal), x, height(x, z) + h / 2 - 5, z).rotation.y = rand();
   }

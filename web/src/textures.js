@@ -1,9 +1,8 @@
 // Every texture drawn in code: concrete, windows, signs, ads, light pools, clouds, fades and far skylines.
 import * as THREE from 'three';
-import { palette } from './palette.js';
+import { css, palette } from './palette.js';
 import { rng } from './geometry.js';
-
-const css = (c) => `#${new THREE.Color(c).getHexString()}`;
+import { pick } from './world.js';
 
 // Canvas of w x h, painted by draw(g, w, h), as a texture. srgb for color art; leave it off for masks and glow maps
 // whose grey values are meant literally. wrap for textures that tile.
@@ -84,7 +83,7 @@ export const windowTexture = (seed) => painted(256, 256, (g) => {
   rooms((x, y) => {
     if (rand() > 0.45) return;
     g.globalAlpha = 0.35 + rand() * 0.5;
-    g.fillStyle = css(LIT[Math.floor(rand() * LIT.length)]);
+    g.fillStyle = css(pick(rand, LIT));
     g.fillRect(x, y, 26, 20);
   });
 }, { wrap: true });
@@ -193,7 +192,7 @@ export const skylineTexture = () => {
         const w = 6 + rand() * 26, cluster = Math.max(0, Math.sin((x / W) * Math.PI * 6 + phase));
         const h = H * (0.03 + cluster ** 2 * rand() ** 1.5 * tallest);
         for (const at of x + w > W ? [x, x - W] : [x]) {
-          g.fillStyle = css(color);
+          g.fillStyle = css(color.getHex());
           g.fillRect(at, H - h, w, h);
           g.globalAlpha = 0.6;
           g.fillStyle = css(palette.warmWindow);

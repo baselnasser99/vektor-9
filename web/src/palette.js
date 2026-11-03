@@ -47,6 +47,9 @@ export const palette = {
   warmWindow: 0xffc46b,
 };
 
+// A palette color as a CSS hex string, for canvases and the page.
+export const css = (c) => `#${c.toString(16).padStart(6, '0')}`;
+
 export const ui = {
   panel: 0x142130,
   border: 0x466e85,

@@ -4,43 +4,44 @@ import { palette } from './palette.js';
 import { box, cyl, part, ring } from './geometry.js';
 
 // Steel lattice girder along x: four chords, verticals and X bracing in each bay.
-export function truss(kit, length, height, width) {
+// seg: box detail (see geometry.js box); the city passes 1.
+export function truss(kit, length, height, width, seg = 3) {
   const g = new THREE.Group(), steel = kit.steel(palette.gunmetal, 0.6);
   const bays = Math.max(1, Math.round(length / height));
   const bay = length / bays, diag = Math.hypot(bay, height), angle = Math.atan2(height, bay);
-  for (const y of [0, height]) for (const z of [-width / 2, width / 2]) part(g, box(length, 0.22, 0.22), steel, 0, y, z);
+  for (const y of [0, height]) for (const z of [-width / 2, width / 2]) part(g, box(length, 0.22, 0.22, seg), steel, 0, y, z);
   for (let b = 0; b <= bays; b++) {
     const x = -length / 2 + b * bay;
-    for (const z of [-width / 2, width / 2]) part(g, box(0.18, height, 0.18), steel, x, height / 2, z);
+    for (const z of [-width / 2, width / 2]) part(g, box(0.18, height, 0.18, seg), steel, x, height / 2, z);
     if (b === bays) continue;
     for (const z of [-width / 2, width / 2]) for (const s of [1, -1]) {
-      part(g, box(diag, 0.12, 0.12), steel, x + bay / 2, height / 2, z).rotation.z = s * angle;
+      part(g, box(diag, 0.12, 0.12, seg), steel, x + bay / 2, height / 2, z).rotation.z = s * angle;
     }
   }
   return g;
 }
 
-export function railing(kit, length) {
+export function railing(kit, length, seg = 3) {
   const g = new THREE.Group(), steel = kit.steel(palette.charcoal);
-  part(g, box(length, 0.06, 0.06), steel, 0, 1.05, 0);
-  part(g, box(length, 0.05, 0.05), steel, 0, 0.55, 0);
-  for (let x = -length / 2; x <= length / 2 + 0.01; x += 1.5) part(g, box(0.06, 1.1, 0.06), steel, x, 0.55, 0);
+  part(g, box(length, 0.06, 0.06, seg), steel, 0, 1.05, 0);
+  part(g, box(length, 0.05, 0.05, seg), steel, 0, 0.55, 0);
+  for (let x = -length / 2; x <= length / 2 + 0.01; x += 1.5) part(g, box(0.06, 1.1, 0.06, seg), steel, x, 0.55, 0);
   return g;
 }
 
-// Pipe through a list of points, with a flange and joint at every bend.
-export function pipe(kit, parent, points, r, mat) {
+// Pipe through a list of points, with a flange and joint at every bend; seg is segments around.
+export function pipe(kit, parent, points, r, mat, seg = 12) {
   const flange = kit.steel(palette.charcoal, 0.4), up = new THREE.Vector3(0, 1, 0);
   points = points.map((p) => new THREE.Vector3(...p));
   points.forEach((p, i) => {
-    part(parent, new THREE.SphereGeometry(r * 1.05, 12, 8), mat, p.x, p.y, p.z);
+    part(parent, new THREE.SphereGeometry(r * 1.05, seg, Math.ceil((seg * 2) / 3)), mat, p.x, p.y, p.z);
     if (i === 0) return;
     const a = points[i - 1], dir = p.clone().sub(a), len = dir.length();
-    const seg = part(parent, cyl(r, r, len, 12), mat, ...a.clone().add(p).multiplyScalar(0.5).toArray());
-    seg.quaternion.setFromUnitVectors(up, dir.normalize());
+    const tube = part(parent, cyl(r, r, len, seg), mat, ...a.clone().add(p).multiplyScalar(0.5).toArray());
+    tube.quaternion.setFromUnitVectors(up, dir.normalize());
     for (const t of [0.12, 0.88]) {
-      const f = part(parent, cyl(r * 1.35, r * 1.35, 0.12, 12), flange, ...a.clone().lerp(p, t).toArray());
-      f.quaternion.copy(seg.quaternion);
+      const f = part(parent, cyl(r * 1.35, r * 1.35, 0.12, seg), flange, ...a.clone().lerp(p, t).toArray());
+      f.quaternion.copy(tube.quaternion);
     }
   });
 }
@@ -76,18 +77,20 @@ export function streetLamp(kit, parent, x, z, facing = 0) {
   return new THREE.Vector3(1.7, 6.4, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), facing).add(g.position);
 }
 
-export function dronePad(kit, parent, r, x, y, z) {
-  part(parent, cyl(r, r, 0.25, 32), kit.steel(palette.charcoal, 0.7), x, y + 0.12, z);
-  ring(parent, r * 0.8, 0.07, kit.glow(palette.neonCyan, 3), x, y + 0.27, z);
-  for (const s of [-1, 1]) part(parent, box(0.18, 0.04, r * 0.9), kit.glow(palette.neonOrange, 2), x + s * r * 0.25, y + 0.27, z);
-  part(parent, box(r * 0.5, 0.04, 0.18), kit.glow(palette.neonOrange, 2), x, y + 0.27, z);
+// close: false is city detail (cheap chamfers, fewer segments), as in plant.js.
+export function dronePad(kit, parent, r, x, y, z, close = true) {
+  const b = close ? 3 : 1, n = close ? 1 : 0.5;
+  part(parent, cyl(r, r, 0.25, 32 * n), kit.steel(palette.charcoal, 0.7), x, y + 0.12, z);
+  ring(parent, r * 0.8, 0.07, kit.glow(palette.neonCyan, 3), x, y + 0.27, z, 40 * n, 8 * n);
+  for (const s of [-1, 1]) part(parent, box(0.18, 0.04, r * 0.9, b), kit.glow(palette.neonOrange, 2), x + s * r * 0.25, y + 0.27, z);
+  part(parent, box(r * 0.5, 0.04, 0.18, b), kit.glow(palette.neonOrange, 2), x, y + 0.27, z);
 }
 
-export function antennaArray(kit, parent, x, y, z) {
-  const steel = kit.steel(palette.gunmetal, 0.35);
-  part(parent, box(0.15, 7, 0.15), steel, x, y + 3.5, z);
-  for (const [h, w] of [[3, 2.2], [4.6, 1.6], [6, 1]]) part(parent, box(w, 0.08, 0.08), steel, x, y + h, z);
-  const dish = part(parent, new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 4), kit.steel(palette.slate, 0.35), x + 1.4, y + 1.2, z);
+export function antennaArray(kit, parent, x, y, z, close = true) {
+  const steel = kit.steel(palette.gunmetal, 0.35), b = close ? 3 : 1, n = close ? 1 : 0.5;
+  part(parent, box(0.15, 7, 0.15, b), steel, x, y + 3.5, z);
+  for (const [h, w] of [[3, 2.2], [4.6, 1.6], [6, 1]]) part(parent, box(w, 0.08, 0.08, b), steel, x, y + h, z);
+  const dish = part(parent, new THREE.SphereGeometry(1, 20 * n, 10 * n, 0, Math.PI * 2, 0, Math.PI / 4), kit.steel(palette.slate, 0.35), x + 1.4, y + 1.2, z);
   dish.rotation.z = -0.9;
   part(parent, new THREE.SphereGeometry(0.15, 8, 6), kit.glow(palette.signal, 2), x, y + 7.1, z);
 }
