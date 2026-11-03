@@ -5,6 +5,7 @@ import random
 from sim import rules as R
 from sim.cycles import blackout_window, wave
 from sim.state import (
+    SECTORS,
     apply_power,
     chebyshev,
     counter,
@@ -61,8 +62,7 @@ def new_build(x, y, tiles, rng, low=R.FLOORS_MIN):
 def built_percent(tiles):
     """Percent of each sector's tiles that are not empty lots, keyed by sector number."""
     counts = {}
-    for i, t in enumerate(tiles):
-        s = sector(*xy(i))
+    for s, t in zip(SECTORS, tiles, strict=True):
         counts[s] = counts.get(s, 0) + (t["k"] != "lot")
     return {s: 100 * n // (R.BLOCK * R.BLOCK) for s, n in counts.items()}
 
@@ -91,15 +91,16 @@ def step(state, marks, rng):
     maxed = [plant_load >= R.PLANT_CAPACITY for plant_load in loads]
     built = built_percent(old)
     waves = {s: wave(state["seed"], s, tick) for s in built}
+    booms = {s: w > R.BOOM for s, w in waves.items()}
+    declines = {s: w < R.DECLINE and built[s] >= R.DECLINE_MIN_BUILT for s, w in waves.items()}
     markets_near, houses_near = counter(old, "market"), counter(old, "house")
     for i, t in enumerate(tiles):
         x, y = xy(i)
-        s = sector(x, y)
+        s = SECTORS[i]
         powered = old[i]["on"]
         has_market = markets_near(x, y, R.MARKET_RADIUS) > 0
         can_grow = powered and serving[i] is not None and not maxed[serving[i]]
-        booming = waves[s] > R.BOOM
-        declining = waves[s] < R.DECLINE and built[s] >= R.DECLINE_MIN_BUILT
+        booming, declining = booms[s], declines[s]
         k = t["k"]
         if k == "lot":
             chance = R.BUILD_CHANCE * (R.BOOM_BUILD_BONUS if booming else 1)

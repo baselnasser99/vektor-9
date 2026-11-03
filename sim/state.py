@@ -16,6 +16,11 @@ def sector(x, y):
     return 1 + (y // R.BLOCK) * (R.SIZE // R.BLOCK) + x // R.BLOCK
 
 
+# Sector of every tile index, computed once: the tick asks for it thousands of times.
+SECTORS = [sector(i % R.SIZE, i // R.SIZE) for i in range(R.SIZE * R.SIZE)]
+LOADS = {"build": R.BUILD_LOAD, "market": R.MARKET_LOAD}
+
+
 def chebyshev(x, y, px, py):
     return max(abs(x - px), abs(y - py))
 
@@ -51,7 +56,7 @@ def new_tile(kind, rng, floors=0, target=0, people=0):
 
 
 def load(tile):
-    return {"house": tile["p"], "build": R.BUILD_LOAD, "market": R.MARKET_LOAD}.get(tile["k"], 0)
+    return tile["p"] if tile["k"] == "house" else LOADS.get(tile["k"], 0)
 
 
 def power_grid(tiles):
@@ -66,15 +71,18 @@ def power_grid(tiles):
     # order, so a tie stays with the earlier plant.
     for j, p in enumerate(plants):
         px, py = xy(p)
+        xs = range(max(0, px - R.PLANT_RADIUS), min(R.SIZE, px + R.PLANT_RADIUS + 1))
         for y in range(max(0, py - R.PLANT_RADIUS), min(R.SIZE, py + R.PLANT_RADIUS + 1)):
-            for x in range(max(0, px - R.PLANT_RADIUS), min(R.SIZE, px + R.PLANT_RADIUS + 1)):
-                i, d = y * R.SIZE + x, chebyshev(x, y, px, py)
-                if d < dist[i]:
-                    dist[i], serving[i] = d, j
+            dy, row = abs(y - py), y * R.SIZE
+            for x in xs:
+                dx = abs(x - px)
+                d = dx if dx > dy else dy  # chebyshev inlined: the hottest loop in the tick
+                if d < dist[row + x]:
+                    dist[row + x], serving[row + x] = d, j
     loads = [0] * len(plants)
-    for i, t in enumerate(tiles):
-        if serving[i] is not None:
-            loads[serving[i]] += load(t)
+    for t, j in zip(tiles, serving, strict=True):
+        if j is not None:
+            loads[j] += load(t)
     return plants, serving, loads
 
 
