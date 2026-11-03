@@ -4,7 +4,17 @@ import random
 
 from sim import rules as R
 from sim.cycles import blackout_window, wave
-from sim.state import apply_power, chebyshev, count_near, near, new_tile, power_grid, sector, xy
+from sim.state import (
+    apply_power,
+    chebyshev,
+    counter,
+    is_count,
+    near,
+    new_tile,
+    power_grid,
+    sector,
+    xy,
+)
 
 
 def tick_rng(state):
@@ -22,8 +32,7 @@ def mark_error(mark):
     if mark.get("kind") not in R.MARK_KINDS:
         return "bad kind"
     for key in ("x", "y"):
-        v = mark.get(key)
-        if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v < R.SIZE:
+        if not (is_count(mark.get(key)) and mark[key] < R.SIZE):
             return f"bad {key}"
     return None
 
@@ -82,29 +91,24 @@ def step(state, marks, rng):
     maxed = [plant_load >= R.PLANT_CAPACITY for plant_load in loads]
     built = built_percent(old)
     waves = {s: wave(state["seed"], s, tick) for s in built}
-    markets = [xy(i) for i, t in enumerate(old) if t["k"] == "market"]
-    houses = [xy(i) for i, t in enumerate(old) if t["k"] == "house"]
+    markets, houses = counter(old, "market"), counter(old, "house")
     for i, t in enumerate(tiles):
         x, y = xy(i)
         s = sector(x, y)
         powered = old[i]["on"]
+        has_market = markets(x, y, R.MARKET_RADIUS) > 0
         can_grow = powered and serving[i] is not None and not maxed[serving[i]]
         booming = waves[s] > R.BOOM
         declining = waves[s] < R.DECLINE and built[s] >= R.DECLINE_MIN_BUILT
         k = t["k"]
         if k == "lot":
             chance = R.BUILD_CHANCE * (R.BOOM_BUILD_BONUS if booming else 1)
-            if (
-                can_grow
-                and not declining
-                and rng.random() < chance
-                and near(x, y, markets, R.MARKET_RADIUS)
-            ):
+            if can_grow and not declining and rng.random() < chance and has_market:
                 tiles[i] = new_build(x, y, old, rng)
             elif (
                 rng.random() < R.MARKET_OPEN_CHANCE
-                and not near(x, y, markets, R.MARKET_RADIUS)
-                and count_near(x, y, houses, R.MARKET_RADIUS) >= R.MARKET_OPEN_HOUSES
+                and not has_market
+                and houses(x, y, R.MARKET_RADIUS) >= R.MARKET_OPEN_HOUSES
             ):
                 tiles[i] = new_tile("market", rng)
                 events.append(event("market_opened", x, y))
@@ -120,7 +124,7 @@ def step(state, marks, rng):
                 t["p"] = max(0, t["p"] - R.DECAY)
             elif declining:
                 t["p"] = max(0, t["p"] - R.DECLINE_LOSS)
-            elif can_grow and near(x, y, markets, R.MARKET_RADIUS):
+            elif can_grow and has_market:
                 t["p"] = min(t["f"] * R.PEOPLE_PER_FLOOR, t["p"] + rng.randint(0, R.GROWTH))
             if t["p"] > t["f"] * R.PEOPLE_PER_FLOOR:
                 if rng.random() < R.OVERCROWD_DECAY_CHANCE:
@@ -128,7 +132,7 @@ def step(state, marks, rng):
                     t["p"] = max(0, t["p"] - R.PEOPLE_PER_FLOOR)
             elif (
                 t["p"] == 0
-                and (declining or not near(x, y, markets, R.MARKET_RADIUS))
+                and (declining or not has_market)
                 and rng.random() < R.EMPTY_DECAY_CHANCE
             ):
                 t["f"] -= 1
@@ -144,7 +148,7 @@ def step(state, marks, rng):
             ):
                 tiles[i] = new_build(x, y, old, rng, low=t["f"] + 2)
         elif k == "market":
-            if not near(x, y, houses, R.MARKET_RADIUS) and rng.random() < R.MARKET_CLOSE_CHANCE:
+            if not houses(x, y, R.MARKET_RADIUS) and rng.random() < R.MARKET_CLOSE_CHANCE:
                 tiles[i] = new_tile("lot", rng)
                 events.append(event("market_closed", x, y))
 
@@ -161,7 +165,7 @@ def step(state, marks, rng):
             if t["k"] == "lot"
             and chebyshev(*xy(i), *hub) <= R.PLANT_REACH
             and not near(*xy(i), plant_xy, R.PLANT_SPACING - 1)
-            and near(*xy(i), houses, 1)
+            and houses(*xy(i), 1)
         ]
         if spots:
             i = rng.choice(spots)

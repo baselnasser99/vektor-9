@@ -20,12 +20,29 @@ def chebyshev(x, y, px, py):
     return max(abs(x - px), abs(y - py))
 
 
-def count_near(x, y, points, radius):
-    return sum(chebyshev(x, y, px, py) <= radius for px, py in points)
-
-
 def near(x, y, points, radius):
     return any(chebyshev(x, y, px, py) <= radius for px, py in points)
+
+
+def counter(tiles, kind):
+    """count(x, y, radius): how many `kind` tiles lie within `radius` (Chebyshev) of (x, y).
+
+    A prefix sum over the grid, so each count is four lookups instead of a scan of every such tile.
+    """
+    n = R.SIZE
+    sums = [[0] * (n + 1) for _ in range(n + 1)]
+    for y in range(n):
+        row = 0
+        for x in range(n):
+            row += tiles[y * n + x]["k"] == kind
+            sums[y + 1][x + 1] = sums[y][x + 1] + row
+
+    def count(x, y, radius):
+        x0, y0 = max(0, x - radius), max(0, y - radius)
+        x1, y1 = min(n, x + radius + 1), min(n, y + radius + 1)
+        return sums[y1][x1] - sums[y0][x1] - sums[y1][x0] + sums[y0][x0]
+
+    return count
 
 
 def new_tile(kind, rng, floors=0, target=0, people=0):
@@ -43,19 +60,21 @@ def power_grid(tiles):
     Each tile draws from its nearest plant in range (ties go to the first plant in row order).
     """
     plants = [i for i, t in enumerate(tiles) if t["k"] == "plant"]
-    plant_xy = [xy(i) for i in plants]
-    loads = [0] * len(plants)
     serving = [None] * len(tiles)
+    dist = [R.PLANT_RADIUS + 1] * len(tiles)
+    # Each plant claims the tiles in its square that it is strictly closer to; plants go in row
+    # order, so a tie stays with the earlier plant.
+    for j, p in enumerate(plants):
+        px, py = xy(p)
+        for y in range(max(0, py - R.PLANT_RADIUS), min(R.SIZE, py + R.PLANT_RADIUS + 1)):
+            for x in range(max(0, px - R.PLANT_RADIUS), min(R.SIZE, px + R.PLANT_RADIUS + 1)):
+                i, d = y * R.SIZE + x, chebyshev(x, y, px, py)
+                if d < dist[i]:
+                    dist[i], serving[i] = d, j
+    loads = [0] * len(plants)
     for i, t in enumerate(tiles):
-        x, y = xy(i)
-        best = None
-        for j, (px, py) in enumerate(plant_xy):
-            d = chebyshev(x, y, px, py)
-            if d <= R.PLANT_RADIUS and (best is None or d < best[0]):
-                best = (d, j)
-        if best:
-            serving[i] = best[1]
-            loads[best[1]] += load(t)
+        if serving[i] is not None:
+            loads[serving[i]] += load(t)
     return plants, serving, loads
 
 
