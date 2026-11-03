@@ -1,10 +1,11 @@
 """City state: creation, power, and validation. The state dict is the snapshot (ADR-0003)."""
 
+import math
 import random
 
 from sim import rules as R
 
-TILE_KEYS = {"k", "f", "t", "p", "on", "s"}
+TILE_KEYS = {"k", "f", "t", "p", "on", "s", "b"}
 POWER_KEYS = ("capacity", "demand", "supplied")
 
 
@@ -50,9 +51,10 @@ def counter(tiles, kind):
     return count
 
 
-def new_tile(kind, rng, floors=0, target=0, people=0):
+def new_tile(kind, rng, floors=0, target=0, people=0, tick=0):
+    """A tile that took its current form at `tick` (its "b": the renderer tells old from new)."""
     return {"k": kind, "f": floors, "t": target, "p": people, "on": False,
-            "s": rng.randrange(R.STYLE_SEED_MAX)}  # fmt: skip
+            "s": rng.randrange(R.STYLE_SEED_MAX), "b": tick}  # fmt: skip
 
 
 def load(tile):
@@ -106,9 +108,88 @@ def apply_power(tiles, dark=None):
     }
 
 
+def lay_terrain(seed):
+    """Tile index -> terrain kind: a railway edge to edge, a few parks, an old industrial site.
+
+    Everything stays clear of the starting core, so the city grows around it. Integer math only.
+    """
+    rng = random.Random(f"{seed}:terrain")
+    n, c = R.SIZE, R.SIZE // 2
+    clear = [chebyshev(*xy(i), c, c) <= R.START_RADIUS + 1 for i in range(n * n)]
+    terrain = {}
+
+    # Railway: a straight band passing beside the core. With direction (dx, dy), v / |(dx, dy)| is a
+    # tile's signed distance from the line; 0 <= v < |dx| + |dy| is the thinnest band whose tiles
+    # always touch by a side (a "standard" digital line), so the rail has no gaps.
+    dx, dy = rng.choice(R.RAIL_SLOPES)
+    dx *= rng.choice((1, -1))
+    l2 = dx * dx + dy * dy
+    lo, hi = R.RAIL_OFFSET
+    k = rng.randint(math.isqrt(lo * lo * l2) + 1, math.isqrt(hi * hi * l2)) * rng.choice((1, -1))
+    for i in range(n * n):
+        x, y = xy(i)
+        v = (x - c) * dy - (y - c) * dx - k
+        if 0 <= v < abs(dx) + abs(dy) and not clear[i]:
+            terrain[i] = "rail"
+
+    # Parks: two overlapping ellipses each, away from the core, the railway and each other.
+    rails = [xy(i) for i in terrain]
+    parks = []
+    for _ in range(R.PARKS):
+        for _attempt in range(500):
+            px, py = rng.randrange(n), rng.randrange(n)
+            if (
+                R.PARK_DISTANCE[0] <= chebyshev(px, py, c, c) <= R.PARK_DISTANCE[1]
+                and not near(px, py, rails, 3)
+                and not near(px, py, parks, R.PARK_SPACING - 1)
+            ):
+                break
+        else:
+            continue
+        parks.append((px, py))
+        blobs = [(px, py), (px + rng.randint(-2, 2), py + rng.randint(-2, 2))]
+        blobs = [
+            (bx, by, rng.randint(*R.PARK_RADIUS), rng.randint(*R.PARK_RADIUS)) for bx, by in blobs
+        ]
+        for i in range(n * n):
+            x, y = xy(i)
+            inside = any(
+                ((x - bx) * b) ** 2 + ((y - by) * a) ** 2 <= (a * b) ** 2 for bx, by, a, b in blobs
+            )
+            if inside and i not in terrain and not clear[i]:
+                terrain[i] = "park"
+
+    # Old industrial site: a rectangle with one corner missing, set against the railway.
+    sidings = [
+        (x, y)
+        for x, y in rails
+        if R.WORKS_DISTANCE[0] <= chebyshev(x, y, c, c) <= R.WORKS_DISTANCE[1]
+    ]
+    if sidings:
+        rx, ry = rng.choice(sidings)
+        (w, h), sx, sy = R.WORKS_SIZE, rng.choice((1, -1)), rng.choice((1, -1))
+        xs = range(rx + 1, rx + 1 + w) if sx > 0 else range(rx - w, rx)
+        ys = range(ry + 1, ry + 1 + h) if sy > 0 else range(ry - h, ry)
+        corner = (rng.choice((xs[0], xs[-1])), rng.choice((ys[0], ys[-1])))
+        for y in ys:
+            for x in xs:
+                i = y * n + x
+                if (
+                    0 <= x < n
+                    and 0 <= y < n
+                    and (x, y) != corner
+                    and i not in terrain
+                    and not clear[i]
+                ):
+                    terrain[i] = "works"
+    return terrain
+
+
 def new_city(seed):
-    """A small core around the center: one plant, a couple of markets, a few low houses."""
+    """A small core around the center: one plant, a couple of markets, a few low houses, and the
+    terrain (railway, parks, industrial site) the city will grow around."""
     rng = random.Random(seed)
+    terrain = lay_terrain(seed)
     c = R.SIZE // 2
     core = [i for i in range(R.SIZE * R.SIZE) if 0 < chebyshev(*xy(i), c, c) <= R.START_RADIUS]
     markets = set(rng.sample(core, R.START_MARKETS))
@@ -116,7 +197,9 @@ def new_city(seed):
     tiles = []
     for i in range(R.SIZE * R.SIZE):
         x, y = xy(i)
-        if (x, y) == (c, c):
+        if i in terrain:
+            tiles.append(new_tile(terrain[i], rng))
+        elif (x, y) == (c, c):
             tiles.append(new_tile("plant", rng))
         elif i in markets:
             tiles.append(new_tile("market", rng))
@@ -169,9 +252,11 @@ def validate(state):
             continue
         if t["k"] not in R.KINDS:
             errors.append(f"{where}: unknown kind {t['k']!r}")
-        if not all(is_count(t[key]) for key in ("f", "t", "p", "s")):
-            errors.append(f"{where}: f, t, p, s must be non-negative integers")
+        if not all(is_count(t[key]) for key in ("f", "t", "p", "s", "b")):
+            errors.append(f"{where}: f, t, p, s, b must be non-negative integers")
             continue
+        if is_count(state.get("tick")) and t["b"] > state["tick"]:
+            errors.append(f"{where}: built after the current tick")
         if not isinstance(t["on"], bool):
             errors.append(f"{where}: on must be a boolean")
         if t["s"] >= R.STYLE_SEED_MAX:
