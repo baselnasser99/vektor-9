@@ -4,12 +4,10 @@ import { palette } from './palette.js';
 import { box, part, rng } from './geometry.js';
 import { streetLamp } from './parts.js';
 import { powerPlant } from './plant.js';
-import { F, construction, market, plaza, tower } from './tiles.js';
+import { construction, market, plaza, tower } from './tiles.js';
 import { mergeByMaterial } from './merge.js';
-
-export const TILE = 14; // metres per tile; buildings fill 12 m of it
-export const STREET = 17; // street width between sectors
-const BLOCK = 8; // tiles per sector side, as in sim/rules.py
+import { radialTexture } from './textures.js';
+import { BLOCK, F, STREET, TILE } from './world.js';
 
 export function cityLayout(snap) {
   const n = snap.size, span = n * TILE + (n / BLOCK - 1) * STREET;
@@ -39,7 +37,7 @@ export function buildCity(kit, snap) {
     }
   }
   // Pools of warm light under each lamp: cheap additive decals instead of hundreds of real lights.
-  const poolMat = new THREE.MeshBasicMaterial({ map: poolTexture(), color: palette.sodium, transparent: true, opacity: 0.3,
+  const poolMat = new THREE.MeshBasicMaterial({ map: radialTexture(128), color: palette.sodium, transparent: true, opacity: 0.3,
     blending: THREE.AdditiveBlending, depthWrite: false });
   for (const p of pools) part(root, new THREE.CircleGeometry(7, 24), poolMat, p.x, 0.35, p.z).rotation.x = -Math.PI / 2;
 
@@ -75,14 +73,4 @@ function lanes(n, span, pos) {
     }
   }
   return { lines, length: span + 2 * STREET };
-}
-
-function poolTexture() {
-  const canvas = Object.assign(document.createElement('canvas'), { width: 128, height: 128 });
-  const g = canvas.getContext('2d'), grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(canvas);
 }

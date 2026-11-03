@@ -3,11 +3,12 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
 import { antennaArray, dronePad, edgeLights, railing, waterTank } from './parts.js';
+import { F } from './world.js';
 
 // Mid-rise on a 12 m tile: shop podium with neon, a glass tower with fins and a cantilevered wing,
 // balconies, a vertical LED screen, an old fire escape on the back, and a roof with a drone pad and antennas.
 export function midRise(kit, floors = 12) {
-  const g = new THREE.Group(), F = 3.5;
+  const g = new THREE.Group();
   const base = 2 * F, bodyH = (floors - 4) * F, topH = 2 * F, roof = base + bodyH;
 
   // Podium

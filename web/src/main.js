@@ -1,11 +1,12 @@
 // The city: loads one snapshot and draws every tile with the building kit, at night, with its surroundings
-// and ambient life (traffic, rain, mist).
+// and ambient life (traffic, rain, mist, clouds).
 import { palette } from './palette.js';
 import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { buildCity, cityLayout } from './city.js';
-import { buildDesert } from './desert.js';
-import { rain, rainAmount, traffic } from './life.js';
+import { REACH, buildDesert } from './desert.js';
+import { traffic } from './life.js';
+import { cloudDeck, mist, rain, rainAmount } from './atmosphere.js';
 
 document.body.style.background = `#${palette.nightZenith.toString(16).padStart(6, '0')}`; // dark while the city builds
 const SCHEMA = 2;
@@ -29,7 +30,7 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
 
 const kit = await loadKit(renderer);
 const { city, lanes } = buildCity(kit, snap);
-scene.add(city, buildDesert(kit, half, onFrame), traffic(kit, lanes, onFrame));
+scene.add(city, buildDesert(kit, half, onFrame), traffic(kit, lanes, onFrame), cloudDeck(REACH * 6, onFrame), ...mist(half, onFrame));
 // ?rain=0..1 previews weather the snapshot does not have.
 const wet = params.has('rain') ? Number(params.get('rain')) : rainAmount(snap);
 if (wet) scene.add(rain(wet, controls.target, onFrame));

@@ -7,7 +7,7 @@ Plain and procedurally textured boxes looked artificial. The goal is now a dense
 
 ## Decision
 - Use physically based materials with CC0 texture sets and a few CC0 glTF models from Poly Haven, vendored in `web/assets/` (list and licence in `web/assets/LICENSE.md`).
-- Build buildings from a code kit (`web/src/kit.js`): primitives and parts assembled per building, using those materials. Downloaded models are props, not whole buildings. Concrete is drawn in code instead, because the downloaded concrete sets tiled visibly.
+- Build buildings from a code kit (`web/src/materials.js`, `geometry.js`, `parts.js`, `tiles.js`, `plant.js`): primitives and parts assembled per building, using those materials. Downloaded models are props, not whole buildings. Concrete is drawn in code instead, because the downloaded concrete sets tiled visibly.
 - Post-processing: bloom for emissive parts, then tone mapping in an output pass. Vendored from the same Three.js release (r170).
 - Replaces the cel-shaded, anime look in the style guide.
 
