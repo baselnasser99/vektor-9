@@ -8,7 +8,17 @@ from hypothesis import strategies as st
 from sim import rules as R
 from sim.__main__ import main
 from sim.cycles import blackout_starts, wave
-from sim.state import apply_power, chebyshev, new_city, new_tile, validate, xy
+from sim.state import (
+    apply_power,
+    chebyshev,
+    counter,
+    load,
+    new_city,
+    new_tile,
+    power_grid,
+    validate,
+    xy,
+)
 from sim.step import mark_error, step, tick_rng
 
 seeds = st.integers(0, 2**32)
@@ -233,3 +243,20 @@ def test_district_wave_is_bounded_and_slow(seed, sector, tick):
     a, b = wave(seed, sector, tick), wave(seed, sector, tick + 1)
     assert -100 <= a <= 100
     assert abs(a - b) <= 1
+
+
+@settings(max_examples=10, deadline=None)
+@given(seeds, st.integers(0, 6))
+def test_grid_lookups_match_a_full_scan(seed, radius):
+    tiles = random_city(seed)["tiles"]
+    houses = [xy(i) for i, t in enumerate(tiles) if t["k"] == "house"]
+    plants = [i for i, t in enumerate(tiles) if t["k"] == "plant"]
+    count = counter(tiles, "house")
+    _, serving, loads = power_grid(tiles)
+    for i in range(0, R.SIZE * R.SIZE, 7):
+        x, y = xy(i)
+        assert count(x, y, radius) == sum(chebyshev(x, y, *h) <= radius for h in houses)
+        d = [chebyshev(x, y, *xy(p)) for p in plants]
+        best = min(d, default=R.PLANT_RADIUS + 1)
+        assert serving[i] == (d.index(best) if best <= R.PLANT_RADIUS else None)
+    assert sum(loads) == sum(load(t) for i, t in enumerate(tiles) if serving[i] is not None)
