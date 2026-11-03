@@ -91,12 +91,12 @@ def step(state, marks, rng):
     maxed = [plant_load >= R.PLANT_CAPACITY for plant_load in loads]
     built = built_percent(old)
     waves = {s: wave(state["seed"], s, tick) for s in built}
-    markets, houses = counter(old, "market"), counter(old, "house")
+    markets_near, houses_near = counter(old, "market"), counter(old, "house")
     for i, t in enumerate(tiles):
         x, y = xy(i)
         s = sector(x, y)
         powered = old[i]["on"]
-        has_market = markets(x, y, R.MARKET_RADIUS) > 0
+        has_market = markets_near(x, y, R.MARKET_RADIUS) > 0
         can_grow = powered and serving[i] is not None and not maxed[serving[i]]
         booming = waves[s] > R.BOOM
         declining = waves[s] < R.DECLINE and built[s] >= R.DECLINE_MIN_BUILT
@@ -108,7 +108,7 @@ def step(state, marks, rng):
             elif (
                 rng.random() < R.MARKET_OPEN_CHANCE
                 and not has_market
-                and houses(x, y, R.MARKET_RADIUS) >= R.MARKET_OPEN_HOUSES
+                and houses_near(x, y, R.MARKET_RADIUS) >= R.MARKET_OPEN_HOUSES
             ):
                 tiles[i] = new_tile("market", rng)
                 events.append(event("market_opened", x, y))
@@ -148,7 +148,7 @@ def step(state, marks, rng):
             ):
                 tiles[i] = new_build(x, y, old, rng, low=t["f"] + 2)
         elif k == "market":
-            if not houses(x, y, R.MARKET_RADIUS) and rng.random() < R.MARKET_CLOSE_CHANCE:
+            if not houses_near(x, y, R.MARKET_RADIUS) and rng.random() < R.MARKET_CLOSE_CHANCE:
                 tiles[i] = new_tile("lot", rng)
                 events.append(event("market_closed", x, y))
 
@@ -165,7 +165,7 @@ def step(state, marks, rng):
             if t["k"] == "lot"
             and chebyshev(*xy(i), *hub) <= R.PLANT_REACH
             and not near(*xy(i), plant_xy, R.PLANT_SPACING - 1)
-            and houses(*xy(i), 1)
+            and houses_near(*xy(i), 1)
         ]
         if spots:
             i = rng.choice(spots)
