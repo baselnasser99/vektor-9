@@ -4,10 +4,13 @@ import * as THREE from 'three';
 // city draws in a few hundred calls instead of tens of thousands. (Merging per grid cell for culling was
 // tried and measured: it multiplied draw calls and cost more than it saved.)
 // Writes straight into one buffer per material: cloning each part first made this most of the city's build time.
-export function mergeByMaterial(root) {
+// warp: optional { dx(x, z), dz(x, z) } that shifts every vertex over the ground after placement (city.js), except
+// under groups marked userData.rigid.
+export function mergeByMaterial(root, warp) {
   root.updateMatrixWorld(true);
   const buckets = new Map();
   root.traverse((o) => {
+    if (o.userData.rigid) o.traverse((m) => { m.userData.rigid = true; }); // moved whole by its builder: no warp
     if (!o.isMesh) return;
     if (!buckets.has(o.material)) buckets.set(o.material, []);
     buckets.get(o.material).push(o);
@@ -25,7 +28,7 @@ export function mergeByMaterial(root) {
     const colors = material.vertexColors && new Float32Array(verts * 3);
     const index = new (verts > 65535 ? Uint32Array : Uint16Array)(count);
     let base = 0, at = 0;
-    for (const { geometry: g, matrixWorld } of meshes) {
+    for (const { geometry: g, matrixWorld, userData } of meshes) {
       // Raw arrays with the matrix math inlined: every part is built in code, so no attribute is interleaved.
       const [p, n, t] = ['position', 'normal', 'uv'].map((name) => g.attributes[name].array), count = p.length / 3;
       const m = matrixWorld.elements, q = normalMatrix.getNormalMatrix(matrixWorld).elements;
@@ -41,6 +44,12 @@ export function mergeByMaterial(root) {
         nor[o] = nx * s;
         nor[o + 1] = ny * s;
         nor[o + 2] = nz * s;
+      }
+      // shortcut: normals are not bent with the warp; fine while its slopes stay gentle (under ~0.5).
+      if (warp && !userData.rigid) for (let o = base * 3; o < (base + count) * 3; o += 3) {
+        const x = pos[o], z = pos[o + 2];
+        pos[o] = x + warp.dx(x, z);
+        pos[o + 2] = z + warp.dz(x, z);
       }
       uvs.set(t, base * 2);
       if (colors) colors.set(g.attributes.color.array, base * 3);

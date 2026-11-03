@@ -1,11 +1,11 @@
 // The city: loads one snapshot and draws every tile with the building kit, at night, with its surroundings
-// and ambient life (traffic, rain, mist, clouds).
+// and ambient life (traffic, trains, rain, mist, clouds).
 import { css, palette } from './palette.js';
 import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { buildCity, cityLayout } from './city.js';
 import { REACH, buildDesert } from './desert.js';
-import { traffic } from './life.js';
+import { traffic, trains } from './life.js';
 import { airships, cloudDeck, horizon, mist, moon, rain, rainAmount, searchlights, stars } from './atmosphere.js';
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
@@ -30,9 +30,10 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
 }
 
 const kit = await loadKit(renderer);
-const { city, lanes, edge, lines } = buildCity(kit, snap);
+const { city, warp, hub, rail, lanes, edge, lines } = buildCity(kit, snap);
 const { desert, lanes: highwayLanes } = buildDesert(kit, edge, lines, onFrame);
-scene.add(city, desert, traffic(kit, [...lanes, ...highwayLanes], onFrame));
+scene.add(city, desert, traffic(kit, [...lanes, ...highwayLanes], onFrame, warp, hub));
+if (rail) scene.add(trains(kit, rail, onFrame));
 scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), cloudDeck(REACH * 6, onFrame), ...mist(half, onFrame), ...searchlights(half, onFrame), ...airships(kit, half, onFrame));
 // ?rain=0..1 previews weather the snapshot does not have.
 const wet = params.has('rain') ? Number(params.get('rain')) : rainAmount(snap);

@@ -5,8 +5,11 @@ import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
 import { streetLamp, tree } from './parts.js';
 import { TILE } from './world.js';
+import { duneHeight } from './desert.js';
+import { station } from './landmarks.js';
 
 const DECK = 8; // viaduct deck height: streets and alleys pass under it
+const RUN = 1500; // metres of line each way from the city: past there the haze hides it
 
 // Rail tile: a gravel bed under the viaduct.
 export function railGround(kit) {
@@ -41,31 +44,54 @@ export function works(kit, rand, lit) {
   return g;
 }
 
-// The viaduct: along the straight line through the rail tile centres (a least-squares fit), a deck with two
-// tracks and a lit edge, on piers that stand only on rail tiles. centres: [x, z] of every rail tile.
-export function railway(kit, root, centres) {
-  if (centres.length < 2) return;
+// The straight line through the rail tile centres (a least-squares fit): a point on it, its direction and angle.
+export function railLine(centres) {
+  if (centres.length < 2) return null;
   const n = centres.length, [mx, mz] = centres.reduce(([a, b], [x, z]) => [a + x / n, b + z / n], [0, 0]);
   let [sxx, szz, sxz] = [0, 0, 0];
   for (const [x, z] of centres) [sxx, szz, sxz] = [sxx + (x - mx) ** 2, szz + (z - mz) ** 2, sxz + (x - mx) * (z - mz)];
-  const angle = Math.atan2(2 * sxz, sxx - szz) / 2, [ux, uz] = [Math.cos(angle), Math.sin(angle)];
-  const along = centres.map(([x, z]) => (x - mx) * ux + (z - mz) * uz);
-  const [t0, t1] = [Math.min(...along) - TILE / 2, Math.max(...along) + TILE / 2];
+  const angle = Math.atan2(2 * sxz, sxx - szz) / 2;
+  return { mx, mz, angle, ux: Math.cos(angle), uz: Math.sin(angle) };
+}
+
+// The viaduct along the rail line: a deck with two tracks and a lit edge, from a terminus station at the end
+// nearer the centre, out past the city edge over the desert (riding the dunes) until the haze swallows it. Piers
+// stand on rail tiles inside the city, everywhere outside it. centres: [x, z] of every rail tile; edge: the city's
+// outer edge. Returns the line for the trains (life.js trains).
+export function railway(kit, root, centres, edge) {
+  const line = railLine(centres);
+  if (!line) return null;
+  const { mx, mz, angle, ux, uz } = line, ground = duneHeight(edge);
+  const at = (t) => {
+    const [x, z] = [mx + ux * t, mz + uz * t];
+    return [x, DECK + ground(x, z), z];
+  };
+  const along = centres.map(([x, z]) => (x - mx) * ux + (z - mz) * uz), [lo, hi] = [Math.min(...along), Math.max(...along)];
+  const dir = Math.hypot(...[0, 2].map((k) => at(lo)[k])) < Math.hypot(...[0, 2].map((k) => at(hi)[k])) ? 1 : -1;
+  const end = dir > 0 ? lo - TILE / 2 : hi + TILE / 2, out = dir * RUN; // terminus, and the far end in the haze
   const deck = kit.concrete(palette.gunmetal), steel = kit.steel(palette.slate, 0.4), led = kit.glow(palette.sodium, 1);
   const onRail = (x, z) => centres.some(([cx, cz]) => Math.abs(x - cx) < TILE / 2 - 1 && Math.abs(z - cz) < TILE / 2 - 1);
-  const span = 12;
+  const span = 12, [t0, t1] = [Math.min(end, out), Math.max(end, out)];
   for (let t = t0; t < t1; t += span) {
-    const len = Math.min(span, t1 - t), [x, z] = [mx + ux * (t + len / 2), mz + uz * (t + len / 2)];
+    const [x, y, z] = at(t + span / 2), rise = at(t + span)[1] - at(t)[1], inside = Math.max(Math.abs(x), Math.abs(z)) < edge;
     const piece = new THREE.Group();
-    part(piece, box(len + 0.05, 1.2, 9, 0), deck, 0, DECK, 0);
-    for (const off of [-2.6, -1.1, 1.1, 2.6]) part(piece, box(len + 0.05, 0.18, 0.12, 0), steel, 0, DECK + 0.69, off);
+    part(piece, box(span + 0.05, 1.2, 9, 0), deck, 0, 0, 0);
+    for (const off of [-2.6, -1.1, 1.1, 2.6]) part(piece, box(span + 0.05, 0.18, 0.12, 0), steel, 0, 0.69, off);
     for (const side of [-1, 1]) {
-      part(piece, box(len + 0.05, 0.9, 0.3, 0), deck, 0, DECK + 1.05, side * 4.35);
-      part(piece, box(len + 0.05, 0.1, 0.1, 0), led, 0, DECK - 0.65, side * 4.5);
+      part(piece, box(span + 0.05, 0.9, 0.3, 0), deck, 0, 1.05, side * 4.35);
+      part(piece, box(span + 0.05, 0.1, 0.1, 0), led, 0, -0.65, side * 4.5);
     }
-    piece.position.set(x, 0, z);
-    piece.rotation.y = -angle; // a box's length runs along x; turning by -angle points it along (ux, uz)
+    piece.position.set(x, y, z);
+    piece.rotation.set(0, -angle, Math.atan2(rise, span)); // a box's length runs along x; -angle points it along (ux, uz)
     root.add(piece);
-    if (onRail(x, z)) part(root, box(1.6, DECK - 0.6, 5, 1), deck, x, (DECK - 0.6) / 2, z).rotation.y = -angle;
+    if (inside ? onRail(x, z) : Math.round(t / span) % 2 === 0) {
+      const h = y - 0.6 - ground(x, z) + 1;
+      part(root, box(1.6, h, 5, 1), deck, x, y - 0.6 - h / 2, z).rotation.y = -angle;
+    }
   }
+  const [sx, sy, sz] = at(end + dir * 37), hall = station(kit);
+  hall.position.set(sx, sy, sz);
+  hall.rotation.y = -angle + (dir > 0 ? Math.PI : 0); // its closed end, with the buffers, at the terminus
+  root.add(hall);
+  return { at, angle, side: [-uz, ux], end, out };
 }
