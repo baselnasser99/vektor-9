@@ -1,0 +1,84 @@
+// Materials: CC0 PBR texture sets and models (web/assets), and materials built on the textures in textures.js.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { palette } from './palette.js';
+import { REPEAT } from './geometry.js';
+import { adTexture, concreteTexture, punchedTexture, textTexture, windowTexture } from './textures.js';
+
+const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_metal_sheet', 'metal_grate_rusty', 'aerial_asphalt_01'];
+const MODELS = ['modular_industrial_pipes_01', 'modular_airduct_circular_01', 'modular_fire_escape', 'utility_box_01'];
+// Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
+const NEON = 0.65;
+
+export async function loadKit(renderer, base = './assets') {
+  const tl = new THREE.TextureLoader();
+  const aniso = renderer.capabilities.getMaxAnisotropy();
+  const tex = (url, srgb) => tl.loadAsync(url).then((t) => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = aniso;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  });
+  const maps = {};
+  await Promise.all(TEXTURES.map(async (name) => {
+    const [map, normalMap, arm] = await Promise.all([
+      tex(`${base}/textures/${name}/diff.jpg`, true), tex(`${base}/textures/${name}/nor.jpg`), tex(`${base}/textures/${name}/arm.jpg`)]);
+    // arm packs AO, roughness and metalness into R, G and B, which is what three.js reads from each map.
+    maps[name] = { map, normalMap, aoMap: arm, roughnessMap: arm, metalnessMap: arm };
+  }));
+  const gltf = new GLTFLoader(), models = {};
+  await Promise.all(MODELS.map(async (name) => (models[name] = (await gltf.loadAsync(`${base}/models/${name}/${name}.gltf`)).scene)));
+
+  const cache = new Map();
+  // Cached by key; the key doubles as the material's name, which ?bench uses to report where triangles go.
+  const once = (key, make) => {
+    if (!cache.has(key)) cache.set(key, Object.assign(make(), { name: key }));
+    return cache.get(key);
+  };
+  return {
+    // Textured material, tinted by a palette color.
+    mat: (name, color = 0xffffff) => once(`${name}:${color}`, () =>
+      new THREE.MeshStandardMaterial({ ...maps[name], color, metalness: 1, roughness: 1 })),
+    // Smooth painted steel: flat color with only the worn metal's surface relief and roughness.
+    steel: (color, roughness = 0.5) => once(`steel:${color}:${roughness}`, () => new THREE.MeshStandardMaterial({
+      color, metalness: 0.25, roughness: Math.max(roughness, 0.6), normalMap: maps.rusty_painted_metal.normalMap, normalScale: new THREE.Vector2(0.35, 0.35) })),
+    glass: (color = palette.glassBand) => once(`glass:${color}`, () =>
+      new THREE.MeshStandardMaterial({ color, metalness: 0.2, roughness: 0.4 })),
+    // See-through tinted glass, e.g. over the reactor core.
+    veil: (color, opacity) => once(`veil:${color}:${opacity}`, () =>
+      new THREE.MeshStandardMaterial({ color, roughness: 0.25, transparent: true, opacity })),
+    glow: (color, intensity = 2.5) => once(`glow:${color}:${intensity}`, () =>
+      new THREE.MeshStandardMaterial({ color: palette.deepNavy, emissive: color, emissiveIntensity: intensity * NEON })),
+    // Cast concrete drawn in code: soft blotches, rain streaks, faint formwork seams; no tiling grid.
+    concrete: (color) => once(`concrete:${color}`, () => new THREE.MeshStandardMaterial({
+      map: once('concreteMap', concreteTexture), color, roughness: 0.9, metalness: 0 })),
+    // Night glass: a grid of rooms (1.25 m bays, 3.5 m floors), nearly half lit, mostly warm.
+    // concrete: punched windows in a concrete wall instead of a glass skin. Unlit (blackout): every room dark.
+    windows: (seed = 1, lit = true, concrete = false) => once(`windows:${seed}:${lit}:${concrete}`, () => {
+      const fit = (t) => { t.repeat.set(REPEAT / (8 * 1.25), REPEAT / (8 * 3.5)); return t; };
+      const glow = lit ? { emissive: 0xffffff, emissiveMap: fit(windowTexture(seed)), emissiveIntensity: 1 } : {};
+      return concrete
+        ? new THREE.MeshStandardMaterial({ map: fit(once('punched', punchedTexture)), color: palette.slate, roughness: 0.85, ...glow })
+        : new THREE.MeshStandardMaterial({ color: palette.charcoal, metalness: 0.15, roughness: 0.45, ...glow });
+    }),
+    // Lit sign with an invented word: glowing text and frame on a dark panel.
+    sign: (text, color, vertical = false) => once(`sign:${text}:${color}:${vertical}`, () => {
+      const map = textTexture(text, color, vertical, palette.deepNavy);
+      return new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 1.3 * NEON });
+    }),
+    // Billboard ad: an invented word over bands of color, lit from within.
+    billboard: (text, a, b) => once(`ad:${text}:${a}:${b}`, () => new THREE.MeshStandardMaterial({
+      color: 0x000000, emissive: 0xffffff, emissiveMap: adTexture(text, a, b), emissiveIntensity: 1.1 * NEON })),
+    // Hologram: see-through, additive, with scanlines.
+    holo: (text, color) => once(`holo:${text}:${color}`, () => new THREE.MeshBasicMaterial({
+      map: textTexture(text, color, false, null), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
+      depthWrite: false, side: THREE.DoubleSide })),
+    // A named piece from a CC0 model, or the whole model when no node is given; its sheet offset is cleared.
+    piece(model, node) {
+      const obj = (node ? models[model].getObjectByName(node) : models[model]).clone();
+      obj.position.set(0, 0, 0);
+      obj.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+      return obj;
+    },
+  };
+}
