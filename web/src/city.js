@@ -22,26 +22,26 @@ export function buildCity(kit, snap) {
   const streets = buildStreets(kit, layout, root);
 
   snap.tiles.forEach((t, i) => {
-    const rand = rng(t.s), fw = footprint(t, rand);
-    const sector = Math.floor(i / n / BLOCK) * (n / BLOCK) + Math.floor((i % n) / BLOCK);
+    const rand = rng(t.s), fw = footprint(t, rand), col = i % n, row = Math.floor(i / n);
+    const sector = Math.floor(row / BLOCK) * (n / BLOCK) + Math.floor(col / BLOCK);
     // Each sector leans glass or concrete; about one building in four goes the other way.
     const concrete = ((sector * 7 + snap.seed) % 2 === 0) !== (rand() < 0.25);
     const g = { house: () => tower(kit, t.f, rand, t.on, concrete, fw), build: () => construction(kit, t.f, rand, t.on, fw),
-      market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit, { props: false }), lot: () => plaza(kit, rand, t.on) }[t.k]();
+      market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit, { close: false }), lot: () => plaza(kit, rand, t.on) }[t.k]();
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
     // and each quarter-block keeps a courtyard behind; inner lots sit anywhere on theirs.
-    const [cx, cz] = [pos(i % n), pos(Math.floor(i / n))], slack = TILE - 1 - fw;
-    const [dx, dz] = [frontage(i % n), frontage(Math.floor(i / n))];
+    const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;
+    const [dx, dz] = [frontage(col), frontage(row)];
     g.position.set(cx + (dx ? dx / 2 : rand() - 0.5) * slack, 0.18, cz + (dz ? dz / 2 : rand() - 0.5) * slack);
     g.rotation.y = Math.floor(rand() * 4) * (Math.PI / 2);
     root.add(g);
     if (t.k !== 'plant' && t.k !== 'lot') shopfronts(kit, root, t, rand, cx, cz, dx, dz);
     // Skybridge to the east neighbour in the same sector when both are tall enough.
     const east = snap.tiles[i + 1];
-    if (t.k === 'house' && east?.k === 'house' && (i % n) % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < 0.12) {
-      const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [pos(i % n), pos((i % n) + 1)], z = pos(Math.floor(i / n));
-      part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, z);
-      if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, z + 1.8);
+    if (t.k === 'house' && east?.k === 'house' && col % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < 0.12) {
+      const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [cx, pos(col + 1)];
+      part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, cz);
+      if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
     }
   });
   return { city: mergeByMaterial(root), lanes: streets.lanes, lines: streets.lines, edge: streets.hi };

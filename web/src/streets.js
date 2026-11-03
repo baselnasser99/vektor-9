@@ -23,8 +23,7 @@ export function buildStreets(kit, layout, root) {
   const { n, pos } = layout, lines = streetLines(layout), [lo, hi] = [lines[0] - STREET / 2, lines.at(-1) + STREET / 2];
   const rand = rng(31);
 
-  const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal).clone();
-  asphalt.roughness = 0.55; // wet, but not a mirror
+  const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // wet, but not a mirror
   part(root, box(hi - lo + 80, 0.1, hi - lo + 80, 0), asphalt, 0, -0.05, 0);
 
   // Sectors: raised paving out to the curb, a curb line, and an alley cross through the middle.

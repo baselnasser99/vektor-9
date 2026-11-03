@@ -6,11 +6,11 @@ import { REPEAT } from './geometry.js';
 import { adTexture, concreteTexture, punchedTexture, textTexture, windowTexture } from './textures.js';
 
 const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_metal_sheet', 'metal_grate_rusty', 'aerial_asphalt_01'];
-const MODELS = ['modular_industrial_pipes_01', 'modular_airduct_circular_01', 'modular_fire_escape', 'utility_box_01'];
 // Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
 const NEON = 0.65;
 
-export async function loadKit(renderer, base = './assets') {
+// models: the CC0 models (web/assets/models) this page uses; the city needs none, and they are most of the download.
+export async function loadKit(renderer, models = [], base = './assets') {
   const tl = new THREE.TextureLoader();
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (url, srgb) => tl.loadAsync(url).then((t) => {
@@ -26,8 +26,8 @@ export async function loadKit(renderer, base = './assets') {
     // arm packs AO, roughness and metalness into R, G and B, which is what three.js reads from each map.
     maps[name] = { map, normalMap, aoMap: arm, roughnessMap: arm, metalnessMap: arm };
   }));
-  const gltf = new GLTFLoader(), models = {};
-  await Promise.all(MODELS.map(async (name) => (models[name] = (await gltf.loadAsync(`${base}/models/${name}/${name}.gltf`)).scene)));
+  const gltf = new GLTFLoader(), scenes = {};
+  await Promise.all(models.map(async (name) => (scenes[name] = (await gltf.loadAsync(`${base}/models/${name}/${name}.gltf`)).scene)));
 
   const cache = new Map();
   // Cached by key; the key doubles as the material's name, which ?bench uses to report where triangles go.
@@ -36,9 +36,9 @@ export async function loadKit(renderer, base = './assets') {
     return cache.get(key);
   };
   return {
-    // Textured material, tinted by a palette color.
-    mat: (name, color = 0xffffff) => once(`${name}:${color}`, () =>
-      new THREE.MeshStandardMaterial({ ...maps[name], color, metalness: 1, roughness: 1 })),
+    // Textured material, tinted by a palette color; roughness below 1 makes it wetter.
+    mat: (name, color = 0xffffff, roughness = 1) => once(`${name}:${color}:${roughness}`, () =>
+      new THREE.MeshStandardMaterial({ ...maps[name], color, metalness: 1, roughness })),
     // Smooth painted steel: flat color with only the worn metal's surface relief and roughness.
     steel: (color, roughness = 0.5) => once(`steel:${color}:${roughness}`, () => new THREE.MeshStandardMaterial({
       color, metalness: 0.25, roughness: Math.max(roughness, 0.6), normalMap: maps.rusty_painted_metal.normalMap, normalScale: new THREE.Vector2(0.35, 0.35) })),
@@ -75,7 +75,7 @@ export async function loadKit(renderer, base = './assets') {
       depthWrite: false, side: THREE.DoubleSide })),
     // A named piece from a CC0 model, or the whole model when no node is given; its sheet offset is cleared.
     piece(model, node) {
-      const obj = (node ? models[model].getObjectByName(node) : models[model]).clone();
+      const obj = (node ? scenes[model].getObjectByName(node) : scenes[model]).clone();
       obj.position.set(0, 0, 0);
       obj.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
       return obj;

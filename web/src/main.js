@@ -1,6 +1,6 @@
 // The city: loads one snapshot and draws every tile with the building kit, at night, with its surroundings
 // and ambient life (traffic, rain, mist, clouds).
-import { palette } from './palette.js';
+import { css, palette } from './palette.js';
 import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { buildCity, cityLayout } from './city.js';
@@ -8,7 +8,7 @@ import { REACH, buildDesert } from './desert.js';
 import { traffic } from './life.js';
 import { airships, cloudDeck, horizon, mist, moon, rain, rainAmount, searchlights, stars } from './atmosphere.js';
 
-document.body.style.background = `#${palette.nightZenith.toString(16).padStart(6, '0')}`; // dark while the city builds
+document.body.style.background = css(palette.nightZenith); // dark while the city builds
 const SCHEMA = 2;
 
 const params = new URLSearchParams(location.search);
@@ -17,10 +17,10 @@ const snap = await (await fetch(snapUrl)).json();
 if (snap.schema !== SCHEMA) throw new Error(`snapshot schema ${snap.schema}, renderer knows ${SCHEMA}`);
 
 const half = cityLayout(snap).span / 2;
-const sky = half * 1.1 * 12 * 0.7; // inside the sky dome (stage.js puts it at 0.8 of the far plane)
 // Start low over the southeast corner so streets, shopfronts and signs show; orbit out for the overview.
 const stage = createStage({ span: half * 1.1, fog: 0.0007, camera: [half * 0.55, half * 0.25, half * 0.8], target: [0, 25, half * 0.15] });
 const { renderer, scene, camera, controls, onFrame } = stage;
+const sky = stage.far * 0.7; // inside the sky dome (stage.js puts it at 0.8 of the far plane)
 // ?view=x,y,z,tx,ty,tz sets the camera position and target (metres), for sharing or checking a view.
 const view = params.get('view')?.split(',').map(Number);
 if (view?.length === 6 && view.every(Number.isFinite)) {

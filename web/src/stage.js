@@ -5,8 +5,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { palette, ui } from './palette.js';
-import { skyDome } from './atmosphere.js';
+import { css, palette, ui } from './palette.js';
+import { MOON, skyDome } from './atmosphere.js';
 
 // span: half-width in metres of the area that needs shadows and fits in the view.
 export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, tz] }) {
@@ -39,7 +39,7 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
   });
 
   return {
-    renderer, scene, camera, controls, render, still,
+    renderer, scene, camera, controls, render, still, far,
     // fn(dt, t) runs every frame before drawing; never called with reduced motion.
     onFrame: (fn) => updates.push(fn),
     start() {
@@ -109,7 +109,6 @@ function navigate(controls, camera, reach) {
 
 // One line of help in the corner, so visitors know the city can be explored.
 function hint() {
-  const css = (c) => `#${c.toString(16).padStart(6, '0')}`;
   const el = Object.assign(document.createElement('div'), {
     textContent: 'Drag to turn · right-drag or shift-drag to move · scroll to zoom · WASD / arrows, Q E' });
   Object.assign(el.style, { position: 'fixed', left: '12px', bottom: '12px', padding: '6px 10px', borderRadius: '6px',
@@ -140,7 +139,7 @@ function nightScene(span, fog, far) {
   scene.fog = new THREE.FogExp2(palette.nightFog, fog);
   scene.add(new THREE.HemisphereLight(palette.nightHorizon, palette.nightSand, 6));
   const moon = new THREE.DirectionalLight(palette.moon, 1.1);
-  moon.position.set(-25, 45, -30).normalize().multiplyScalar(span * 2.5);
+  moon.position.copy(MOON).multiplyScalar(span * 2.5);
   moon.castShadow = true;
   moon.shadow.mapSize.setScalar(span > 100 ? 4096 : 2048);
   moon.shadow.normalBias = 0.03;

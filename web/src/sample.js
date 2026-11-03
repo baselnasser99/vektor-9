@@ -10,11 +10,9 @@ import { midRise } from './showcase.js';
 
 const { renderer, scene, start, captureReflections, bench } = createStage({ span: 35, fog: 0.008, camera: [46, 34, 58], target: [0, 13, 0] });
 
-const kit = await loadKit(renderer);
+const kit = await loadKit(renderer, ['modular_airduct_circular_01', 'modular_fire_escape', 'utility_box_01']);
 // Wet street, but not a mirror: warm lights smear into soft streaks.
-const street = kit.mat('aerial_asphalt_01', palette.gunmetal).clone();
-street.roughness = 0.55;
-part(scene, box(60, 0.2, 60), street, 0, -0.1, 0);
+part(scene, box(60, 0.2, 60), kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55), 0, -0.1, 0);
 const plant = powerPlant(kit);
 plant.position.x = -9;
 scene.add(plant);

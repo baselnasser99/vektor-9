@@ -3,7 +3,7 @@
 // The style seed drives every choice; a blacked-out tile has dark rooms and no neon.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part } from './geometry.js';
+import { box, cyl, part, ring } from './geometry.js';
 import { antennaArray, dronePad, edgeLights } from './parts.js';
 import { AD_COLORS, CAR_COLORS, F, TALL, WARM, WORDS, pick } from './world.js';
 
@@ -61,7 +61,7 @@ function roundBody({ kit, g, lit, warm, seed, H, y, w, wall }) {
   const r = w / 2;
   part(g, cyl(r, r, H - y, 32), wall(seed), 0, (y + H) / 2, 0);
   part(g, cyl(r + 0.2, r + 0.2, 0.6, 32), kit.steel(palette.charcoal), 0, H + 0.3, 0);
-  if (lit) for (let ry = y + 4 * F; ry < H; ry += 4 * F) ring(kit, g, r + 0.08, ry, warm);
+  if (lit) for (let ry = y + 4 * F; ry < H; ry += 4 * F) ring(g, r + 0.08, 0.07, kit.glow(warm, 2), 0, ry, 0, 24, 4);
   return [w * 0.7, H + 0.6];
 }
 
@@ -104,8 +104,8 @@ function dress({ kit, g, rand, lit, warm, H, y, w, tall }, floors, roofW, roofY)
     part(g, box(0.4, h, 2.6, 1), kit.sign(pick(rand, WORDS), warm, true), side * (w / 2 + 0.3), y + (H - y) * 0.5, w / 4);
   }
   clutter(kit, g, roofW, roofY, rand);
-  if (tall && rand() < 0.6) antennaArray(kit, g, roofW / 2 - 1, roofY, -roofW / 2 + 1);
-  if (tall && lit && rand() < 0.2) dronePad(kit, g, 2.2, -0.5, roofY, 0.5);
+  if (tall && rand() < 0.6) antennaArray(kit, g, roofW / 2 - 1, roofY, -roofW / 2 + 1, false);
+  if (tall && lit && rand() < 0.2) dronePad(kit, g, 2.2, -0.5, roofY, 0.5, false);
   if (lit && floors >= 8 && rand() < 0.22) {
     const [a, b] = pick(rand, AD_COLORS);
     for (const x of [-3.5, 3.5]) part(g, box(0.3, 4, 0.3, 1), kit.steel(palette.charcoal), x, roofY + 2, 0);
@@ -113,10 +113,6 @@ function dress({ kit, g, rand, lit, warm, H, y, w, tall }, floors, roofW, roofY)
   } else if (lit && tall && rand() < 0.2) {
     part(g, new THREE.PlaneGeometry(8, 2), kit.holo(pick(rand, WORDS), warm), 0, roofY + 6, 0);
   }
-}
-
-function ring(kit, g, r, y, color) {
-  part(g, new THREE.TorusGeometry(r, 0.07, 4, 24), kit.glow(color, 2), 0, y, 0).rotation.x = Math.PI / 2;
 }
 
 // Empty lot as a small plaza: paving, parked cars (some of them taxis), sometimes a kiosk with a sign.

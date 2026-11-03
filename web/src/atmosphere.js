@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, part, rng } from './geometry.js';
 import { bandTexture, fadeTexture, noiseTexture, radialTexture, skylineTexture } from './textures.js';
-import { WORDS } from './world.js';
+import { WORDS, pick } from './world.js';
 
 // Sky dome colored by height above the horizon from a list of [elevation 0..1, color]; below the horizon it is haze, so the ground melts into it.
 export function skyDome(stops, radius = 450) {
@@ -51,9 +51,12 @@ export function stars(radius) {
   return points;
 }
 
-// The moon as a soft glow and a small bright core, in the moonlight's direction (see stage.js).
+// Direction to the moon; stage.js shines the moonlight from here.
+export const MOON = new THREE.Vector3(-25, 45, -30).normalize();
+
+// The moon as a soft glow and a small bright core, in the moonlight's direction.
 export function moon(radius) {
-  const dir = new THREE.Vector3(-25, 45, -30).normalize().multiplyScalar(radius);
+  const dir = MOON.clone().multiplyScalar(radius);
   return [[900, palette.moon, 0.45], [160, palette.glare, 0.9]].map(([size, color, opacity]) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTexture(256, size > 500 ? 0 : 60), color, transparent: true,
       opacity, fog: false, depthWrite: false }));
@@ -115,7 +118,7 @@ export function searchlights(half, onFrame) {
 export function airships(kit, half, onFrame) {
   const rand = rng(61), ships = [];
   for (let k = 0; k < 2; k++) {
-    const g = new THREE.Group(), word = WORDS[Math.floor(rand() * WORDS.length)];
+    const g = new THREE.Group(), word = pick(rand, WORDS);
     const hull = part(g, new THREE.SphereGeometry(1, 24, 12), kit.steel(palette.charcoal, 0.6));
     hull.scale.set(42, 11, 11);
     part(g, box(10, 2.5, 3, 0), kit.steel(palette.gunmetal), 0, -11.5, 0);

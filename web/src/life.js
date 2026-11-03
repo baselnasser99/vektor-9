@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { palette } from './palette.js';
 import { box, rng } from './geometry.js';
-import { CAR_COLORS } from './world.js';
+import { CAR_COLORS, pick } from './world.js';
 
 const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the move than parked
 
@@ -20,7 +20,7 @@ export function traffic(kit, lanes, onFrame) {
     for (let k = 0; k < lane.cars; k++) cars.push({ lane, u: rand(), speed: 9 + rand() * 7 });
   }
   const color = new THREE.Color();
-  cars.forEach((c, i) => body.setColorAt(i, color.set(MOVING[Math.floor(rand() * MOVING.length)])));
+  cars.forEach((c, i) => body.setColorAt(i, color.set(pick(rand, MOVING))));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const place = () => {
     cars.forEach((c, i) => {
