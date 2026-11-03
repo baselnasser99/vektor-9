@@ -109,7 +109,7 @@ def apply_power(tiles, dark=None):
 
 
 def lay_terrain(seed):
-    """Tile index -> terrain kind: a railway edge to edge, a few parks, an old industrial site.
+    """Tile index -> terrain kind: a railway in from one edge, a few parks, an old industrial site.
 
     Everything stays clear of the starting core, so the city grows around it. Integer math only.
     """
@@ -118,18 +118,22 @@ def lay_terrain(seed):
     clear = [chebyshev(*xy(i), c, c) <= R.START_RADIUS + 1 for i in range(n * n)]
     terrain = {}
 
-    # Railway: a straight band passing beside the core. With direction (dx, dy), v / |(dx, dy)| is a
-    # tile's signed distance from the line; 0 <= v < |dx| + |dy| is the thinnest band whose tiles
-    # always touch by a side (a "standard" digital line), so the rail has no gaps.
+    # Railway: a straight band from one edge to a terminus beside the core. With direction (dx, dy),
+    # v / |(dx, dy)| is a tile's signed distance from the line; 0 <= v < |dx| + |dy| is the thinnest
+    # band whose tiles always touch by a side (a "standard" digital line), so the rail has no gaps.
+    # a is a tile's position along the line, 0 where it passes closest to the center; the rail keeps
+    # one side of that, so it ends there instead of cutting the city in two.
     dx, dy = rng.choice(R.RAIL_SLOPES)
     dx *= rng.choice((1, -1))
     l2 = dx * dx + dy * dy
     lo, hi = R.RAIL_OFFSET
     k = rng.randint(math.isqrt(lo * lo * l2) + 1, math.isqrt(hi * hi * l2)) * rng.choice((1, -1))
+    side = rng.choice((1, -1))
     for i in range(n * n):
         x, y = xy(i)
         v = (x - c) * dy - (y - c) * dx - k
-        if 0 <= v < abs(dx) + abs(dy) and not clear[i]:
+        a = side * ((x - c) * dx + (y - c) * dy)
+        if 0 <= v < abs(dx) + abs(dy) and a >= 0 and not clear[i]:
             terrain[i] = "rail"
 
     # Parks: two overlapping ellipses each, away from the core, the railway and each other.
