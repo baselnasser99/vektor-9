@@ -1,4 +1,4 @@
-// Every texture drawn in code: concrete, windows, signs, ads, light pools, clouds and light streams.
+// Every texture drawn in code: concrete, windows, signs, ads, light pools, clouds, fades and far skylines.
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { rng } from './geometry.js';
@@ -142,32 +142,72 @@ export const radialTexture = (size, inner = 0) => painted(size, size, (g, S) => 
   g.fillRect(0, 0, S, S);
 }, { srgb: false });
 
-// Soft blotchy noise in the alpha channel, for clouds and mist.
-export const noiseTexture = (seed, blobs) => painted(512, 512, (g, S) => {
+// Soft blotchy noise in the alpha channel, for clouds and mist. squash < 1 flattens the blobs into streaks.
+export const noiseTexture = (seed, blobs, squash = 1) => painted(512, 512, (g, S) => {
   const rand = rng(seed);
   for (let i = 0; i < blobs; i++) {
     const [x, y, r, a] = [rand() * S, rand() * S, 40 + rand() * 140, 0.05 + rand() * 0.12];
     wrapped(S, (dx, dy) => {
-      const grad = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+      g.setTransform(1, 0, 0, squash, x + dx, y + dy);
+      const grad = g.createRadialGradient(0, 0, 0, 0, 0, r);
       grad.addColorStop(0, `rgba(255,255,255,${a})`);
       grad.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = grad;
-      g.fillRect(x + dx - r, y + dy - r, 2 * r, 2 * r);
+      g.fillRect(-r, -r, 2 * r, 2 * r);
     });
   }
+  g.setTransform(1, 0, 0, 1, 0, 0);
 }, { srgb: false, wrap: true });
 
-// Two lanes of light dashes running along v (alongV) or u, for highway traffic streams.
-export const dashTexture = (alongV) => painted(alongV ? 16 : 256, alongV ? 256 : 16, (g, w, h) => {
-  const rand = rng(alongV ? 3 : 4);
-  g.fillStyle = '#000';
+// Opaque white centre fading to black at the edge, from `inner` (0..1 of the radius); an alpha map that makes a
+// plane melt away instead of ending in a line.
+export const fadeTexture = (inner = 0) => painted(256, 256, (g, S) => {
+  const grad = g.createRadialGradient(S / 2, S / 2, (inner * S) / 2, S / 2, S / 2, S / 2);
+  grad.addColorStop(0, '#fff');
+  grad.addColorStop(1, '#000');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+}, { srgb: false });
+
+// Vertical band for an alpha map: clear at the top and bottom, solid in the lower middle.
+export const bandTexture = () => painted(4, 256, (g, w, h) => {
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  [[0, '#000'], [0.45, '#fff'], [0.8, '#fff'], [1, '#000']].forEach(([at, c]) => grad.addColorStop(at, c));
+  g.fillStyle = grad;
   g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 18; i++) {
-    const at = rand() * 256, len = 3 + rand() * 5;
-    for (const lane of [2, 10]) {
-      g.fillStyle = `rgba(255,255,255,${0.5 + rand() * 0.5})`;
-      if (alongV) g.fillRect(lane, at, 4, len);
-      else g.fillRect(at, lane, len, 4);
+}, { srgb: false });
+
+// Far-off cities on the horizon, wrapping sideways: a hazier back row and a darker front row of towers in clusters
+// with gaps between them, sparse lit windows, steady red beacons on the tallest, and city glow at their feet.
+export const skylineTexture = () => {
+  const tex = painted(2048, 256, (g, W, H) => {
+    const rand = rng(77), fog = new THREE.Color(palette.nightFog);
+    const glow = g.createLinearGradient(0, H * 0.55, 0, H);
+    glow.addColorStop(0, 'rgba(0,0,0,0)');
+    glow.addColorStop(1, `${css(palette.sodium)}38`);
+    g.fillStyle = glow;
+    g.fillRect(0, 0, W, H);
+    for (const [color, tallest, lit, phase] of [[fog.clone().lerp(new THREE.Color(palette.nightHorizon), 0.45), 0.5, 0.12, 2],
+      [fog, 0.75, 0.25, 0]]) {
+      for (let x = 0; x < W;) {
+        const w = 6 + rand() * 26, cluster = Math.max(0, Math.sin((x / W) * Math.PI * 6 + phase));
+        const h = H * (0.03 + cluster ** 2 * rand() ** 1.5 * tallest);
+        for (const at of x + w > W ? [x, x - W] : [x]) {
+          g.fillStyle = css(color);
+          g.fillRect(at, H - h, w, h);
+          g.globalAlpha = 0.6;
+          g.fillStyle = css(palette.warmWindow);
+          for (let y = H - h + 4; y < H - 3; y += 6) for (let c = at + 2; c < at + w - 2; c += 5) if (rand() < lit) g.fillRect(c, y, 2, 2);
+          g.globalAlpha = 1;
+          if (h > H * 0.4) {
+            g.fillStyle = css(palette.signal);
+            g.fillRect(at + w / 2 - 1.5, H - h - 3, 3, 3);
+          }
+        }
+        x += w + (cluster > 0.1 ? rand() * 4 : 10 + rand() * 40);
+      }
     }
-  }
-}, { srgb: false, wrap: true });
+  }, { wrap: true });
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+};

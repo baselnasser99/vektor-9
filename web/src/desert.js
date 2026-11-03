@@ -1,134 +1,226 @@
-// Beyond the simulated grid: a night desert. Dunes rise from the city wall; four highways leave through gates on
-// low causeways with lamps and light streams; ruins, half-buried containers, dead pylons and far mesas break it up.
+// Beyond the simulated grid: the city ends at a wasteland of packed dirt fading into sand and dunes, with boulders,
+// scrub, abandoned cars, scrapyards and half-buried containers. Streets carry on as dirt tracks; four highways ramp
+// up from the city edge onto causeways across the desert. Dead pylons and far mesas break up the dunes.
 // Decoration only: nothing here is simulated or stored (ADR-0002).
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, rng } from './geometry.js';
+import { pick } from './world.js';
 import { streetLamp } from './parts.js';
 import { mergeByMaterial } from './merge.js';
-import { dashTexture, radialTexture } from './textures.js';
+import { radialTexture } from './textures.js';
 
 export const REACH = 1900; // metres from the centre to the end of the dunes; fog hides everything past ~1.5 km
+const SPRAWL = 420; // depth of the flat ring of packed dirt around the city, before the dunes rise
 const DECK = 6; // causeway height
+const RAMP = 60; // length of the climb from street level to the causeway
 const ROAD = 40; // half-width of the flat corridor kept around each highway
-const SIDES = [['x', 1], ['x', -1], ['z', 1], ['z', -1]];
 
-export function buildDesert(kit, half, onFrame) {
-  const root = new THREE.Group(), rand = rng(9001), wall = half + 25;
-  const height = duneHeight(wall);
-  // A random spot in a ring around the centre, off the highway corridors and clear of the wall.
+// edge: distance from the centre to the outer side of the city's ring road. lines: street centre lines.
+export function buildDesert(kit, edge, lines, onFrame) {
+  const root = new THREE.Group(), rand = rng(9001);
+  const height = duneHeight(edge);
+  // A random spot in a ring around the centre, off the highway corridors.
   const scatter = (rMin, rMax) => {
     for (;;) {
       const [a, r] = [rand() * Math.PI * 2, rMin + rand() * (rMax - rMin)];
       const [x, z] = [Math.cos(a) * r, Math.sin(a) * r];
-      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD + 20 && Math.max(Math.abs(x), Math.abs(z)) > wall + 60) return [x, z];
+      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD + 20 && Math.max(Math.abs(x), Math.abs(z)) > edge + SPRAWL) return [x, z];
     }
   };
-  dunes(kit, root, height);
-  cityWall(kit, root, wall);
-  highways(kit, root, wall, onFrame);
-  ruins(kit, root, half, height, scatter, rand);
-  pylons(kit, root, wall, height);
+  ground(kit, root, edge, height);
+  sandDrifts(root, edge, rand);
+  dirtTracks(kit, root, edge, lines);
+  const lanes = highways(kit, root, edge);
+  wastes(kit, root, edge, lines, height, rand);
+  pylons(kit, root, edge, height);
   mesas(kit, root, height, scatter, rand);
-  const merged = mergeByMaterial(root);
-  merged.add(cityGlow(half));
-  return merged;
+  return { desert: mergeByMaterial(root), lanes };
 }
 
-// Dune height: flat at the wall, rising over 500 m, flattened along the highway corridors.
-function duneHeight(wall) {
+// Dune height: flat through the sprawl, rising over 500 m beyond it, flattened along the highway corridors.
+function duneHeight(edge) {
   const ramp = (a, b, v) => Math.min(1, Math.max(0, (v - a) / (b - a)));
   return (x, z) => {
     const r = Math.max(Math.abs(x), Math.abs(z)), road = Math.min(Math.abs(x), Math.abs(z));
     const dunes = 8 + 7 * Math.sin(x * 0.0045 + 1.3) * Math.cos(z * 0.004) + 4 * Math.sin(x * 0.013 + z * 0.009) + 2 * Math.sin(z * 0.03 - x * 0.011);
-    return ramp(wall + 20, wall + 520, r) * ramp(ROAD, ROAD + 60, road) * dunes;
+    return ramp(edge + SPRAWL, edge + SPRAWL + 500, r) * ramp(ROAD, ROAD + 60, road) * dunes;
   };
 }
 
-function dunes(kit, root, height) {
-  const ground = new THREE.PlaneGeometry(REACH * 2, REACH * 2, 220, 220).rotateX(-Math.PI / 2);
-  const p = ground.attributes.position, uv = ground.attributes.uv;
+// Ground colored per vertex: packed dark dirt by the city, fading over a ragged line into moonlit sand, with warm
+// city light spilling onto it. Distances are square (like the city), so the glow hugs the edge evenly.
+function ground(kit, root, edge, height) {
+  const geo = new THREE.PlaneGeometry(REACH * 2, REACH * 2, 240, 240).rotateX(-Math.PI / 2);
+  const p = geo.attributes.position, uv = geo.attributes.uv, colors = [];
+  const [dirt, sand, c] = [new THREE.Color(palette.gunmetal).lerp(new THREE.Color(palette.nightSand), 0.35), new THREE.Color(palette.nightSand), new THREE.Color()];
+  const glow = new THREE.Color(palette.sodium);
   for (let i = 0; i < p.count; i++) {
-    const [x, z] = [p.getX(i), p.getZ(i)];
-    p.setY(i, height(x, z) - 0.6);
+    const [x, z] = [p.getX(i), p.getZ(i)], r = Math.max(Math.abs(x), Math.abs(z));
+    const ragged = 60 * Math.sin(x * 0.011) * Math.cos(z * 0.013) + 30 * Math.sin((x + z) * 0.031);
+    const t = Math.min(1, Math.max(0, (r - edge - 120 + ragged) / 260));
+    c.copy(dirt).lerp(sand, t).lerp(glow, 0.35 * Math.max(0, 1 - (r - edge) / 500) ** 2);
+    colors.push(c.r, c.g, c.b);
+    p.setY(i, height(x, z) - 0.12);
     uv.setXY(i, x / 20, z / 20);
   }
-  ground.computeVertexNormals();
-  part(root, ground, kit.concrete(palette.nightSand));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const mat = kit.concrete(palette.glare).clone();
+  mat.vertexColors = true;
+  part(root, geo, mat);
 }
 
-// City wall with a lit parapet, broken by a gate with two towers where each highway leaves.
-function cityWall(kit, root, wall) {
-  const concrete = kit.concrete(palette.gunmetal), lamp = kit.glow(palette.sodium, 3), red = kit.glow(palette.signal, 3);
-  for (const [ax, s] of SIDES) {
-    for (const side of [-1, 1]) {
-      const len = wall - 20, mid = side * (20 + len / 2);
-      const [x, z, w, d] = ax === 'x' ? [mid, s * wall, len, 2] : [s * wall, mid, 2, len];
-      part(root, box(w, 9, d, 0), concrete, x, 4.5, z);
-      part(root, box(ax === 'x' ? w : 0.3, 0.3, ax === 'x' ? 0.3 : d, 0), lamp, x, 9.2, z);
-      const [gx, gz] = ax === 'x' ? [side * 23, s * wall] : [s * wall, side * 23];
-      part(root, box(6, 18, 6, 1), concrete, gx, 9, gz);
-      part(root, new THREE.SphereGeometry(0.5, 8, 6), red, gx, 18.6, gz);
+// Sand blown onto the outer edge of the asphalt, so the city's road surface has no clean border.
+function sandDrifts(root, edge, rand) {
+  const drift = new THREE.MeshStandardMaterial({ map: radialTexture(128), color: palette.nightSand, transparent: true, opacity: 0.55,
+    roughness: 1, depthWrite: false });
+  for (let k = 0; k < 160; k++) {
+    const side = Math.floor(rand() * 4), along = (rand() - 0.5) * 2 * edge, out = edge + 20 - rand() * 50, r = 8 + rand() * 22;
+    const [x, z] = [[out, along], [-out, along], [along, out], [along, -out]][side];
+    const m = part(root, new THREE.CircleGeometry(r, 16), drift, x, 0.03 + k * 0.0005, z);
+    m.rotation.x = -Math.PI / 2;
+    m.scale.set(1, 0.5 + rand(), 1);
+    m.receiveShadow = true;
+  }
+}
+
+// Every city street carries on out of town as a dirt track (the centre ones become highways instead).
+function dirtTracks(kit, root, edge, lines) {
+  const track = kit.concrete(palette.charcoal), len = SPRAWL + 80;
+  for (const c of lines) {
+    if (Math.abs(c) < 1) continue;
+    for (const s of [-1, 1]) {
+      const mid = s * (edge + len / 2);
+      part(root, box(10, 0.04, len, 0), track, c, -0.08, mid);
+      part(root, box(len, 0.04, 10, 0), track, mid, -0.08, c);
     }
   }
 }
 
-// Highways on causeways from each gate to the horizon, with lamps every 150 m and sliding light streams.
-function highways(kit, root, wall, onFrame) {
-  const concrete = kit.concrete(palette.gunmetal), streams = [];
+// Highways climb from the city's ring road onto causeways and run to the horizon, with lamps every 150 m.
+// Returns their traffic lanes: two each way.
+function highways(kit, root, edge) {
+  const concrete = kit.concrete(palette.gunmetal), lanes = [], slope = Math.atan2(DECK, RAMP);
   for (const [ax, sign] of [['z', 1], ['z', -1], ['x', 1], ['x', -1]]) {
-    const len = REACH - wall, mid = sign * (wall + len / 2);
-    const [x, z, w, d] = ax === 'z' ? [0, mid, 22, len] : [mid, 0, len, 22];
-    part(root, box(w, 1.2, d, 0), concrete, x, DECK, z);
+    const start = edge + RAMP, len = REACH - start, mid = sign * (start + len / 2);
+    const along = (v) => (ax === 'z' ? [0, v] : [v, 0]);
+    const [rx, rz] = along(sign * (edge + RAMP / 2));
+    const ramp = part(root, box(ax === 'z' ? 22 : RAMP + 1, 1.2, ax === 'z' ? RAMP + 1 : 22, 0), concrete, rx, DECK / 2 - 0.3, rz);
+    if (ax === 'z') ramp.rotation.x = -sign * slope;
+    else ramp.rotation.z = sign * slope;
+    const [x, z] = along(mid);
+    part(root, box(ax === 'z' ? 22 : len, 1.2, ax === 'z' ? len : 22, 0), concrete, x, DECK, z);
     const deck = new THREE.Group();
     deck.position.y = DECK + 0.6;
     root.add(deck);
     for (let t = 25; t < len; t += 50) {
-      const at = sign * (wall + t), [px, pz] = ax === 'z' ? [0, at] : [at, 0];
+      const [px, pz] = along(sign * (start + t));
       part(root, box(3, DECK, 3, 0), kit.concrete(palette.slate), px, DECK / 2, pz);
       if (t % 150 !== 25) continue;
       for (const off of [-11, 11]) {
-        const [lx, lz] = ax === 'z' ? [off, at] : [at, off];
+        const [lx, lz] = ax === 'z' ? [off, pz] : [px, off];
         streetLamp(kit, deck, lx, lz, ax === 'z' ? (off < 0 ? 0 : Math.PI) : (off < 0 ? -Math.PI / 2 : Math.PI / 2));
       }
     }
-    for (const [color, off, dir] of [[palette.glare, -4, 1], [palette.neonRed, 4, -1]]) {
-      const mat = streamMaterial(color, ax);
-      streams.push([mat.emissiveMap, dir * (ax === 'z' ? 1 : -1), ax]);
-      part(root, box(ax === 'z' ? 6 : len, 0.1, ax === 'z' ? len : 6, 0), mat, ax === 'z' ? off : x, DECK + 0.7, ax === 'z' ? z : off);
+    const [a, b] = [sign * start, sign * REACH], y = DECK + 0.6 + 0.65;
+    for (const off of [2.2, 5.8]) {
+      lanes.push({ axis: ax, at: off, from: a, to: b, y, cars: 5 });
+      lanes.push({ axis: ax, at: -off, from: b, to: a, y, cars: 5 });
     }
   }
-  // Headlight streams slide along the decks: the texture moves, no geometry does.
-  onFrame((dt) => {
-    for (const [tex, dir, ax] of streams) tex.offset[ax === 'z' ? 'y' : 'x'] += dir * dt * 0.35;
-  });
+  return lanes;
 }
 
-// Light dashes along a lane; one texture repeat covers 64 m of road.
-function streamMaterial(color, ax) {
-  const along = ax === 'z', tex = dashTexture(along);
-  tex.repeat.set(along ? 1 : 1 / 16, along ? 1 / 16 : 1);
-  return new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveMap: tex, emissiveIntensity: 1.6 });
-}
+// The wasteland, densest by the city and thinning outward: boulders and dry scrub everywhere, abandoned cars and
+// trucks along the tracks and in a few scrapyards, tyre piles, drums, half-buried containers, and the odd barrel fire.
+// Everything sits low and a little sunk into the ground, so nothing floats on a dune.
+function wastes(kit, root, edge, lines, height, rand) {
+  const rock = kit.concrete(palette.charcoal), dust = kit.concrete(palette.nightSand), rust = kit.mat('rusty_painted_metal', palette.slate);
+  const hulls = [palette.gunmetal, palette.brick, palette.slate, palette.roseGrey].map((c) => kit.mat('rusty_painted_metal', c));
+  const tyre = kit.steel(palette.charcoal, 0.9), container = kit.mat('rusty_corrugated_iron', palette.brick);
+  const stone = new THREE.DodecahedronGeometry(1, 0), drum = cyl(0.3, 0.3, 0.9, 8), ring = new THREE.TorusGeometry(0.45, 0.2, 5, 10);
+  const tracks = lines.filter((c) => Math.abs(c) > 1); // the centre lines are highways, not tracks
+  const fire = new THREE.SpriteMaterial({ map: radialTexture(64), color: palette.sodium, transparent: true, opacity: 0.6,
+    blending: THREE.AdditiveBlending, depthWrite: false });
+  // A spot `out` metres beyond the city edge, off the highway corridors; with its ground height.
+  const spot = (out) => {
+    for (;;) {
+      const [a, r] = [rand() * Math.PI * 2, edge + 15 + out];
+      const k = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))); // square city: push the ring out to its corners
+      const [x, z] = [(Math.cos(a) / k) * r, (Math.sin(a) / k) * r];
+      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD) return [x, height(x, z), z];
+    }
+  };
+  const near = () => spot(rand() ** 2 * 1100); // most things close in
 
-// Broken slabs and half-buried containers scattered in the sand.
-function ruins(kit, root, half, height, scatter, rand) {
-  const concrete = kit.concrete(palette.gunmetal), metal = kit.mat('rusty_corrugated_iron', palette.slate);
-  for (let k = 0; k < 140; k++) {
-    const [x, z] = scatter(half + 120, 1300), y = height(x, z);
-    const m = rand() < 0.5
-      ? part(root, box(6 + rand() * 14, 1 + rand() * 3, 4 + rand() * 8, 0), concrete, x, y, z)
-      : part(root, box(2.4, 2.6, 12, 0), metal, x, y + 0.2, z);
-    m.rotation.set((rand() - 0.5) * 0.5, rand() * Math.PI, (rand() - 0.5) * 0.4);
+  const wreck = (g, long) => {
+    const [l, h, w] = long ? [8 + rand() * 3, 2.4, 2.5] : [4.2, 0.9, 1.9], hull = pick(rand, hulls);
+    part(g, box(l, h, w, 1), hull, 0, h / 2 + 0.3, 0);
+    part(g, box(long ? 2.2 : l * 0.5, long ? 1 : 0.7, w * 0.9, 1), hull, long ? l / 2 - 1.1 : -0.2, h + 0.3 + (long ? 0.5 : 0.35), 0);
+    for (const [x, z] of [[l * 0.32, w / 2], [-l * 0.32, w / 2], [l * 0.32, -w / 2]]) if (rand() < 0.6) part(g, ring, tyre, x, 0.35, z);
+  };
+  const place = (g, [x, y, z], sink = 0.3) => {
+    g.position.set(x, y - sink, z);
+    g.rotation.set((rand() - 0.5) * 0.12, rand() * Math.PI * 2, (rand() - 0.5) * 0.12);
+    root.add(g);
+    return g;
+  };
+
+  for (let k = 0; k < 1100; k++) { // boulders, often in clusters of two or three
+    const [x, y, z] = spot(rand() ** 1.6 * 1250);
+    for (let j = 0; j < 1 + Math.floor(rand() * 3); j++) {
+      const r = 0.6 + rand() ** 3 * 5, m = part(root, stone, rand() < 0.6 ? rock : dust, x + j * r * 1.4, y + r * 0.25, z + (rand() - 0.5) * r * 2);
+      m.scale.set(r, r * (0.45 + rand() * 0.4), r * (0.7 + rand() * 0.6));
+      m.rotation.set(rand(), rand() * Math.PI, rand());
+    }
+  }
+  for (let k = 0; k < 1600; k++) { // dry scrub, low and flat
+    const [x, y, z] = spot(rand() ** 1.5 * 700), m = part(root, stone, rock, x, y + 0.15, z);
+    m.scale.set(0.8 + rand(), 0.35, 0.8 + rand());
+    m.castShadow = false;
+  }
+  for (let k = 0; k < 220; k++) { // abandoned cars along the dirt tracks
+    const c = pick(rand, tracks), s = rand() < 0.5 ? -1 : 1, along = s * (edge + 20 + rand() ** 1.5 * 480), side = (rand() < 0.5 ? -1 : 1) * (6 + rand() * 4);
+    const at = rand() < 0.5 ? [c + side, 0, along] : [along, 0, c + side];
+    at[1] = height(at[0], at[2]);
+    const g = new THREE.Group();
+    wreck(g, rand() < 0.15);
+    place(g, at);
+    if (rand() < 0.15) g.rotation.z = Math.PI; // flipped on its roof
+  }
+  for (let k = 0; k < 10; k++) { // scrapyards: a few dozen wrecks, tyre piles and drums in a loose heap
+    const [x, y, z] = spot(30 + rand() * 250);
+    for (let j = 0; j < 30; j++) {
+      const g = new THREE.Group(), [dx, dz] = [(rand() - 0.5) * 70, (rand() - 0.5) * 50];
+      const kind = rand();
+      if (kind < 0.55) wreck(g, rand() < 0.2);
+      else if (kind < 0.8) for (let t = 0; t < 3 + rand() * 6; t++) part(g, ring, tyre, (rand() - 0.5), 0.2 + t * 0.35, (rand() - 0.5)).rotation.x = Math.PI / 2;
+      else for (let t = 0; t < 4; t++) part(g, drum, rust, (t % 2) * 0.7, 0.45, Math.floor(t / 2) * 0.7);
+      place(g, [x + dx, y, z + dz], 0.1);
+    }
+  }
+  for (let k = 0; k < 40; k++) { // containers half swallowed by the sand
+    const m = part(root, box(2.4, 2.6, 12, 0), container, ...near());
+    m.position.y -= 1;
+    m.rotation.set((rand() - 0.5) * 0.3, rand() * Math.PI, (rand() - 0.5) * 0.3);
+  }
+  for (let k = 0; k < 10; k++) { // barrel fires: steady warm points out in the dark, never flickering (no flashing)
+    const [x, y, z] = spot(20 + rand() * 300);
+    part(root, drum, rust, x, y + 0.45, z);
+    const glow = new THREE.Sprite(fire);
+    glow.position.set(x, y + 1.3, z);
+    glow.scale.setScalar(5);
+    root.add(glow);
   }
 }
 
 // A line of dead power pylons walking off into the dunes, cables sagging between them.
-function pylons(kit, root, wall, height) {
+function pylons(kit, root, edge, height) {
   const steel = kit.steel(palette.charcoal, 0.7);
   let prev;
-  for (let k = 0; k < 12; k++) {
-    const r = wall + 120 + k * 110, [x, z] = [r * 0.71, -r * 0.71], y = height(x, z);
+  for (let k = 0; k < 10; k++) {
+    const r = edge + SPRAWL + k * 110, [x, z] = [r * 0.71, -r * 0.71], y = height(x, z);
     part(root, cyl(0.3, 1.6, 30, 4), steel, x, y + 15, z);
     part(root, box(14, 0.6, 0.6, 0), steel, x, y + 28, z).rotation.y = Math.PI / 4;
     const tip = new THREE.Vector3(x, y + 28, z);
@@ -145,16 +237,7 @@ function pylons(kit, root, wall, height) {
 function mesas(kit, root, height, scatter, rand) {
   for (let k = 0; k < 10; k++) {
     const [x, z] = scatter(1100, 1600), r = 90 + rand() * 160, h = 60 + rand() * 120;
-    part(root, cyl(r, r + 40, h, 9), kit.concrete(palette.charcoal), x, height(x, z) + h / 2 - 5, z).rotation.y = rand();
+    // Wide sloped flanks and a small top, so they read as eroded buttes rather than slabs.
+    part(root, cyl(r * 0.6, r * 1.5, h, 18), kit.concrete(palette.charcoal), x, height(x, z) + h / 2 - 5, z).rotation.y = rand();
   }
-}
-
-// Warm light from the city spilling onto the sand around it, fading out over a few hundred metres.
-function cityGlow(half) {
-  const mesh = new THREE.Mesh(new THREE.CircleGeometry(half * 2.6, 64), new THREE.MeshBasicMaterial({
-    map: radialTexture(256, 40), color: palette.sodium, transparent: true, opacity: 0.16,
-    blending: THREE.AdditiveBlending, depthWrite: false }));
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 1;
-  return mesh;
 }
