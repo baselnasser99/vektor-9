@@ -17,16 +17,23 @@ export const FACADE = {
 };
 
 // Per building type. bay and floor: cell size in metres. win: opening as fractions of the cell [width, height,
-// sill]. recess: glass set back this far (m). room: depth of the fake room (m). mullions: panes per opening.
-// column: a structural column every n bays (0: none). frame and slab: frame and floor-band thickness (m).
-// lit: chance a room (residential, shop) or a floor (office) is lit in the evening. kind picks the pattern.
+// sill]. glass: a curtain wall (dark spandrels, metal bands) rather than windows in a wall. recess: glass set back
+// this far (m). room: depth of the fake room (m). mullions: panes per opening. column: a structural column every
+// n bays (0: none). frame and slab: frame and floor-band thickness (m). lit: chance a room (homes, shops) or a
+// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops).
 export const STYLES = {
-  office: { kind: 1, bay: 1.5, floor: F, win: [0.96, 0.7, 0.2], recess: 0.12, room: 5, mullions: 1, column: 4,
-    frame: 0.05, slab: 0.35, lit: 0.6 },
+  office: { kind: 1, glass: true, bay: 1.5, floor: F, win: [0.96, 0.7, 0.2], recess: 0.12, room: 5, mullions: 1,
+    column: 4, frame: 0.05, slab: 0.35, lit: 0.6 },
   residential: { kind: 0, bay: 2.8, floor: F, win: [0.56, 0.54, 0.24], recess: 0.3, room: 3.6, mullions: 2, column: 0,
     frame: 0.06, slab: 0.22, lit: 0.7 },
   shop: { kind: 2, bay: 3.5, floor: 4.6, win: [0.86, 0.66, 0.1], recess: 0.2, room: 4, mullions: 2, column: 1,
     frame: 0.07, slab: 0, lit: 0.85 },
+  old: { kind: 0, bay: 2.4, floor: F, win: [0.42, 0.46, 0.28], recess: 0.3, room: 3.2, mullions: 2, column: 0,
+    frame: 0.07, slab: 0.18, lit: 0.6 },
+  luxury: { kind: 0, glass: true, bay: 3, floor: F, win: [0.92, 0.82, 0.08], recess: 0.15, room: 5.5, mullions: 3,
+    column: 3, frame: 0.05, slab: 0.3, lit: 0.55 },
+  industrial: { kind: 1, bay: 4, floor: F, win: [0.86, 0.28, 0.6], recess: 0.1, room: 8, mullions: 4, column: 1,
+    frame: 0.06, slab: 0, lit: 0.5 },
 };
 
 // Shared by every facade: seconds for slow light changes, and how lit homes and offices are at this hour.
@@ -52,7 +59,7 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
     fWin: { value: new THREE.Vector4(...s.win, s.recess * FACADE.depth) },
     fBars: { value: new THREE.Vector4(s.mullions, s.column, s.frame, s.slab) },
     fLight: { value: new THREE.Vector4(s.lit * FACADE.lit, lit ? FACADE.brightness : 0, s.kind, seed) },
-    fInterior: { value: FACADE.interior },
+    fInterior: { value: FACADE.interior }, fSkin: { value: s.glass ? 1 : 0 },
     fFrame: { value: c(palette.charcoal) }, fGlass: { value: c(palette.deepNavy) },
     fWarm: { value: c(palette.warmWindow) }, fWarm2: { value: c(palette.sodium) }, fCool: { value: c(palette.glare) },
     fTime: clock.time, fHomes: clock.homes, fOffices: clock.offices,
@@ -83,7 +90,7 @@ const VARYINGS = `varying vec3 vFPos; varying vec3 vFN; varying float vFU; flat 
 
 const FRAGMENT = /* glsl */ `
 uniform vec4 fGrid, fWin, fBars, fLight;
-uniform float fInterior, fTime, fHomes, fOffices;
+uniform float fInterior, fTime, fHomes, fOffices, fSkin;
 uniform vec3 fFrame, fGlass, fWarm, fWarm2, fCool;
 vec3 fGlow = vec3(0.0), fBend = vec3(0.0);
 float fShine = 0.0, fRough = 0.1;
@@ -150,11 +157,11 @@ void facade(inout vec3 albedo) {
   T.y = 0.0;
   T = dot(T, T) > 1e-12 ? normalize(T) : normalize(cross(vec3(0.0, 1.0, 0.0), N));
 
-  bool office = kind > 0.5 && kind < 1.5, shop = kind > 1.5;
+  bool office = kind > 0.5 && kind < 1.5, shop = kind > 1.5, glassy = fSkin > 0.5; // lighting pattern; curtain wall
   float detail = 1.0 - smoothstep(0.12, 0.45, px), far = smoothstep(0.6, 1.6, px);
-  vec3 wall = office ? mix(fGlass * 1.4, fFrame, 0.35) : albedo; // offices: dark spandrel glass between bands
+  vec3 wall = glassy ? mix(fGlass * 1.4, fFrame, 0.35) : albedo; // curtain walls: dark spandrel glass between bands
   vec3 outAlbedo = wall, glow = vec3(0.0);
-  float shine = office ? 0.6 : 0.0;
+  float shine = glassy ? 0.6 : 0.0;
   if (far < 1.0) { // near enough to see single windows; far away only the average below is drawn
     vec2 cell = floor(c), m = (c - cell) * vec2(bay, fl);
     ivec3 k = ivec3(int(cell.x), int(cell.y), int(vFId) * 3 + int(fLight.w) * 7919);
@@ -173,7 +180,7 @@ void facade(inout vec3 albedo) {
     float edge = min(min(g.x - o0.x, o1.x - g.x), min(g.y - o0.y, o1.y - g.y));
     float bar = abs(fract((g.x - o0.x) / (o1.x - o0.x) * fBars.x + 0.5) - 0.5) * (o1.x - o0.x) / fBars.x;
     bool framed = pane && (edge < fBars.z || (fBars.x > 1.5 && bar < fBars.z * 0.6)) && detail > 0.2;
-    if (slab || column) { outAlbedo = office ? fFrame : wall * 0.72; shine = 0.0; }
+    if (slab || column) { outAlbedo = glassy ? fFrame : wall * 0.72; shine = 0.0; }
     if (open && !pane) { outAlbedo = wall * (V.y > 0.0 ? 0.35 : 0.6); shine = 0.0; } // reveal: the lintel shades, the sill catches light
     if (framed) { outAlbedo = fFrame; shine = 0.15; }
     else if (pane) {

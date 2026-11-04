@@ -32,7 +32,14 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
 
 const kit = await loadKit(renderer);
 facadeClock(((snap.tick * 5) / 60) % 24, onFrame); // ticks are 5 minutes; room lights follow the hour
-const { city, warp, hub, rail, lanes, edge, lines } = buildCity(kit, snap);
+const { city, details, warp, hub, rail, lanes, edge, lines } = buildCity(kit, snap);
+// Small building parts (balconies, rooftop plant, pipes) only near the camera: one group per sector.
+const DETAIL = 400; // metres from a sector's centre
+scene.add(...details.map((d) => d.group));
+onFrame(() => {
+  const { x, y, z } = camera.position;
+  for (const { group, at } of details) group.visible = (x - at[0]) ** 2 + y * y * 0.5 + (z - at[1]) ** 2 < DETAIL * DETAIL;
+});
 const { desert, lanes: highwayLanes } = buildDesert(kit, edge, lines, onFrame);
 scene.add(city, desert, traffic(kit, [...lanes, ...highwayLanes], onFrame, warp, hub));
 if (rail) scene.add(trains(kit, rail, onFrame));

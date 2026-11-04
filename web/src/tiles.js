@@ -1,14 +1,14 @@
-// One builder per tile kind (tower, construction site, market, plaza), in metres. fw is the building's footprint
-// width (at most 12.5 m on a 14 m tile), so lots can hold smaller buildings with room around them.
+// Builders for the non-house tiles (construction site, market, plaza) and the podium and roof dressing that houses
+// share (families.js), in metres. fw is the building's footprint width (at most 12.5 m on a 14 m tile), so lots
+// can hold smaller buildings with room around them.
 // The style seed drives every choice; a blacked-out tile has dark rooms and no neon.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part, ring } from './geometry.js';
-import { antennaArray, dronePad, edgeLights } from './parts.js';
-import { AD_COLORS, CAR_COLORS, F, TALL, WARM, WORDS, pick } from './world.js';
+import { box, cyl, part } from './geometry.js';
+import { AD_COLORS, CAR_COLORS, F, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
-function podium(kit, g, rand, lit, warm, fw) {
+export function podium(kit, g, rand, lit, warm, fw) {
   const front = fw / 2;
   part(g, box(fw, 2 * F, fw, 1), kit.concrete(palette.slate), 0, F, 0);
   part(g, box(fw - 1, 2.6, 0.1, 1), lit ? kit.glow(palette.sodium, 0.8) : kit.glass(palette.charcoal), 0, 1.6, front + 0.01);
@@ -18,99 +18,19 @@ function podium(kit, g, rand, lit, warm, fw) {
   if (rand() < 0.5) part(g, box(fw + 0.3, 0.14, fw + 0.3, 1), kit.glow(warm, 2), 0, 2 * F - 0.12, 0);
 }
 
-// Rooftop clutter: AC units and sometimes a water tank.
-function clutter(kit, g, w, top, rand) {
-  for (let k = Math.floor(rand() * 3); k > 0; k--) {
-    part(g, box(1.6, 1, 1.2, 1), kit.steel(palette.slate), (rand() - 0.5) * (w - 2), top + 0.5, (rand() - 0.5) * (w - 2));
-  }
-  if (rand() < 0.3) {
-    const [x, z] = [(rand() - 0.5) * (w - 3), (rand() - 0.5) * (w - 3)];
-    part(g, cyl(1.3, 1.3, 2.2, 12), kit.mat('box_profile_metal_sheet', palette.gunmetal), x, top + 1.1, z);
-    part(g, cyl(0.2, 1.4, 0.6, 12), kit.steel(palette.charcoal), x, top + 2.5, z);
-  }
-}
-
-// One volume of rooms with a roof cap, so window textures never show on top. Returns the roof height.
-function block(kit, g, w, y0, y1, wall, x = 0, z = 0) {
-  part(g, box(w, y1 - y0, w, 1), wall, x, (y0 + y1) / 2, z);
-  part(g, box(w + 0.4, 0.6, w + 0.4, 1), kit.steel(palette.charcoal), x, y1 + 0.3, z);
-  return y1 + 0.6;
-}
-
-// Residential tower: optional shop podium, then a body whose shape comes from the style seed
-// (plain, stepped, round, or with a wing), then signs and roof dressing.
-export function tower(kit, floors, rand, lit, concrete, fw) {
-  const g = new THREE.Group(), seed = Math.floor(rand() * 6), warm = pick(rand, WARM);
-  // What every part of the tower needs; y is where the body starts (above the podium, if any).
-  const t = { kit, g, rand, lit, warm, seed, H: floors * F, y: 0, wall: (s) => kit.windows(s, lit, concrete) };
-  if (floors >= 6) {
-    podium(kit, g, rand, lit, warm, fw);
-    t.y = 2 * F;
-  }
-  const shape = floors < 8 ? 'plain' : pick(rand, ['plain', 'plain', 'stepped', 'round', 'wing']);
-  t.tall = floors >= TALL;
-  t.w = fw * (rand() < 0.5 ? 0.875 : 0.79);
-  const body = { round: roundBody, stepped: steppedBody, plain: plainBody, wing: plainBody }[shape];
-  const [roofW, roofY] = body(t, shape === 'wing');
-  dress(t, floors, roofW, roofY);
-  return g;
-}
-
-// Cylinder of rooms with lit rings every four floors.
-function roundBody({ kit, g, lit, warm, seed, H, y, w, wall }) {
-  const r = w / 2;
-  part(g, cyl(r, r, H - y, 32), wall(seed), 0, (y + H) / 2, 0);
-  part(g, cyl(r + 0.2, r + 0.2, 0.6, 32), kit.steel(palette.charcoal), 0, H + 0.3, 0);
-  if (lit) for (let ry = y + 4 * F; ry < H; ry += 4 * F) ring(g, r + 0.08, 0.07, kit.glow(warm, 2), 0, ry, 0, 24, 4);
-  return [w * 0.7, H + 0.6];
-}
-
-// Three tiers, each narrower, like a classic setback skyscraper.
-function steppedBody({ kit, g, lit, warm, seed, H, y, w, wall }) {
-  let y0 = y, roofY;
-  for (const [frac, scale] of [[0.5, 1], [0.3, 0.8], [0.2, 0.6]]) {
-    const y1 = y0 + (H - y) * frac;
-    roofY = block(kit, g, w * scale, y0, y1, wall((seed + Math.round(scale * 5)) % 6));
-    if (lit && scale < 1) edgeLights(kit, g, w * scale + 0.1, y1 - y0, w * scale + 0.1, 0, y0, 0, warm);
-    y0 = y1;
-  }
-  return [w * 0.6, roofY];
-}
-
-// Straight body, optionally with a wing hanging off one side; tall ones get a narrower crown with lit edges.
-function plainBody({ kit, g, rand, lit, warm, seed, H, y, w, wall, tall }, wing) {
-  const crown = tall ? (2 + Math.floor(rand() * 2)) * F : 0, top = H - crown;
-  let roofW = w, roofY = block(kit, g, w, y, top, wall(seed));
-  if (lit && (tall || rand() < 0.35)) edgeLights(kit, g, w + 0.1, top - y, w + 0.1, 0, y, 0, warm);
-  if (wing) {
-    // Propped on a steel beam, with a lit strip underneath.
-    const wy = y + (top - y) * (0.3 + rand() * 0.3), wh = Math.min(5 * F, top - wy);
-    part(g, box(4, wh, 6.5, 1), wall((seed + 2) % 6), w / 2 + 2, wy + wh / 2, 0);
-    part(g, box(4.4, 0.6, 6.9, 1), kit.steel(palette.charcoal), w / 2 + 2, wy - 0.3, 0);
-    if (lit) part(g, box(4, 0.12, 0.12, 1), kit.glow(warm, 2), w / 2 + 2, wy - 0.65, 3.4);
-  }
-  if (crown) {
-    roofW = w * 0.7;
-    roofY = block(kit, g, roofW, roofY, H, wall((seed + 1) % 6));
-    if (lit) edgeLights(kit, g, roofW + 0.1, crown, roofW + 0.1, 0, H - crown + 0.6, 0, rand() < 0.5 ? palette.neonPink : palette.neonCyan);
-  }
-  return [roofW, roofY];
-}
-
-// Banner down one face, roof clutter, antennas, drone pad, and a billboard or hologram over the roof.
-function dress({ kit, g, rand, lit, warm, H, y, w, tall }, floors, roofW, roofY) {
+// Signs: a banner down one face, and over a roof with room in the middle (free) a billboard or, on tall
+// buildings, a hologram. Roof gear itself is roofs.js.
+export function dress({ kit, g, rand, lit, warm, H, y, w, tall }, floors, roofY, free) {
   if (lit && rand() < 0.45) {
     const h = Math.min(24, (H - y) * 0.6), side = rand() < 0.5 ? 1 : -1;
     part(g, box(0.4, h, 2.6, 1), kit.sign(pick(rand, WORDS), warm, true), side * (w / 2 + 0.3), y + (H - y) * 0.5, w / 4);
   }
-  clutter(kit, g, roofW, roofY, rand);
-  if (tall && rand() < 0.6) antennaArray(kit, g, roofW / 2 - 1, roofY, -roofW / 2 + 1, false);
-  if (tall && lit && rand() < 0.2) dronePad(kit, g, 2.2, -0.5, roofY, 0.5, false);
-  if (lit && floors >= 8 && rand() < 0.22) {
+  if (!lit || !free) return;
+  if (floors >= 8 && rand() < 0.3) {
     const [a, b] = pick(rand, AD_COLORS);
     for (const x of [-3.5, 3.5]) part(g, box(0.3, 4, 0.3, 1), kit.steel(palette.charcoal), x, roofY + 2, 0);
     part(g, box(9, 4.5, 0.4, 1), kit.billboard(pick(rand, WORDS), a, b), 0, roofY + 6, 0);
-  } else if (lit && tall && rand() < 0.2) {
+  } else if (tall && rand() < 0.25) {
     part(g, new THREE.PlaneGeometry(8, 2), kit.holo(pick(rand, WORDS), warm), 0, roofY + 6, 0);
   }
 }
