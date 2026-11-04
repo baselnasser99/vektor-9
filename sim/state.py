@@ -114,34 +114,48 @@ def lay_terrain(seed):
     Everything stays clear of the starting core, so the city grows around it. Integer math only.
     """
     rng = random.Random(f"{seed}:terrain")
-    n, c = R.SIZE, R.SIZE // 2
-    clear = [chebyshev(*xy(i), c, c) <= R.START_RADIUS + 1 for i in range(n * n)]
-    terrain = {}
+    c = R.SIZE // 2
+    clear = [chebyshev(*xy(i), c, c) <= R.START_RADIUS + 1 for i in range(R.SIZE * R.SIZE)]
+    terrain = lay_rail(rng, clear)
+    rails = [xy(i) for i in terrain]
+    lay_parks(rng, clear, terrain, rails)
+    lay_works(rng, clear, terrain, rails)
+    return terrain
 
-    # Railway: a straight band from one edge to a terminus beside the core. With direction (dx, dy),
-    # v / |(dx, dy)| is a tile's signed distance from the line; 0 <= v < |dx| + |dy| is the thinnest
-    # band whose tiles always touch by a side (a "standard" digital line), so the rail has no gaps.
-    # a is a tile's position along the line, 0 where it passes closest to the center; the rail keeps
-    # one side of that, so it ends there instead of cutting the city in two.
+
+def lay_rail(rng, clear):
+    """A straight band from one edge to a terminus beside the core, as {tile index: "rail"}.
+
+    With direction (dx, dy), v / |(dx, dy)| is a tile's signed distance from the line;
+    0 <= v < |dx| + |dy| is the thinnest band whose tiles always touch by a side (a "standard"
+    digital line), so the rail has no gaps. a is a tile's position along the line, 0 where it passes
+    closest to the center; the rail keeps one side of that, so it ends there instead of cutting the
+    city in two.
+    """
+    n, c = R.SIZE, R.SIZE // 2
     dx, dy = rng.choice(R.RAIL_SLOPES)
     dx *= rng.choice((1, -1))
-    l2 = dx * dx + dy * dy
+    l2, width = dx * dx + dy * dy, abs(dx) + abs(dy)
     lo, hi = R.RAIL_OFFSET
     k = rng.randint(math.isqrt(lo * lo * l2) + 1, math.isqrt(hi * hi * l2))
     if rng.choice((True, False)):
-        # The other side of the core: the band reaches |dx| + |dy| - 1 nearer the center on that
-        # side, so shift it out by that much, or it could dip into the core and leave a gap.
-        k = -(k + abs(dx) + abs(dy) - 1)
+        # The other side of the core: the band reaches width - 1 nearer the center on that side,
+        # so shift it out by that much, or it could dip into the core and leave a gap.
+        k = -(k + width - 1)
     side = rng.choice((1, -1))
+    rail = {}
     for i in range(n * n):
         x, y = xy(i)
         v = (x - c) * dy - (y - c) * dx - k
-        a = side * ((x - c) * dx + (y - c) * dy)
-        if 0 <= v < abs(dx) + abs(dy) and a >= 0 and not clear[i]:
-            terrain[i] = "rail"
+        if 0 <= v < width and side * ((x - c) * dx + (y - c) * dy) >= 0 and not clear[i]:
+            rail[i] = "rail"
+    return rail
 
-    # Parks: two overlapping ellipses each, away from the core, the railway and each other.
-    rails = [xy(i) for i in terrain]
+
+def lay_parks(rng, clear, terrain, rails):
+    """Parks into terrain: two overlapping ellipses each, away from the core, the rails and each
+    other. A park that finds no spot in 500 tries is skipped."""
+    n, c = R.SIZE, R.SIZE // 2
     parks = []
     for _ in range(R.PARKS):
         for _attempt in range(500):
@@ -159,38 +173,47 @@ def lay_terrain(seed):
         blobs = [
             (bx, by, rng.randint(*R.PARK_RADIUS), rng.randint(*R.PARK_RADIUS)) for bx, by in blobs
         ]
-        for i in range(n * n):
-            x, y = xy(i)
-            inside = any(
-                ((x - bx) * b) ** 2 + ((y - by) * a) ** 2 <= (a * b) ** 2 for bx, by, a, b in blobs
-            )
-            if inside and i not in terrain and not clear[i]:
-                terrain[i] = "park"
+        # Only the blobs' bounding box, in row order like a full scan, so tiles keep their order.
+        x0, x1 = (
+            max(0, min(bx - a for bx, _, a, _ in blobs)),
+            min(n - 1, max(bx + a for bx, _, a, _ in blobs)),
+        )
+        y0, y1 = (
+            max(0, min(by - b for _, by, _, b in blobs)),
+            min(n - 1, max(by + b for _, by, _, b in blobs)),
+        )
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                i = y * n + x
+                inside = any(
+                    ((x - bx) * b) ** 2 + ((y - by) * a) ** 2 <= (a * b) ** 2
+                    for bx, by, a, b in blobs
+                )
+                if inside and i not in terrain and not clear[i]:
+                    terrain[i] = "park"
 
-    # Old industrial site: a rectangle with one corner missing, set against the railway.
+
+def lay_works(rng, clear, terrain, rails):
+    """The old industrial site into terrain: a rectangle with one corner missing, set against the
+    railway, if any rail tile is at the right distance from the center."""
+    n, c = R.SIZE, R.SIZE // 2
     sidings = [
         (x, y)
         for x, y in rails
         if R.WORKS_DISTANCE[0] <= chebyshev(x, y, c, c) <= R.WORKS_DISTANCE[1]
     ]
-    if sidings:
-        rx, ry = rng.choice(sidings)
-        (w, h), sx, sy = R.WORKS_SIZE, rng.choice((1, -1)), rng.choice((1, -1))
-        xs = range(rx + 1, rx + 1 + w) if sx > 0 else range(rx - w, rx)
-        ys = range(ry + 1, ry + 1 + h) if sy > 0 else range(ry - h, ry)
-        corner = (rng.choice((xs[0], xs[-1])), rng.choice((ys[0], ys[-1])))
-        for y in ys:
-            for x in xs:
-                i = y * n + x
-                if (
-                    0 <= x < n
-                    and 0 <= y < n
-                    and (x, y) != corner
-                    and i not in terrain
-                    and not clear[i]
-                ):
-                    terrain[i] = "works"
-    return terrain
+    if not sidings:
+        return
+    rx, ry = rng.choice(sidings)
+    (w, h), sx, sy = R.WORKS_SIZE, rng.choice((1, -1)), rng.choice((1, -1))
+    xs = range(rx + 1, rx + 1 + w) if sx > 0 else range(rx - w, rx)
+    ys = range(ry + 1, ry + 1 + h) if sy > 0 else range(ry - h, ry)
+    corner = (rng.choice((xs[0], xs[-1])), rng.choice((ys[0], ys[-1])))
+    for y in ys:
+        for x in xs:
+            i = y * n + x
+            if 0 <= x < n and 0 <= y < n and (x, y) != corner and i not in terrain and not clear[i]:
+                terrain[i] = "works"
 
 
 def new_city(seed):
