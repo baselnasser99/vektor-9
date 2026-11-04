@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, part, rng } from './geometry.js';
 import { powerPlant } from './plant.js';
-import { construction, market, plaza, tower } from './tiles.js';
+import { construction, market, plaza } from './tiles.js';
+import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
 import { spire } from './landmarks.js';
@@ -78,14 +79,15 @@ export function buildCity(kit, snap) {
   const layout = cityLayout(snap), { n, pos, inTown } = layout, root = new THREE.Group();
   const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
-  const signature = signatureTowers(snap);
+  const signature = signatureTowers(snap), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   snap.tiles.forEach((t, i) => {
     const rand = rng(t.s), fw = footprint(t, rand), col = i % n, row = Math.floor(i / n);
     const sector = Math.floor(row / BLOCK) * (n / BLOCK) + Math.floor(col / BLOCK);
     // Each sector leans glass or concrete; about one building in four goes the other way.
     const concrete = ((sector * 7 + snap.seed) % 2 === 0) !== (rand() < 0.25);
-    const g = { house: () => tower(kit, t.f, rand, t.on, concrete, fw), build: () => construction(kit, t.f, rand, t.on, fw),
+    const family = t.k === 'house' && familyOf(t, near[i], !concrete);
+    const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row), build: () => construction(kit, t.f, rand, t.on, fw),
       market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit, { close: false }), lot: () => plaza(kit, rand, t.on),
       rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on) }[t.k]();
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
@@ -103,17 +105,44 @@ export function buildCity(kit, snap) {
     g.rotation.y = Math.floor(rand() * 4) * (Math.PI / 2) + (inTown(col, row) ? (rand() - 0.5) * 0.2 : 0); // old town: a little askew
     if (t.k !== 'plant' && t.k !== 'lot') shopfronts(kit, lot, t, rand, dx, dz);
     if (signature.has(i)) spire(kit, g, t.f * F, fw, t.on);
+    const small = g.getObjectByName('detail'); // drawn only near the camera, merged per sector
+    if (small) {
+      small.userData.lod = sector;
+      if (!detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
+    }
     settle(lot, warp);
     // Skybridge to the east neighbour in the same sector when both are tall enough.
     const east = snap.tiles[i + 1];
-    if (t.k === 'house' && east?.k === 'house' && col % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < 0.12) {
+    const linked = family === 'mega' && east?.f >= 16 ? 0.45 : 0.12; // megastructures link up more often
+    if (t.k === 'house' && east?.k === 'house' && col % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < linked) {
       const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [cx, pos(col + 1)];
       part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, cz);
       if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
     }
   });
   const rail = railway(kit, root, rails, streets.hi);
-  return { city: mergeByMaterial(root, warp), warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi };
+  const city = mergeByMaterial(root, warp);
+  const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
+  return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi };
+}
+
+// What is around each tile that never changes, for the building family rules (families.js familyOf): industry
+// (the old works or the railway within 2 tiles), a park within 3, the centre within 8 or 14 tiles, and whether it
+// is in the old town.
+function surroundings({ size: n, tiles }, { inTown }) {
+  const c = n / 2;
+  const any = (i, r, test) => {
+    const [x, y] = [i % n, Math.floor(i / n)];
+    for (let v = Math.max(0, y - r); v <= Math.min(n - 1, y + r); v++) {
+      for (let u = Math.max(0, x - r); u <= Math.min(n - 1, x + r); u++) if (test(tiles[v * n + u])) return true;
+    }
+    return false;
+  };
+  return tiles.map((t, i) => {
+    const [x, y] = [i % n, Math.floor(i / n)], ring = Math.max(Math.abs(x + 0.5 - c), Math.abs(y + 0.5 - c));
+    return { oldTown: inTown(x, y), centre: ring <= 8, inner: ring <= 14,
+      industry: any(i, 2, (o) => o.k === 'works' || o.k === 'rail'), park: any(i, 3, (o) => o.k === 'park') };
+  });
 }
 
 // Signature towers: the tallest, then the next tallest at least 12 tiles from those picked, up to three (ties to

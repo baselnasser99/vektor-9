@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { palette } from './palette.js';
 import { adTexture, concreteTexture, textTexture } from './textures.js';
-import { facadeMaterial } from './facade.js';
+import { STYLES, facadeMaterial } from './facade.js';
 
 const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_metal_sheet', 'metal_grate_rusty', 'aerial_asphalt_01'];
 // Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
@@ -52,11 +52,13 @@ export async function loadKit(renderer, models = [], base = './assets') {
     // Cast concrete drawn in code: soft blotches, rain streaks, faint formwork seams; no tiling grid.
     concrete: (color) => once(`concrete:${color}`, () => new THREE.MeshStandardMaterial({
       map: once('concreteMap', concreteTexture), color, roughness: 0.9, metalness: 0 })),
-    // Facade with windows (facade.js): a glass curtain wall (offices), punched windows in concrete (homes), or a
-    // shopfront (kind 'shop'). Unlit (blackout): every room dark. seed varies which rooms are lit.
+    // Facade with windows (facade.js), by kind: office and luxury glass curtain walls, or windows in a wall: homes
+    // (residential), shopfronts, old brick or weathered concrete, industrial strip windows. Unlit (blackout): every
+    // room dark. seed varies which rooms are lit, and for old walls whether they are brick.
     windows: (seed = 1, lit = true, concrete = false, kind = concrete ? 'residential' : 'office') =>
       once(`windows:${seed}:${lit}:${kind}`, () => facadeMaterial(kind, {
-        lit, seed, color: palette.slate, map: kind === 'office' ? null : once('concreteMap', concreteTexture) })),
+        lit, seed, color: kind === 'old' ? (seed % 2 ? palette.brick : palette.roseGrey) : palette.slate,
+        map: STYLES[kind].glass ? null : once('concreteMap', concreteTexture) })),
     // Lit sign with an invented word: glowing text and frame on a dark panel.
     sign: (text, color, vertical = false) => once(`sign:${text}:${color}:${vertical}`, () => {
       const map = textTexture(text, color, vertical, palette.deepNavy);

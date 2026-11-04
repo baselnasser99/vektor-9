@@ -4,17 +4,34 @@ import * as THREE from 'three';
 // city draws in a few hundred calls instead of tens of thousands. (Merging per grid cell for culling was
 // tried and measured: it multiplied draw calls and cost more than it saved.)
 // Writes straight into one buffer per material: cloning each part first made this most of the city's build time.
-// warp: optional (x, z, out) => out = [dx, dz], the shift of every vertex over the ground after placement (city.js), except
-// under groups marked userData.rigid.
+// warp: optional (x, z, out) => out = [dx, dz], the shift of every vertex over the ground after placement
+// (city.js), except under groups marked userData.rigid.
+// Groups marked userData.lod (a key, e.g. a sector) are merged apart, one group of meshes per key, returned in
+// out.userData.lods with userData.lod set, so they can be shown only near the camera.
 export function mergeByMaterial(root, warp) {
   root.updateMatrixWorld(true);
-  const buckets = new Map();
+  const sets = new Map(); // lod key (undefined: always drawn) -> material -> meshes
   root.traverse((o) => {
     if (o.userData.rigid) o.traverse((m) => { m.userData.rigid = true; }); // moved whole by its builder: no warp
+    if (o.userData.lod !== undefined) o.traverse((m) => { m.userData.lod = o.userData.lod; });
     if (!o.isMesh) return;
+    const key = o.userData.lod;
+    if (!sets.has(key)) sets.set(key, new Map());
+    const buckets = sets.get(key);
     if (!buckets.has(o.material)) buckets.set(o.material, []);
     buckets.get(o.material).push(o);
   });
+  const out = bake(sets.get(undefined) ?? new Map(), warp);
+  out.userData.lods = [...sets].filter(([key]) => key !== undefined).map(([key, buckets]) => {
+    const g = bake(buckets, warp);
+    g.userData.lod = key;
+    return g;
+  });
+  return out;
+}
+
+// One merged mesh per material in buckets (material -> meshes).
+function bake(buckets, warp) {
   const out = new THREE.Group(), normalMatrix = new THREE.Matrix3(), shift = [0, 0];
   for (const [material, meshes] of buckets) {
     let verts = 0, count = 0;
