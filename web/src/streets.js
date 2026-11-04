@@ -4,11 +4,11 @@
 // traffic lanes cars drive in. Long flat parts are slabs cut into short pieces, so the city's warp bends them.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part, rng, slab } from './geometry.js';
-import { telecomTower, towerBase } from './landmarks.js';
+import { box, cyl, part, REPEAT, rng, slab } from './geometry.js';
+import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
-import { ALLEY, BLOCK, HALF, SIDEWALK, STREETS, TILE } from './world.js';
+import { ALLEY, BLOCK, HALF, HUB, SIDEWALK, STREETS, TILE } from './world.js';
 
 const LAMP_EVERY = 55;
 const MEDIAN = 6; // boulevard median width
@@ -17,16 +17,16 @@ export function buildStreets(kit, layout, root) {
   const { lines, lo, hi } = layout, rand = rng(31);
   const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // wet, but not a mirror
   part(root, slab(hi - lo + 80, 0.1, hi - lo + 80, 8), asphalt, 0, -0.05, 0);
-  sectors(kit, root, layout, rand);
+  const hub = lines[lines.length >> 1];
+  sectors(kit, root, layout, rand, hub);
   // Every main street, once per axis: centre c, width w, kind, and the axis it runs along.
   const streets = lines.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, kind: l.kind[axis], axis })));
-  const ctx = { kit, root, lines, lo, hi, rand, paint: kit.glow(palette.cream, 0.35) }; // road paint glows faintly
+  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35) }; // road paint glows faintly
   for (const s of streets) {
     if (s.kind === 'walk') walk(ctx, s);
     else road(ctx, s);
     lamps(ctx, s);
   }
-  const hub = lines[lines.length >> 1];
   plaza(ctx, hub.c, hub.w);
   return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi)), lines: lines.map((l) => l.c), lo, hi,
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2 } }; // life.js traffic: the roundabout
@@ -44,6 +44,8 @@ const spot = (s, v, off) => (s.axis === 'x' ? [v, s.c + off] : [s.c + off, v]);
 const stretches = ({ lines }, pad = 0) =>
   lines.slice(1).map((l, k) => [lines[k].c + lines[k].w / 2 + pad, l.c - l.w / 2 - pad]);
 const inCrossing = ({ lines }, v, pad) => lines.some((l) => Math.abs(v - l.c) < l.w / 2 + pad);
+// Whether v along street s is inside the tower's roundabout (the boulevards meet there), padded by pad.
+const inRing = (ctx, s, v, pad = 0) => Math.abs(s.c - ctx.hub) < 1 && Math.abs(v - ctx.hub) < RING_OUT + pad;
 
 // Roadway markings: dashed lane dividers, a double centre line (full streets), a planted median (boulevard) or a
 // dashed centre line (narrow streets), and zebra crossings at every intersection.
@@ -51,10 +53,13 @@ function road(ctx, s) {
   const { kit, lo, hi, paint, lines } = ctx, { lanes } = STREETS[s.kind], roadway = s.w - 2 * SIDEWALK;
   const dividers = s.kind === 'lane' ? [0] : lanes.slice(1).flatMap((l, k) => [-(l + lanes[k]) / 2, (l + lanes[k]) / 2]);
   for (let v = lo; v < hi; v += 10) {
-    if (inCrossing(ctx, v, 4) || inCrossing(ctx, v + 3, 4)) continue;
+    if (inCrossing(ctx, v, 4) || inCrossing(ctx, v + 3, 4) || inRing(ctx, s, v, 3)) continue;
     for (const off of dividers) lay(ctx, s, 3, 0.02, 0.15, paint, v + 1.5, off, 0.01);
   }
-  for (const [a, b] of stretches(ctx, 4)) {
+  for (let [a, b] of stretches(ctx, 4)) {
+    if (inRing(ctx, s, b)) b = ctx.hub - RING_OUT; // the median and centre lines stop at the roundabout
+    if (inRing(ctx, s, a)) a = ctx.hub + RING_OUT;
+    if (b <= a) continue;
     const len = b - a, mid = (a + b) / 2;
     if (s.kind === 'street') for (const off of [-0.2, 0.2]) lay(ctx, s, len, 0.02, 0.12, paint, mid, off, 0.01);
     if (s.kind === 'boulevard') {
@@ -66,6 +71,7 @@ function road(ctx, s) {
   for (const l of lines) {
     for (const side of [-1, 1]) {
       const at = l.c + side * (l.w / 2 + 1.8);
+      if (inRing(ctx, s, at)) continue;
       for (let off = -roadway / 2 + 0.6; off < roadway / 2; off += 1.2) {
         if (s.kind === 'boulevard' && Math.abs(off) < MEDIAN / 2) continue; // the median is a refuge, not paint
         lay(ctx, s, 3, 0.02, 0.6, paint, at, off, 0.01);
@@ -89,28 +95,45 @@ function walk(ctx, s) {
   }
 }
 
-// Where the boulevards meet: a roundabout. Cars circle the island (life.js traffic, hub), which carries the
-// city's telecom tower and its raised plaza (landmarks.js).
-const ISLAND = 8;
+// Where the boulevards meet: the tower's plaza. A big roundabout circles the tower's island (life.js traffic, hub);
+// the corners of the four sectors round it, HUB tiles each way (park terrain in the sim, sim/rules.py HUB_PLAZA),
+// are paved squares outside the ring road, kerbed along it, with trees. The tower and its hub stand on the island.
+const ISLAND = 26;
+const RING_OUT = ISLAND + 1.2 + STREETS.boulevard.lanes.at(-1) + 2.1; // the ring road's outer kerb
 function plaza({ kit, root, paint }, c, w) {
-  // Dashed rings between the circling lanes, inside the crossing and off its corner sidewalks.
-  const lanes = STREETS.boulevard.lanes, inner = w / 2 - SIDEWALK;
-  for (let k = 1; k < lanes.length; k++) {
+  const lanes = STREETS.boulevard.lanes, R = RING_OUT, near = w / 2 - SIDEWALK, far = w / 2 + HUB * TILE;
+  for (let k = 1; k < lanes.length; k++) { // dashed rings between the circling lanes
     const r = ISLAND + 1.2 + (lanes[k - 1] + lanes[k]) / 2;
     for (let a = 0; a < Math.PI * 2; a += 3 / r) {
-      const [x, z] = [Math.cos(a) * r, Math.sin(a) * r];
-      if (Math.max(Math.abs(x), Math.abs(z)) > w / 2 || Math.min(Math.abs(x), Math.abs(z)) > inner) continue;
-      part(root, box(0.15, 0.02, 1.5, 0), paint, c + x, 0.01, c + z).rotation.y = -a;
+      part(root, box(0.15, 0.02, 1.5, 0), paint, c + Math.cos(a) * r, 0.01, c + Math.sin(a) * r).rotation.y = -a;
     }
   }
-  part(root, cyl(ISLAND, ISLAND + 0.3, 0.4, 40), kit.concrete(palette.roseGrey), c, 0.2, c);
-  part(root, cyl(ISLAND - 0.6, ISLAND - 0.6, 0.1, 40), kit.concrete(palette.teal), c, 0.42, c);
-  telecomTower(kit, root, c, c);
-  towerBase(kit, root, c, w);
+  const paving = kit.concrete(palette.slate), curb = kit.concrete(palette.roseGrey);
+  part(root, cyl(ISLAND, ISLAND + 0.3, 0.4, 64), paving, c, 0.2, c);
+  // One corner square outside the ring: x and z from `near` (the sectors' paving edge) to `far`, less the ring's disc.
+  const knee = Math.sqrt(R * R - near * near), t0 = Math.atan2(knee, near), t1 = Math.atan2(near, knee);
+  const arc = Array.from({ length: 13 }, (_, k) => t0 + ((t1 - t0) * k) / 12).map((t) => [Math.cos(t) * R, Math.sin(t) * R]);
+  const corner = [[far, far], [near, far], ...arc, [far, near]];
+  for (const [sx, sz] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    // Shape y is -z: rotateX(-90 deg) lays the shape flat and turns the extrusion upwards.
+    const shape = new THREE.Shape(corner.map(([x, z]) => new THREE.Vector2(sx * x, -sz * z)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.18, bevelEnabled: false });
+    geo.rotateX(-Math.PI / 2);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / REPEAT, uv.getY(i) / REPEAT); // metres, as everywhere
+    part(root, geo, paving, c, 0, c);
+    for (let k = 0; k < arc.length - 1; k++) { // kerb along the ring
+      const [[x0, z0], [x1, z1]] = [arc[k], arc[k + 1]].map(([x, z]) => [sx * x, sz * z]);
+      const kerb = part(root, box(Math.hypot(x1 - x0, z1 - z0) + 0.1, 0.22, 0.35, 0), curb, c + (x0 + x1) / 2, 0.11, c + (z0 + z1) / 2);
+      kerb.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+    }
+    for (const [x, z] of [[far - 6, far - 6], [far - 6, far - 16], [far - 16, far - 6]]) tree(kit, root, c + sx * x, c + sz * z, 7);
+  }
+  telecomTower(kit, root, c, 0.4, c);
 }
 
 // Sectors: raised paving out to the curb, a curb line, and an alley cross through the middle.
-function sectors(kit, root, { n, pos, inTown }, rand) {
+function sectors(kit, root, { n, pos, inTown }, rand, hub) {
   const paving = kit.concrete(palette.slate), curb = kit.concrete(palette.roseGrey), alley = kit.mat('aerial_asphalt_01', palette.gunmetal);
   const planter = kit.concrete(palette.gunmetal), shrub = kit.concrete(palette.teal);
   for (let by = 0; by < n; by += BLOCK) {
@@ -118,9 +141,29 @@ function sectors(kit, root, { n, pos, inTown }, rand) {
       const [x0, x1] = [pos(bx) - TILE / 2 - SIDEWALK, pos(bx + BLOCK - 1) + TILE / 2 + SIDEWALK];
       const [z0, z1] = [pos(by) - TILE / 2 - SIDEWALK, pos(by + BLOCK - 1) + TILE / 2 + SIDEWALK];
       const [cx, cz, w, d] = [(x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0];
-      part(root, slab(w, 0.18, d), paving, cx, 0.09, cz);
-      for (const z of [z0, z1]) part(root, slab(w, 0.22, 0.35), curb, cx, 0.11, z);
-      for (const x of [x0, x1]) part(root, slab(0.35, 0.22, d), curb, x, 0.11, cz);
+      // The four sectors at the central crossing give up a corner to the tower's plaza (plaza() paves it).
+      const sx = Math.sign(cx - hub.c), sz = Math.sign(cz - hub.c), reach = hub.w / 2 + HUB * TILE;
+      const touches = Math.min(Math.abs(x0 - hub.c), Math.abs(x1 - hub.c)) < hub.w / 2 &&
+        Math.min(Math.abs(z0 - hub.c), Math.abs(z1 - hub.c)) < hub.w / 2;
+      const [kx, kz] = [hub.c + sx * reach, hub.c + sz * reach]; // the plaza corner's far edges
+      const rect = (a0, a1, b0, b1) => part(root, slab(a1 - a0, 0.18, b1 - b0), paving, (a0 + a1) / 2, 0.09, (b0 + b1) / 2);
+      const kerbX = (a0, a1, z) => part(root, slab(a1 - a0, 0.22, 0.35), curb, (a0 + a1) / 2, 0.11, z);
+      const kerbZ = (b0, b1, x) => part(root, slab(0.35, 0.22, b1 - b0), curb, x, 0.11, (b0 + b1) / 2);
+      if (!touches) {
+        rect(x0, x1, z0, z1);
+        for (const z of [z0, z1]) kerbX(x0, x1, z);
+        for (const x of [x0, x1]) kerbZ(z0, z1, x);
+      } else {
+        const [ox0, ox1] = sx > 0 ? [kx, x1] : [x0, kx], [oz0, oz1] = sz > 0 ? [kz, z1] : [z0, kz];
+        const [pz0, pz1] = sz > 0 ? [z0, kz] : [kz, z1];
+        rect(x0, x1, oz0, oz1); // the rows past the corner, full width
+        rect(ox0, ox1, pz0, pz1); // and the corner's rows, beside it
+        const [hz, fz] = sz > 0 ? [z0, z1] : [z1, z0], [hx, fx] = sx > 0 ? [x0, x1] : [x1, x0];
+        kerbX(x0, x1, fz);
+        kerbX(ox0, ox1, hz);
+        kerbZ(z0, z1, fx);
+        kerbZ(oz0, oz1, hx);
+      }
       // Each half of the cross is a service alley (asphalt, dumpsters) or a paved pedestrian lane with planters,
       // so neighbouring sectors do not repeat.
       const [ax, az] = [pos(bx + HALF) - TILE / 2 - ALLEY / 2, pos(by + HALF) - TILE / 2 - ALLEY / 2];
@@ -158,7 +201,7 @@ function lamps(ctx, s) {
     blending: THREE.AdditiveBlending, depthWrite: false });
   const kerb = s.w / 2 - SIDEWALK + 0.6;
   for (let v = lo + 20; v < hi - 20; v += LAMP_EVERY) {
-    if (inCrossing(ctx, v, 2)) continue;
+    if (inCrossing(ctx, v, 2) || inRing(ctx, s, v, 4)) continue;
     for (const side of [-1, 1]) {
       const [x, z] = spot(s, v, side * kerb);
       const facing = s.axis === 'z' ? (side > 0 ? Math.PI : 0) : side > 0 ? Math.PI / 2 : -Math.PI / 2;

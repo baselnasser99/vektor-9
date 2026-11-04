@@ -9,7 +9,7 @@ import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
 import { spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
-import { ALLEY, BLOCK, F, HALF, STREETS, TALL, TERRAIN, TILE, WARM, pick } from './world.js';
+import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
 // every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
@@ -45,16 +45,17 @@ export function cityLayout(snap) {
 // Districts: the city is not one plan. The old town (a quarter of 2x2 sectors beside the centre, the one with the
 // least terrain, ties broken by the seed) has winding streets and oddly shaped blocks; everything else is modern
 // and stays straight. The warp is zero on the old town's bounding streets and along the railway, so the viaduct
-// and the rest of the city stay straight. Buildings ride it whole (settle), only the ground bends.
+// and the rest of the city stay straight, and round the tower's plaza at the centre, so its roundabout stays round.
+// Buildings ride it whole (settle), only the ground bends.
 function cityWarp(snap, layout, rail) {
   const { lines, town } = layout, rand = rng(snap.seed * 31 + 7), [a, b, c, d] = [0, 0, 0, 0].map(() => rand() * Math.PI * 2);
   const [x0, x1, z0, z1] = [lines[town[0]].c, lines[town[0] + 2].c, lines[town[1]].c, lines[town[1] + 2].c];
-  const k1 = (2 * Math.PI) / 150, k2 = (2 * Math.PI) / 80;
+  const k1 = (2 * Math.PI) / 150, k2 = (2 * Math.PI) / 80, hub = lines[lines.length >> 1].c;
   const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
   // The shift at (x, z), written into out as [dx, dz] (no garbage: merge calls it for every vertex).
   return (x, z, out) => {
     // Two crossed waves, full strength from 50 m inside the old town's bounding streets; zero outside it.
-    const old = smooth(Math.min(x - x0, x1 - x, z - z0, z1 - z) / 50);
+    const old = smooth(Math.min(x - x0, x1 - x, z - z0, z1 - z) / 50) * smooth((Math.hypot(x - hub, z - hub) - 80) / 50);
     if (old === 0) {
       out[0] = out[1] = 0;
       return out;
@@ -82,7 +83,10 @@ export function buildCity(kit, snap) {
   const signature = signatureTowers(snap), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   snap.tiles.forEach((t, i) => {
-    const rand = rng(t.s), fw = footprint(t, rand), col = i % n, row = Math.floor(i / n);
+    const col = i % n, row = Math.floor(i / n);
+    const atHub = Math.abs(col + 0.5 - n / 2) < HUB && Math.abs(row + 0.5 - n / 2) < HUB;
+    if (atHub && t.k === 'park') return; // the tower's plaza, paved by streets.js; a snapshot from before it still draws
+    const rand = rng(t.s), fw = footprint(t, rand);
     const sector = Math.floor(row / BLOCK) * (n / BLOCK) + Math.floor(col / BLOCK);
     // Each sector leans glass or concrete; about one building in four goes the other way.
     const concrete = ((sector * 7 + snap.seed) % 2 === 0) !== (rand() < 0.25);
