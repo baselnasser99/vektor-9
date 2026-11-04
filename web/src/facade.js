@@ -118,74 +118,80 @@ float fRoom(ivec3 k, float kind, float chance, out vec3 color) {
   return tier < 0.45 ? 0.3 + 0.4 * tier : tier < 0.87 ? 0.6 + 0.7 * (tier - 0.45) : 1.2 + tier * 0.4;
 }
 
+// The fake room behind a pane: from the glass point g, a ray into a bay-wide, storey-high box of depth fGrid.w;
+// returns the brightness of whichever face it meets first (back wall with furniture, side wall, floor, ceiling).
+float fInside(vec2 g, vec3 d, ivec3 k, float detail) {
+  float bay = fGrid.x, fl = fGrid.y;
+  float tx = (d.x > 0.0 ? bay - g.x : -g.x) / (abs(d.x) > 1e-4 ? d.x : 1e-4);
+  float ty = (d.y > 0.0 ? fl - g.y : -g.y) / (abs(d.y) > 1e-4 ? d.y : 1e-4);
+  float tz = fGrid.w / d.z, t = min(min(tx, ty), tz);
+  vec3 hit = vec3(g, 0.0) + d * t;
+  float shade = 0.5;
+  if (t == tz) { // back wall, with a dark piece of furniture against it, sometimes a tall one
+    shade = 0.55;
+    vec2 f = fRand(k, 4u).xy;
+    if (f.x < fInterior * 0.8 && hit.y < fl * (0.25 + 0.3 * f.y * f.y) && abs(hit.x / bay - f.y) < 0.18 + 0.1 * f.x) shade = 0.12;
+  } else if (t == tx) shade = 0.38 + 0.1 * (1.0 - hit.z / fGrid.w);
+  else if (d.y < 0.0) shade = 0.16; // floor
+  else shade = 0.95 * exp(-2.0 * length(hit.xz / vec2(bay, fGrid.w) - vec2(0.5, 0.35))); // ceiling lamp
+  return mix(0.55, shade, detail * mix(0.6, 1.0, fInterior));
+}
+
 void facade(inout vec3 albedo) {
   vec3 N = normalize(vFN);
+  // Screen derivatives first, before any branch: they are only defined in uniform control flow.
+  vec3 dpx = dFdx(vFPos), dpy = dFdy(vFPos);
+  vec3 T = cross(dpy, N) * dFdx(vFU) + cross(N, dpx) * dFdy(vFU); // the direction u grows in along the wall
+  float bay = fGrid.x, fl = fGrid.y, kind = fLight.z;
+  vec2 c = vec2(vFU / bay, (vFPos.y - fGrid.z) / fl);
+  float px = max(fwidth(c.x), fwidth(c.y)); // cells per pixel
   float side = 1.0 - smoothstep(0.5, 0.8, abs(N.y)); // walls only; roofs and soffits stay plain
   if (side <= 0.0) return;
-  // The direction u grows in along the wall, from screen derivatives (works on boxes and cylinders alike).
-  vec3 dpx = dFdx(vFPos), dpy = dFdy(vFPos);
-  vec3 T = cross(dpy, N) * dFdx(vFU) + cross(N, dpx) * dFdy(vFU);
   T.y = 0.0;
   T = dot(T, T) > 1e-12 ? normalize(T) : normalize(cross(vec3(0.0, 1.0, 0.0), N));
 
-  float bay = fGrid.x, fl = fGrid.y, kind = fLight.z;
-  vec2 c = vec2(vFU / bay, (vFPos.y - fGrid.z) / fl), cell = floor(c), m = (c - cell) * vec2(bay, fl);
-  float px = max(fwidth(c.x), fwidth(c.y)); // cells per pixel
+  bool office = kind > 0.5 && kind < 1.5, shop = kind > 1.5;
   float detail = 1.0 - smoothstep(0.12, 0.45, px), far = smoothstep(0.6, 1.6, px);
-  ivec3 k = ivec3(int(cell.x), int(cell.y), int(vFId) * 3 + int(fLight.w) * 7919);
-
-  vec3 light;
-  float level = fRoom(k, kind, fLight.x, light) * fLight.y;
-  vec3 wall = albedo, frame = fFrame;
-  // Facade divisions: a floor slab at the bottom of every storey, a column every few bays.
-  bool column = fBars.y > 0.5 && mod(cell.x, fBars.y) < 0.5 && m.x < 0.28;
-  bool slab = m.y < fBars.w;
-  if (kind > 0.5 && kind < 1.5) wall = mix(fGlass * 1.4, frame, 0.35); // offices: dark spandrel glass between bands
-
-  vec2 o0 = vec2((1.0 - fWin.x) * 0.5 * bay, fWin.z * fl), o1 = o0 + vec2(fWin.x * bay, fWin.y * fl);
-  vec3 V = normalize(cameraPosition - vFPos);
-  float vt = dot(V, T), vn = max(dot(V, N), 0.08);
-  // Recess: the glass sits fWin.w behind the wall face; where the shifted point leaves the opening we see its reveal.
-  vec2 g = m - vec2(vt, V.y) / vn * fWin.w * detail;
-  bool open = all(greaterThan(m, o0)) && all(lessThan(m, o1)) && !slab && !column;
-  bool pane = open && all(greaterThan(g, o0)) && all(lessThan(g, o1));
-  float edge = min(min(g.x - o0.x, o1.x - g.x), min(g.y - o0.y, o1.y - g.y));
-  float bar = abs(fract((g.x - o0.x) / (o1.x - o0.x) * fBars.x + 0.5) - 0.5) * (o1.x - o0.x) / fBars.x;
-  bool framed = pane && (edge < fBars.z || (fBars.x > 1.5 && bar < fBars.z * 0.6)) && detail > 0.2;
-
-  vec3 h = fRand(k, 9u), outAlbedo = wall, glow = vec3(0.0);
-  float shine = kind > 0.5 && kind < 1.5 ? 0.6 : 0.0;
-  if (slab || column) { outAlbedo = kind > 0.5 && kind < 1.5 ? frame : wall * 0.72; shine = 0.0; }
-  if (open && !pane) { outAlbedo = wall * (V.y > 0.0 ? 0.35 : 0.6); shine = 0.0; } // reveal: the lintel shades, the sill catches light
-  if (framed) { outAlbedo = frame; shine = 0.15; }
-  else if (pane) {
-    // Fake room: from the glass, a ray into a bay-wide, storey-high box; shade whichever face it meets first.
-    vec3 o = vec3(g, 0.0), d = vec3(-vt, -V.y, vn);
-    float tx = (d.x > 0.0 ? bay - o.x : -o.x) / (abs(d.x) > 1e-4 ? d.x : 1e-4);
-    float ty = (d.y > 0.0 ? fl - o.y : -o.y) / (abs(d.y) > 1e-4 ? d.y : 1e-4);
-    float tz = fGrid.w / d.z, t = min(min(tx, ty), tz);
-    vec3 hit = o + d * t;
-    float shade = 0.5;
-    if (t == tz) { // back wall, with a dark piece of furniture against it, sometimes a tall one
-      shade = 0.55;
-      vec2 f = fRand(k, 4u).xy;
-      if (f.x < fInterior * 0.8 && hit.y < fl * (0.25 + 0.3 * f.y * f.y) && abs(hit.x / bay - f.y) < 0.18 + 0.1 * f.x) shade = 0.12;
-    } else if (t == tx) shade = 0.38 + 0.1 * (1.0 - hit.z / fGrid.w);
-    else if (d.y < 0.0) shade = 0.16; // floor
-    else shade = 0.95 * exp(-2.0 * length(hit.xz / vec2(bay, fGrid.w) - vec2(0.5, 0.35))); // ceiling lamp
-    shade = mix(0.55, shade, detail * mix(0.6, 1.0, fInterior));
-    // Blinds: in some lit rooms a pale blind covers the top of the pane, lit from behind.
-    if (level > 0.0 && h.x < 0.28 * fInterior && g.y > o1.y - (o1.y - o0.y) * (0.25 + 0.5 * h.y)) shade = 0.5;
-    float fresnel = 0.04 + 0.96 * pow(1.0 - vn, 5.0);
-    glow = light * level * shade * (1.0 - 0.7 * fresnel);
-    outAlbedo = fGlass * (0.7 + 0.5 * h.z);
-    shine = 1.0;
-    fRough = 0.05 + 0.14 * h.y; // panes catch reflections a little differently
-    fBend = (T * (h.x - 0.5) + vec3(0.0, h.z - 0.5, 0.0)) * 0.05 * detail;
+  vec3 wall = office ? mix(fGlass * 1.4, fFrame, 0.35) : albedo; // offices: dark spandrel glass between bands
+  vec3 outAlbedo = wall, glow = vec3(0.0);
+  float shine = office ? 0.6 : 0.0;
+  if (far < 1.0) { // near enough to see single windows; far away only the average below is drawn
+    vec2 cell = floor(c), m = (c - cell) * vec2(bay, fl);
+    ivec3 k = ivec3(int(cell.x), int(cell.y), int(vFId) * 3 + int(fLight.w) * 7919);
+    vec3 light;
+    float level = fRoom(k, kind, fLight.x, light) * fLight.y;
+    // Facade divisions: a floor slab at the bottom of every storey, a column every few bays.
+    bool column = fBars.y > 0.5 && mod(cell.x, fBars.y) < 0.5 && m.x < 0.28;
+    bool slab = m.y < fBars.w;
+    vec2 o0 = vec2((1.0 - fWin.x) * 0.5 * bay, fWin.z * fl), o1 = o0 + vec2(fWin.x * bay, fWin.y * fl);
+    vec3 V = normalize(cameraPosition - vFPos);
+    float vt = dot(V, T), vn = max(dot(V, N), 0.08);
+    // Recess: the glass sits fWin.w behind the wall face; where the shifted point leaves the opening we see its reveal.
+    vec2 g = m - vec2(vt, V.y) / vn * fWin.w * detail;
+    bool open = all(greaterThan(m, o0)) && all(lessThan(m, o1)) && !slab && !column;
+    bool pane = open && all(greaterThan(g, o0)) && all(lessThan(g, o1));
+    float edge = min(min(g.x - o0.x, o1.x - g.x), min(g.y - o0.y, o1.y - g.y));
+    float bar = abs(fract((g.x - o0.x) / (o1.x - o0.x) * fBars.x + 0.5) - 0.5) * (o1.x - o0.x) / fBars.x;
+    bool framed = pane && (edge < fBars.z || (fBars.x > 1.5 && bar < fBars.z * 0.6)) && detail > 0.2;
+    if (slab || column) { outAlbedo = office ? fFrame : wall * 0.72; shine = 0.0; }
+    if (open && !pane) { outAlbedo = wall * (V.y > 0.0 ? 0.35 : 0.6); shine = 0.0; } // reveal: the lintel shades, the sill catches light
+    if (framed) { outAlbedo = fFrame; shine = 0.15; }
+    else if (pane) {
+      vec3 h = fRand(k, 9u);
+      float shade = fInside(g, vec3(-vt, -V.y, vn), k, detail);
+      // Blinds: in some lit rooms a pale blind covers the top of the pane, lit from behind.
+      if (level > 0.0 && h.x < 0.28 * fInterior && g.y > o1.y - (o1.y - o0.y) * (0.25 + 0.5 * h.y)) shade = 0.5;
+      float fresnel = 0.04 + 0.96 * pow(1.0 - vn, 5.0);
+      glow = light * level * shade * (1.0 - 0.7 * fresnel);
+      outAlbedo = fGlass * (0.7 + 0.5 * h.z);
+      shine = 1.0;
+      fRough = 0.05 + 0.14 * h.y; // panes catch reflections a little differently
+      fBend = (T * (h.x - 0.5) + vec3(0.0, h.z - 0.5, 0.0)) * 0.05 * detail;
+    }
   }
   // Far away: one cell per pixel or less, so draw its average instead of picking one room (no shimmer).
-  float cover = fWin.x * fWin.y, avg = fLight.x * (kind > 0.5 && kind < 1.5 ? fOffices * 0.6 : kind > 1.5 ? 1.1 : fHomes * 0.5);
-  vec3 hue = kind > 0.5 && kind < 1.5 ? mix(fCool, fWarm, 0.35) : mix(fWarm, fWarm2, 0.5);
+  float cover = fWin.x * fWin.y, avg = fLight.x * (office ? fOffices * 0.6 : shop ? 1.1 : fHomes * 0.5);
+  vec3 hue = office ? mix(fCool, fWarm, 0.35) : mix(fWarm, fWarm2, 0.5);
   glow = mix(glow, hue * min(avg, 1.0) * fLight.y * 0.6 * cover, far);
   outAlbedo = mix(outAlbedo, mix(wall, fGlass, cover), far);
   shine = mix(shine, cover * 0.6, far);
