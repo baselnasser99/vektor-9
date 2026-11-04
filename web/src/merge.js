@@ -47,12 +47,14 @@ function bake(buckets, warp) {
     let base = 0, at = 0;
     for (const { geometry: g, matrixWorld, userData } of meshes) {
       // Raw arrays with the matrix math inlined: every part is built in code, so no attribute is interleaved.
-      const [p, n, t] = ['position', 'normal', 'uv'].map((name) => g.attributes[name].array), count = p.length / 3;
+      const p = g.attributes.position.array, n = g.attributes.normal.array, t = g.attributes.uv.array, count = p.length / 3;
       const m = matrixWorld.elements, q = normalMatrix.getNormalMatrix(matrixWorld).elements;
+      // Placements are affine, so the divide below is by exactly 1 and skipping it changes no bits.
+      const affine = m[3] === 0 && m[7] === 0 && m[11] === 0 && m[15] === 1;
       for (let i = 0, o = base * 3; i < count * 3; i += 3, o += 3) {
         // Same arithmetic as Vector3.applyMatrix4, applyMatrix3 and normalize, so the result matches to the bit.
         const x = p[i], y = p[i + 1], z = p[i + 2], a = n[i], b = n[i + 1], c = n[i + 2];
-        const w = 1 / (m[3] * x + m[7] * y + m[11] * z + m[15]);
+        const w = affine ? 1 : 1 / (m[3] * x + m[7] * y + m[11] * z + m[15]);
         pos[o] = (m[0] * x + m[4] * y + m[8] * z + m[12]) * w;
         pos[o + 1] = (m[1] * x + m[5] * y + m[9] * z + m[13]) * w;
         pos[o + 2] = (m[2] * x + m[6] * y + m[10] * z + m[14]) * w;
@@ -70,8 +72,10 @@ function bake(buckets, warp) {
       }
       uvs.set(t, base * 2);
       if (colors) colors.set(g.attributes.color.array, base * 3);
-      if (g.index) for (const k of g.index.array) index[at++] = base + k;
-      else for (let i = 0; i < count; i++) index[at++] = base + i;
+      if (g.index) {
+        const ix = g.index.array;
+        for (let i = 0; i < ix.length; i++) index[at++] = base + ix[i];
+      } else for (let i = 0; i < count; i++) index[at++] = base + i;
       base += count;
     }
     const geo = new THREE.BufferGeometry();

@@ -5,7 +5,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { css, palette, ui } from './palette.js';
 import { MOON, skyDome } from './atmosphere.js';
 
@@ -181,7 +180,7 @@ function nightScene(span, fog, far) {
 }
 
 // Bloom gives lamps and neon soft halos; only the brightest light blooms (threshold), so facades keep their detail.
-// Then a light grade (one cheap full-screen pass, see GRADE).
+// The grade runs at the end of the output pass (tone mapping and colour space), so it costs no extra full-screen pass.
 // shortcut: GTAOPass washed the frame out, so contact shading comes from shadows, texture AO and the facades'
 // street-canyon darkening (facade.js); revisit with a tuned half-resolution AO pass if it is still missing.
 function createComposer(renderer, scene, camera) {
@@ -190,27 +189,23 @@ function createComposer(renderer, scene, camera) {
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ...LOOK.bloom));
-  composer.addPass(new OutputPass());
-  composer.addPass(new ShaderPass(GRADE));
+  const output = new OutputPass(), shader = output.material.fragmentShader, end = shader.lastIndexOf('}');
+  output.material.fragmentShader = `${shader.slice(0, end).replace('void main() {', `${GRADE}\nvoid main() {`)}
+  gl_FragColor.rgb = grade(gl_FragColor.rgb, vUv);
+}`;
+  composer.addPass(output);
   return composer;
 }
 
 // The grade, on the final image: darks and mid-tones lose a little saturation (so concrete, steel and glass read as
 // themselves) while bright light keeps its colour (signs, neon, windows); shadows lean cool and highlights warm;
 // a soft vignette.
-const GRADE = {
-  uniforms: { tDiffuse: { value: null } },
-  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
-    void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      vec3 g = mix(vec3(l), c.rgb, mix(0.8, 1.05, smoothstep(0.3, 0.75, l)));
-      g *= mix(vec3(0.97, 0.99, 1.04), vec3(1.03, 1.0, 0.97), smoothstep(0.15, 0.7, l));
-      g *= 1.0 - 0.2 * pow(length(vUv - 0.5) * 1.25, 2.0);
-      gl_FragColor = vec4(g, c.a);
-    }`,
-};
+const GRADE = `vec3 grade(vec3 c, vec2 uv) {
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  vec3 g = mix(vec3(l), c, mix(0.8, 1.05, smoothstep(0.3, 0.75, l)));
+  g *= mix(vec3(0.97, 0.99, 1.04), vec3(1.03, 1.0, 0.97), smoothstep(0.15, 0.7, l));
+  return g * (1.0 - 0.2 * pow(length(uv - 0.5) * 1.25, 2.0));
+}`;
 
 // ?bench in the URL: time 30 frames, log draw calls and triangles for one whole frame (scene, shadows and post
 // passes), and which materials hold the most triangles.
