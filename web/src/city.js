@@ -46,7 +46,7 @@ export function cityLayout(snap) {
 // least terrain, ties broken by the seed) has winding streets and oddly shaped blocks; everything else is modern
 // and stays straight. The warp is zero on the old town's bounding streets and along the railway, so the viaduct
 // and the rest of the city stay straight. Buildings ride it whole (settle), only the ground bends.
-export function cityWarp(snap, layout, rail) {
+function cityWarp(snap, layout, rail) {
   const { lines, town } = layout, rand = rng(snap.seed * 31 + 7), [a, b, c, d] = [0, 0, 0, 0].map(() => rand() * Math.PI * 2);
   const [x0, x1, z0, z1] = [lines[town[0]].c, lines[town[0] + 2].c, lines[town[1]].c, lines[town[1] + 2].c];
   const k1 = (2 * Math.PI) / 150, k2 = (2 * Math.PI) / 80;

@@ -12,8 +12,6 @@ import { dress, podium } from './tiles.js';
 import { roof, roofType } from './roofs.js';
 import { F, WARM, pick } from './world.js';
 
-export const FAMILIES = ['apartment', 'office', 'old', 'luxury', 'industrial', 'mega'];
-
 // The rules, first match wins. They only use what stays fixed for a building while it stands (its floors, the tick
 // it was built, its seed, and terrain and districts that never change), so a building keeps its family as the city
 // grows around it. near: the tile's fixed surroundings (city.js surroundings).

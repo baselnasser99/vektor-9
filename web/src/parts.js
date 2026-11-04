@@ -84,20 +84,18 @@ export function tree(kit, parent, x, z, h = 6) {
   crown.scale.set(1, 0.8, 1);
 }
 
-// close: false is city detail (cheap chamfers, fewer segments), as in plant.js.
-export function dronePad(kit, parent, r, x, y, z, close = true) {
-  const b = close ? 3 : 1, n = close ? 1 : 0.5;
-  part(parent, cyl(r, r, 0.25, 32 * n), kit.steel(palette.charcoal, 0.7), x, y + 0.12, z);
-  ring(parent, r * 0.8, 0.07, kit.glow(palette.neonCyan, 3), x, y + 0.27, z, 40 * n, 8 * n);
-  for (const s of [-1, 1]) part(parent, box(0.18, 0.04, r * 0.9, b), kit.glow(palette.neonOrange, 2), x + s * r * 0.25, y + 0.27, z);
-  part(parent, box(r * 0.5, 0.04, 0.18, b), kit.glow(palette.neonOrange, 2), x, y + 0.27, z);
+export function dronePad(kit, parent, r, x, y, z) {
+  part(parent, cyl(r, r, 0.25, 32), kit.steel(palette.charcoal, 0.7), x, y + 0.12, z);
+  ring(parent, r * 0.8, 0.07, kit.glow(palette.neonCyan, 3), x, y + 0.27, z, 40, 8);
+  for (const s of [-1, 1]) part(parent, box(0.18, 0.04, r * 0.9), kit.glow(palette.neonOrange, 2), x + s * r * 0.25, y + 0.27, z);
+  part(parent, box(r * 0.5, 0.04, 0.18), kit.glow(palette.neonOrange, 2), x, y + 0.27, z);
 }
 
-export function antennaArray(kit, parent, x, y, z, close = true) {
-  const steel = kit.steel(palette.gunmetal, 0.35), b = close ? 3 : 1, n = close ? 1 : 0.5;
-  part(parent, box(0.15, 7, 0.15, b), steel, x, y + 3.5, z);
-  for (const [h, w] of [[3, 2.2], [4.6, 1.6], [6, 1]]) part(parent, box(w, 0.08, 0.08, b), steel, x, y + h, z);
-  const dish = part(parent, new THREE.SphereGeometry(1, 20 * n, 10 * n, 0, Math.PI * 2, 0, Math.PI / 4), kit.steel(palette.slate, 0.35), x + 1.4, y + 1.2, z);
+export function antennaArray(kit, parent, x, y, z) {
+  const steel = kit.steel(palette.gunmetal, 0.35);
+  part(parent, box(0.15, 7, 0.15), steel, x, y + 3.5, z);
+  for (const [h, w] of [[3, 2.2], [4.6, 1.6], [6, 1]]) part(parent, box(w, 0.08, 0.08), steel, x, y + h, z);
+  const dish = part(parent, new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 4), kit.steel(palette.slate, 0.35), x + 1.4, y + 1.2, z);
   dish.rotation.z = -0.9;
   part(parent, new THREE.SphereGeometry(0.15, 8, 6), kit.glow(palette.signal, 2), x, y + 7.1, z);
 }
