@@ -3,6 +3,7 @@
 import { css, palette } from './palette.js';
 import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
+import { facadeClock } from './facade.js';
 import { buildCity, cityLayout } from './city.js';
 import { REACH, buildDesert } from './desert.js';
 import { traffic, trains } from './life.js';
@@ -30,6 +31,7 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
 }
 
 const kit = await loadKit(renderer);
+facadeClock(((snap.tick * 5) / 60) % 24, onFrame); // ticks are 5 minutes; room lights follow the hour
 const { city, warp, hub, rail, lanes, edge, lines } = buildCity(kit, snap);
 const { desert, lanes: highwayLanes } = buildDesert(kit, edge, lines, onFrame);
 scene.add(city, desert, traffic(kit, [...lanes, ...highwayLanes], onFrame, warp, hub));

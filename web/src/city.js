@@ -121,7 +121,7 @@ const frontage = (i) => (i % HALF === 0 ? -1 : i % HALF === HALF - 1 ? 1 : 0);
 // into a street wall even where the buildings above are narrow. Construction sites get a site hoarding instead.
 function shopfronts(kit, root, t, rand, cx, cz, dx, dz) {
   const site = t.k === 'build', [h, d] = site ? [2.4, 0.3] : [4.5, 3];
-  const wall = site ? kit.steel(palette.gunmetal, 0.8) : kit.windows(3, t.on, true);
+  const wall = site ? kit.steel(palette.gunmetal, 0.8) : kit.windows(3, t.on, true, 'shop');
   const awning = t.on && !site && kit.glow(pick(rand, WARM), 1.2);
   const at = TILE / 2 - 0.3 - d / 2;
   // x-facing strips are a hair lower than z-facing ones so their roofs never fight at the corner.
