@@ -2,7 +2,7 @@ import gzip
 import json
 import random
 
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from sim import rules as R
@@ -264,6 +264,7 @@ def test_grid_lookups_match_a_full_scan(seed, radius):
 
 @settings(max_examples=20, deadline=None)
 @given(seeds)
+@example(110)  # the rail once dipped into the core here and broke in two
 def test_new_city_lays_out_terrain_around_the_core(seed):
     tiles = new_city(seed)["tiles"]
     c = R.SIZE // 2

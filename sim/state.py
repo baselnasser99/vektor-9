@@ -127,7 +127,11 @@ def lay_terrain(seed):
     dx *= rng.choice((1, -1))
     l2 = dx * dx + dy * dy
     lo, hi = R.RAIL_OFFSET
-    k = rng.randint(math.isqrt(lo * lo * l2) + 1, math.isqrt(hi * hi * l2)) * rng.choice((1, -1))
+    k = rng.randint(math.isqrt(lo * lo * l2) + 1, math.isqrt(hi * hi * l2))
+    if rng.choice((True, False)):
+        # The other side of the core: the band reaches |dx| + |dy| - 1 nearer the center on that
+        # side, so shift it out by that much, or it could dip into the core and leave a gap.
+        k = -(k + abs(dx) + abs(dy) - 1)
     side = rng.choice((1, -1))
     for i in range(n * n):
         x, y = xy(i)
