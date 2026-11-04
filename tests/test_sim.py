@@ -2,7 +2,7 @@ import gzip
 import json
 import random
 
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from sim import rules as R
@@ -264,6 +264,7 @@ def test_grid_lookups_match_a_full_scan(seed, radius):
 
 @settings(max_examples=20, deadline=None)
 @given(seeds)
+@example(110)  # the rail once dipped into the core here and broke in two
 def test_new_city_lays_out_terrain_around_the_core(seed):
     tiles = new_city(seed)["tiles"]
     c = R.SIZE // 2
@@ -271,12 +272,14 @@ def test_new_city_lays_out_terrain_around_the_core(seed):
     assert all(where[k] for k in R.TERRAIN)
     for k in R.TERRAIN:
         assert all(chebyshev(x, y, c, c) > R.START_RADIUS + 1 for x, y in where[k])
-    # The railway runs edge to edge in one piece (each tile touches the next one by a side).
+    # The railway runs in one piece (each tile touches the next one by a side) from the city edge
+    # to a terminus beside the core, so it never cuts the city in two.
     rail = set(where["rail"])
     last = R.SIZE - 1
-    sides = {s for x, y in rail for s, hit in (("W", x == 0), ("E", x == last), ("N", y == 0),
-             ("S", y == last)) if hit}  # fmt: skip
-    assert len(sides) >= 2
+    exits = [(x, y) for x, y in rail if x in (0, last) or y in (0, last)]
+    assert exits
+    assert all(chebyshev(*a, *b) <= 6 for a in exits for b in exits)  # one way out, not two
+    assert min(chebyshev(x, y, c, c) for x, y in rail) <= R.RAIL_OFFSET[1] + 1
     start = next(iter(rail))
     seen, todo = {start}, [start]
     while todo:

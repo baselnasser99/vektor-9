@@ -22,7 +22,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 ```
 
 - **tiles:** row-major, index `y * size + x`. Every tile has exactly these keys:
-  - `k`: `lot` | `build` | `house` | `market` | `plant`, or terrain: `rail` | `park` | `works`. Terrain is laid out by `new_city` from the seed (a railway edge to edge, a couple of parks, an old industrial site, all clear of the starting core) and never changes; nothing is built on it.
+  - `k`: `lot` | `build` | `house` | `market` | `plant`, or terrain: `rail` | `park` | `works`. Terrain is laid out by `new_city` from the seed (a railway from one edge to a terminus beside the core, a couple of parks, an old industrial site, all clear of the starting core) and never changes; nothing is built on it.
   - `f`: floors (built so far for `build`, current for `house`; 0 otherwise)
   - `t`: target floors (`build`, `house`; 0 otherwise); `f <= t` always
   - `p`: residents (houses only; 0 otherwise)

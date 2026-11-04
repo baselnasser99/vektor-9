@@ -30,7 +30,8 @@ START_MARKETS = 2
 START_HOUSE_CHANCE = 0.4
 START_FLOORS = (2, 4)
 
-# Terrain the city grows around: a railway edge to edge, a few parks, an old industrial site.
+# Terrain the city grows around: a railway in from one edge to a terminus by the core, a few
+# parks, an old industrial site.
 # Placement is integer math only, so every machine lays out the same map.
 RAIL_SLOPES = (
     (1, 1),
