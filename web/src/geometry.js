@@ -1,6 +1,5 @@
 // Geometry helpers shared by every builder: seeded randomness, boxes and cylinders with UVs in metres, placement.
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 export const REPEAT = 4; // metres per texture repeat
 
@@ -32,7 +31,7 @@ export function box(w, h, d, seg = 3) {
   if (seg <= 1 && Math.min(w, h, d) < 1.2) seg = 0;
   const key = `${w}:${h}:${d}:${seg}`;
   if (boxes.has(key)) return boxes.get(key);
-  const g = seg ? new RoundedBoxGeometry(w, h, d, seg, Math.min(0.3, Math.min(w, h, d) * 0.3)) : new THREE.BoxGeometry(w, h, d);
+  const g = seg ? rounded(w, h, d, seg, Math.min(0.3, Math.min(w, h, d) * 0.3)) : new THREE.BoxGeometry(w, h, d);
   boxes.set(key, projectUV(g));
   return boxes.get(key);
 }
@@ -43,12 +42,44 @@ export function slab(w, h, d, step = 6) {
   return boxes.get(key);
 }
 function projectUV(g) {
-  const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
-  for (let i = 0; i < p.count; i++) {
-    const [ax, ay, az] = [Math.abs(n.getX(i)), Math.abs(n.getY(i)), Math.abs(n.getZ(i))];
-    const [u, v] = ax >= ay && ax >= az ? [p.getZ(i), p.getY(i)] : ay >= az ? [p.getX(i), p.getZ(i)] : [p.getX(i), p.getY(i)];
-    uv.setXY(i, u / REPEAT, v / REPEAT);
+  const p = g.attributes.position.array, n = g.attributes.normal.array, uv = g.attributes.uv.array;
+  for (let i = 0, j = 0; i < p.length; i += 3, j += 2) {
+    const ax = Math.abs(n[i]), ay = Math.abs(n[i + 1]), az = Math.abs(n[i + 2]), sideways = ax >= ay && ax >= az;
+    uv[j] = (sideways ? p[i + 2] : p[i]) / REPEAT;
+    uv[j + 1] = (sideways ? p[i + 1] : ay >= az ? p[i + 2] : p[i + 1]) / REPEAT;
   }
+  return g;
+}
+
+// three's RoundedBoxGeometry, without its work the city does not need: each vertex's rounding direction depends only
+// on the detail level, so it is worked out once (template), and each size is the same two terms three computes,
+// in the same order, so the vertices and normals match it to the bit. Its UVs are skipped (projectUV replaces them).
+const templates = new Map();
+function rounded(w, h, d, seg, radius) {
+  if (!templates.has(seg)) {
+    const S = seg * 2 + 1, base = new THREE.BoxGeometry(1, 1, 1, S, S, S), flat = base.toNonIndexed(), p = flat.attributes.position.array;
+    const half = 0.5 / S, n = new THREE.Vector3(), sign = new Float64Array(p.length), dir = new Float64Array(p.length);
+    for (let i = 0; i < p.length; i += 3) {
+      n.set(p[i], p[i + 1], p[i + 2]);
+      n.x -= Math.sign(n.x) * half;
+      n.y -= Math.sign(n.y) * half;
+      n.z -= Math.sign(n.z) * half;
+      n.normalize();
+      for (let k = 0; k < 3; k++) {
+        sign[i + k] = Math.sign(p[i + k]);
+        dir[i + k] = n.getComponent(k);
+      }
+    }
+    templates.set(seg, { sign, dir, normals: new Float32Array(dir), groups: base.groups });
+  }
+  const { sign, dir, normals, groups } = templates.get(seg), count = sign.length;
+  const r = Math.min(w / 2, h / 2, d / 2, radius), half = [w / 2 - r, h / 2 - r, d / 2 - r], pos = new Float32Array(count);
+  for (let i = 0; i < count; i++) pos[i] = half[i % 3] * sign[i] + dir[i] * r;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(normals.slice(), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array((count / 3) * 2), 2));
+  for (const { start, count: n, materialIndex } of groups) g.addGroup(start, n, materialIndex);
   return g;
 }
 export const cyl = (rt, rb, h, seg = 24, start = 0, len = Math.PI * 2) =>
