@@ -28,6 +28,7 @@ export function telecomTower(kit, root, x, y, z) {
     if (!o.material) throw new Error(`telecom tower: no material for mesh ${o.name}`);
   });
   g.getObjectByName('detail').userData.lod = 'tower';
+  g.userData.rigid = true; // placed whole at the hub, where the warp is zero anyway: skip it for every vertex
   g.position.set(x, y, z);
   root.add(g);
 }
