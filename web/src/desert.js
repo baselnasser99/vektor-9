@@ -31,7 +31,7 @@ export function buildDesert(kit, edge, lines, onFrame) {
 }
 
 // Dune height: flat through the sprawl, rising over 500 m beyond it, flattened along the highway corridors.
-function duneHeight(edge) {
+export function duneHeight(edge) {
   const ramp = (a, b, v) => Math.min(1, Math.max(0, (v - a) / (b - a)));
   return (x, z) => {
     const r = Math.max(Math.abs(x), Math.abs(z)), road = Math.min(Math.abs(x), Math.abs(z));
@@ -115,10 +115,10 @@ function highways(kit, root, edge) {
         streetLamp(kit, deck, lx, lz, ax === 'z' ? (off < 0 ? 0 : Math.PI) : (off < 0 ? -Math.PI / 2 : Math.PI / 2));
       }
     }
-    const [a, b] = [sign * start, sign * REACH], y = DECK + 0.6 + 0.65;
+    const [a, b] = [sign * start, sign * REACH], y = DECK + 0.6 + 0.65, right = (ax === 'x' ? 1 : -1) * sign; // drive on the right
     for (const off of [2.2, 5.8]) {
-      lanes.push({ axis: ax, at: off, from: a, to: b, y, cars: 5 });
-      lanes.push({ axis: ax, at: -off, from: b, to: a, y, cars: 5 });
+      lanes.push({ axis: ax, at: right * off, from: a, to: b, y, cars: 5 });
+      lanes.push({ axis: ax, at: -right * off, from: b, to: a, y, cars: 5 });
     }
   }
   return lanes;

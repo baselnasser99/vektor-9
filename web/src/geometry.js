@@ -33,13 +33,22 @@ export function box(w, h, d, seg = 3) {
   const key = `${w}:${h}:${d}:${seg}`;
   if (boxes.has(key)) return boxes.get(key);
   const g = seg ? new RoundedBoxGeometry(w, h, d, seg, Math.min(0.3, Math.min(w, h, d) * 0.3)) : new THREE.BoxGeometry(w, h, d);
+  boxes.set(key, projectUV(g));
+  return boxes.get(key);
+}
+// Plain box cut into pieces about `step` metres long, so the city's warp can bend it: long flat street parts.
+export function slab(w, h, d, step = 6) {
+  const key = `slab:${w}:${h}:${d}:${step}`;
+  if (!boxes.has(key)) boxes.set(key, projectUV(new THREE.BoxGeometry(w, h, d, Math.ceil(w / step), 1, Math.ceil(d / step))));
+  return boxes.get(key);
+}
+function projectUV(g) {
   const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
   for (let i = 0; i < p.count; i++) {
     const [ax, ay, az] = [Math.abs(n.getX(i)), Math.abs(n.getY(i)), Math.abs(n.getZ(i))];
     const [u, v] = ax >= ay && ax >= az ? [p.getZ(i), p.getY(i)] : ay >= az ? [p.getX(i), p.getZ(i)] : [p.getX(i), p.getY(i)];
     uv.setXY(i, u / REPEAT, v / REPEAT);
   }
-  boxes.set(key, g);
   return g;
 }
 export const cyl = (rt, rb, h, seg = 24, start = 0, len = Math.PI * 2) =>

@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { palette } from './palette.js';
-import { REPEAT } from './geometry.js';
-import { adTexture, concreteTexture, punchedTexture, textTexture, windowTexture } from './textures.js';
+import { adTexture, concreteTexture, textTexture } from './textures.js';
+import { facadeMaterial } from './facade.js';
 
 const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_metal_sheet', 'metal_grate_rusty', 'aerial_asphalt_01'];
 // Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
@@ -52,15 +52,11 @@ export async function loadKit(renderer, models = [], base = './assets') {
     // Cast concrete drawn in code: soft blotches, rain streaks, faint formwork seams; no tiling grid.
     concrete: (color) => once(`concrete:${color}`, () => new THREE.MeshStandardMaterial({
       map: once('concreteMap', concreteTexture), color, roughness: 0.9, metalness: 0 })),
-    // Night glass: a grid of rooms (1.25 m bays, 3.5 m floors), nearly half lit, mostly warm.
-    // concrete: punched windows in a concrete wall instead of a glass skin. Unlit (blackout): every room dark.
-    windows: (seed = 1, lit = true, concrete = false) => once(`windows:${seed}:${lit}:${concrete}`, () => {
-      const fit = (t) => { t.repeat.set(REPEAT / (8 * 1.25), REPEAT / (8 * 3.5)); return t; };
-      const glow = lit ? { emissive: 0xffffff, emissiveMap: fit(windowTexture(seed)), emissiveIntensity: 1 } : {};
-      return concrete
-        ? new THREE.MeshStandardMaterial({ map: fit(once('punched', punchedTexture)), color: palette.slate, roughness: 0.85, ...glow })
-        : new THREE.MeshStandardMaterial({ color: palette.slate, metalness: 0.15, roughness: 0.5, ...glow });
-    }),
+    // Facade with windows (facade.js): a glass curtain wall (offices), punched windows in concrete (homes), or a
+    // shopfront (kind 'shop'). Unlit (blackout): every room dark. seed varies which rooms are lit.
+    windows: (seed = 1, lit = true, concrete = false, kind = concrete ? 'residential' : 'office') =>
+      once(`windows:${seed}:${lit}:${kind}`, () => facadeMaterial(kind, {
+        lit, seed, color: palette.slate, map: kind === 'office' ? null : once('concreteMap', concreteTexture) })),
     // Lit sign with an invented word: glowing text and frame on a dark panel.
     sign: (text, color, vertical = false) => once(`sign:${text}:${color}:${vertical}`, () => {
       const map = textTexture(text, color, vertical, palette.deepNavy);

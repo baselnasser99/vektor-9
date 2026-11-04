@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { css, palette } from './palette.js';
 import { rng } from './geometry.js';
-import { pick } from './world.js';
 
 // Canvas of w x h, painted by draw(g, w, h), as a texture. srgb for color art; leave it off for masks and glow maps
 // whose grey values are meant literally. wrap for textures that tile.
@@ -49,43 +48,6 @@ export const concreteTexture = () => painted(512, 512, (g, S) => {
   }
   g.fillStyle = 'rgba(0,0,0,0.07)';
   g.fillRect(0, S / 2, S, 2);
-}, { wrap: true });
-
-// Window grid shared by the two textures below: 8 x 8 rooms per repeat.
-const rooms = (draw) => { for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) draw(c * 32 + 3, r * 32 + 8); };
-
-// Concrete wall with a dark window in every room.
-export const punchedTexture = () => painted(256, 256, (g) => {
-  const rand = rng(5);
-  g.fillStyle = '#a8a8a8';
-  g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 1500; i++) {
-    g.fillStyle = `rgba(0,0,0,${0.03 + rand() * 0.06})`;
-    g.fillRect(rand() * 256, rand() * 256, 1 + rand() * 2, 1 + rand() * 2);
-  }
-  rooms((x, y) => {
-    g.fillStyle = '#1a2030';
-    g.fillRect(x, y, 26, 20);
-    g.fillStyle = 'rgba(0,0,0,0.12)';
-    g.fillRect(x, y + 20, 26, 4);
-  });
-}, { wrap: true });
-
-// Lit rooms as a glow map: nearly half lit, mostly warm; pink and cyan are rare so a city does not turn to confetti.
-const LIT = [palette.warmWindow, palette.warmWindow, palette.warmWindow, palette.sodium, palette.sodium, palette.glare,
-  palette.warmWindow, palette.sodium, palette.neonPink, palette.neonCyan];
-export const windowTexture = (seed) => painted(256, 256, (g) => {
-  // Its own small generator: changing it would reshuffle every lit window in the city.
-  let a = seed * 9301 + 49297;
-  const rand = () => ((a = (a * 9301 + 49297) % 233280) / 233280);
-  g.fillStyle = '#000';
-  g.fillRect(0, 0, 256, 256);
-  rooms((x, y) => {
-    if (rand() > 0.45) return;
-    g.globalAlpha = 0.35 + rand() * 0.5;
-    g.fillStyle = css(pick(rand, LIT));
-    g.fillRect(x, y, 26, 20);
-  });
 }, { wrap: true });
 
 // Billboard ad: an invented word over a two-color gradient with dark bands and a pale disc.
