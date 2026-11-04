@@ -4,7 +4,7 @@ import * as THREE from 'three';
 // city draws in a few hundred calls instead of tens of thousands. (Merging per grid cell for culling was
 // tried and measured: it multiplied draw calls and cost more than it saved.)
 // Writes straight into one buffer per material: cloning each part first made this most of the city's build time.
-// warp: optional { dx(x, z), dz(x, z) } that shifts every vertex over the ground after placement (city.js), except
+// warp: optional (x, z, out) => out = [dx, dz], the shift of every vertex over the ground after placement (city.js), except
 // under groups marked userData.rigid.
 export function mergeByMaterial(root, warp) {
   root.updateMatrixWorld(true);
@@ -15,7 +15,7 @@ export function mergeByMaterial(root, warp) {
     if (!buckets.has(o.material)) buckets.set(o.material, []);
     buckets.get(o.material).push(o);
   });
-  const out = new THREE.Group(), normalMatrix = new THREE.Matrix3();
+  const out = new THREE.Group(), normalMatrix = new THREE.Matrix3(), shift = [0, 0];
   for (const [material, meshes] of buckets) {
     let verts = 0, count = 0;
     for (const { geometry: g } of meshes) {
@@ -47,9 +47,9 @@ export function mergeByMaterial(root, warp) {
       }
       // shortcut: normals are not bent with the warp; fine while its slopes stay gentle (under ~0.5).
       if (warp && !userData.rigid) for (let o = base * 3; o < (base + count) * 3; o += 3) {
-        const x = pos[o], z = pos[o + 2];
-        pos[o] = x + warp.dx(x, z);
-        pos[o + 2] = z + warp.dz(x, z);
+        warp(pos[o], pos[o + 2], shift);
+        pos[o] += shift[0];
+        pos[o + 2] += shift[1];
       }
       uvs.set(t, base * 2);
       if (colors) colors.set(g.attributes.color.array, base * 3);

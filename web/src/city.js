@@ -49,20 +49,25 @@ export function cityWarp(snap, layout, rail) {
   const [x0, x1, z0, z1] = [lines[town[0]].c, lines[town[0] + 2].c, lines[town[1]].c, lines[town[1] + 2].c];
   const k1 = (2 * Math.PI) / 150, k2 = (2 * Math.PI) / 80;
   const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-  const at = (x, z) => {
-    // Two crossed waves, full strength from 50 m inside the old town's bounding streets.
+  // The shift at (x, z), written into out as [dx, dz] (no garbage: merge calls it for every vertex).
+  return (x, z, out) => {
+    // Two crossed waves, full strength from 50 m inside the old town's bounding streets; zero outside it.
     const old = smooth(Math.min(x - x0, x1 - x, z - z0, z1 - z) / 50);
+    if (old === 0) {
+      out[0] = out[1] = 0;
+      return out;
+    }
     const keep = rail ? smooth((Math.abs((x - rail.mx) * rail.uz - (z - rail.mz) * rail.ux) - 12) / 40) : 1;
-    return [keep * old * (6 * Math.sin(k1 * z + a) + 3.5 * Math.sin(k2 * (x + z) + b)),
-      keep * old * (6 * Math.sin(k1 * x + c) + 3.5 * Math.sin(k2 * (x - z) + d))];
+    out[0] = keep * old * (6 * Math.sin(k1 * z + a) + 3.5 * Math.sin(k2 * (x + z) + b));
+    out[1] = keep * old * (6 * Math.sin(k1 * x + c) + 3.5 * Math.sin(k2 * (x - z) + d));
+    return out;
   };
-  return { dx: (x, z) => at(x, z)[0], dz: (x, z) => at(x, z)[1] };
 }
 
 // Moves and turns a tile's group with the warp at its centre, as a whole, so its buildings never bend.
 function settle(g, warp) {
-  const { x, z } = g.position, [dx, dz] = [warp.dx(x, z), warp.dz(x, z)];
-  g.rotation.y -= Math.atan2(warp.dz(x + 1, z) - dz, 1 + warp.dx(x + 1, z) - dx);
+  const { x, z } = g.position, [dx, dz] = warp(x, z, []), [ex, ez] = warp(x + 1, z, []);
+  g.rotation.y -= Math.atan2(ez - dz, 1 + ex - dx);
   g.position.x += dx;
   g.position.z += dz;
   g.userData.rigid = true; // mergeByMaterial leaves it unwarped

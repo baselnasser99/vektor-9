@@ -25,12 +25,14 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   const color = new THREE.Color();
   cars.forEach((c, i) => body.setColorAt(i, color.set(pick(rand, MOVING))));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const shift = [0, 0];
   const spot = ({ axis, at }, along) => {
     let side = at - hub.c;
     const u = along - hub.c, rho = hub.r + Math.abs(side);
     if (Math.abs(side) < hub.w && u * u < rho * rho - side * side) side = Math.sign(side) * Math.sqrt(rho * rho - u * u);
     const [x, z] = axis === 'z' ? [hub.c + side, along] : [along, hub.c + side];
-    return [x + warp.dx(x, z), z + warp.dz(x, z)];
+    warp(x, z, shift);
+    return [x + shift[0], z + shift[1]];
   };
   const place = () => {
     cars.forEach((c, i) => {
