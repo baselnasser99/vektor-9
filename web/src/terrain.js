@@ -62,9 +62,12 @@ export function railway(kit, root, centres, edge) {
   const line = railLine(centres);
   if (!line) return null;
   const { mx, mz, angle, ux, uz } = line, ground = duneHeight(edge);
-  const at = (t) => {
-    const [x, z] = [mx + ux * t, mz + uz * t];
-    return [x, DECK + ground(x, z), z];
+  // A point on the deck centre line, t metres along it; out is reused by the trains every frame.
+  const at = (t, out = [0, 0, 0]) => {
+    out[0] = mx + ux * t;
+    out[2] = mz + uz * t;
+    out[1] = DECK + ground(out[0], out[2]);
+    return out;
   };
   const along = centres.map(([x, z]) => (x - mx) * ux + (z - mz) * uz), [lo, hi] = [Math.min(...along), Math.max(...along)];
   const fromCentre = (t) => Math.hypot(mx + ux * t, mz + uz * t);

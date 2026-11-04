@@ -25,26 +25,30 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   const color = new THREE.Color();
   cars.forEach((c, i) => body.setColorAt(i, color.set(pick(rand, MOVING))));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-  const shift = [0, 0];
-  const spot = ({ axis, at }, along) => {
+  const shift = [0, 0], here = [0, 0], ahead = [0, 0], meshes = [body, head, tail]; // reused: no garbage per frame
+  // Where a car `along` its lane is, written into out as [x, z].
+  const spot = ({ axis, at }, along, out) => {
     let side = at - hub.c;
     const u = along - hub.c, rho = hub.r + Math.abs(side);
     if (Math.abs(side) < hub.w && u * u < rho * rho - side * side) side = Math.sign(side) * Math.sqrt(rho * rho - u * u);
-    const [x, z] = axis === 'z' ? [hub.c + side, along] : [along, hub.c + side];
+    const x = axis === 'z' ? hub.c + side : along, z = axis === 'z' ? along : hub.c + side;
     warp(x, z, shift);
-    return [x + shift[0], z + shift[1]];
+    out[0] = x + shift[0];
+    out[1] = z + shift[1];
+    return out;
   };
   const place = () => {
     cars.forEach((c, i) => {
       const { from, to, y } = c.lane, along = from + (to - from) * (c.u % 1), s = to > from ? 1 : -1;
       // Heading from where the car will be a metre on, so it turns with the bend of the street.
-      const [x1, z1] = spot(c.lane, along), [x2, z2] = spot(c.lane, along + s);
-      p.set(x1, y, z1);
-      q.setFromAxisAngle(up, Math.atan2(x2 - x1, z2 - z1));
+      spot(c.lane, along, here);
+      spot(c.lane, along + s, ahead);
+      p.set(here[0], y, here[1]);
+      q.setFromAxisAngle(up, Math.atan2(ahead[0] - here[0], ahead[1] - here[1]));
       m.compose(p, q, one);
-      for (const mesh of [body, head, tail]) mesh.setMatrixAt(i, m);
+      for (const mesh of meshes) mesh.setMatrixAt(i, m);
     });
-    for (const mesh of [body, head, tail]) mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
   };
   place();
   onFrame((dt) => {
@@ -60,7 +64,7 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
 
 // Two trains on the railway viaduct (terrain.js railway), one per track, each shuttling between the terminus and
 // the far end of the line out in the haze, slowing into the station and waiting there a moment.
-// rail: { at(t) -> [x, y, z] on the deck centre line, side: [x, z] across it, angle, end, out }.
+// rail: { at(t, out) -> [x, y, z] on the deck centre line, side: [x, z] across it, angle, end, out }.
 export function trains(kit, rail, onFrame) {
   const g = new THREE.Group(), trainsets = [], CAR = 20, CARS = 6, body = kit.windows(2, true);
   const shell = kit.steel(palette.cream, 0.4), stripe = kit.glow(palette.neonCyan, 2);
@@ -76,13 +80,14 @@ export function trains(kit, rail, onFrame) {
     });
     trainsets.push({ cars, off, u: phase });
   }
+  const point = [0, 0, 0];
   const place = () => {
     for (const { cars, off, u } of trainsets) {
       // Back and forth; the smoothstep slows it at both ends, and clamping holds it at the station a while.
       const there = Math.min(1, Math.max(0, (1 - Math.abs(2 * u - 1)) * 1.15 - 0.15));
       const head = 4 + room * there * there * (3 - 2 * there);
       cars.forEach((car, k) => {
-        const [x, y, z] = rail.at(rail.end + dir * (head + k * CAR + CAR / 2));
+        const [x, y, z] = rail.at(rail.end + dir * (head + k * CAR + CAR / 2), point);
         car.position.set(x + rail.side[0] * off, y + 0.6, z + rail.side[1] * off);
         car.rotation.y = -rail.angle;
       });
