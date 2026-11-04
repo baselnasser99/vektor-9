@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, rng, slab } from './geometry.js';
-import { telecomTower } from './landmarks.js';
+import { telecomTower, towerBase } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
 import { ALLEY, BLOCK, HALF, SIDEWALK, STREETS, TILE } from './world.js';
@@ -90,7 +90,7 @@ function walk(ctx, s) {
 }
 
 // Where the boulevards meet: a roundabout. Cars circle the island (life.js traffic, hub), which carries the
-// city's telecom tower (landmarks.js).
+// city's telecom tower and its raised plaza (landmarks.js).
 const ISLAND = 8;
 function plaza({ kit, root, paint }, c, w) {
   // Dashed rings between the circling lanes, inside the crossing and off its corner sidewalks.
@@ -106,6 +106,7 @@ function plaza({ kit, root, paint }, c, w) {
   part(root, cyl(ISLAND, ISLAND + 0.3, 0.4, 40), kit.concrete(palette.roseGrey), c, 0.2, c);
   part(root, cyl(ISLAND - 0.6, ISLAND - 0.6, 0.1, 40), kit.concrete(palette.teal), c, 0.42, c);
   telecomTower(kit, root, c, c);
+  towerBase(kit, root, c, w);
 }
 
 // Sectors: raised paving out to the curb, a curb line, and an alley cross through the middle.

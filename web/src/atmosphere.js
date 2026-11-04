@@ -1,4 +1,4 @@
-// The air: sky dome, stars, moon, the cloud deck lit by the city, far skylines and cloud banks on the horizon, searchlights, airships, mist and rain.
+// The air: sky dome, stars, moon, the cloud deck lit by the city, far skylines and cloud banks on the horizon, airships, mist and rain.
 // All of it is decoration (ADR-0002); rain strength comes from the snapshot so every visitor sees the same weather.
 import * as THREE from 'three';
 import { palette } from './palette.js';
@@ -89,29 +89,6 @@ export function horizon(radius, onFrame) {
       color: palette.cloudGlow, opacity: 0.7 }), -2),
     ring(radius * 0.8, 400, 170, new THREE.MeshBasicMaterial({ ...flat, map: skyline }), -1),
   ];
-}
-
-// Searchlight beams from rooftops, sweeping slowly into the clouds; brightest at the lamp, fading upward.
-export function searchlights(half, onFrame) {
-  const rand = rng(88), beams = [];
-  const geo = new THREE.CylinderGeometry(24, 0.8, 650, 20, 1, true).translate(0, 325, 0);
-  const colors = [], p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) colors.push(...Array(3).fill(1 - p.getY(i) / 650));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const mat = new THREE.MeshBasicMaterial({ color: palette.glassHighlight, vertexColors: true, transparent: true, opacity: 0.09,
-    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-  for (let k = 0; k < 4; k++) {
-    const pivot = new THREE.Group(), beam = new THREE.Mesh(geo, mat);
-    beam.rotation.z = 0.35 + rand() * 0.25;
-    pivot.add(beam);
-    pivot.position.set((rand() - 0.5) * half * 1.2, 70 + rand() * 40, (rand() - 0.5) * half * 1.2);
-    pivot.rotation.y = rand() * Math.PI * 2;
-    beams.push([pivot, 0.04 + rand() * 0.05]);
-  }
-  onFrame((dt) => {
-    for (const [pivot, speed] of beams) pivot.rotation.y += speed * dt;
-  });
-  return beams.map(([pivot]) => pivot);
 }
 
 // Two airships circling slowly above the towers, each with a lit ad on its flank and steady nav lights.

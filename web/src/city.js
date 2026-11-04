@@ -121,6 +121,7 @@ export function buildCity(kit, snap) {
     }
   });
   const rail = railway(kit, root, rails, streets.hi);
+  detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
   const city = mergeByMaterial(root, warp);
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
   return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi };

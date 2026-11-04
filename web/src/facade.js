@@ -32,6 +32,8 @@ export const STYLES = {
     frame: 0.07, slab: 0.18, lit: 0.6 },
   luxury: { kind: 0, glass: true, bay: 3, floor: F, win: [0.92, 0.82, 0.08], recess: 0.15, room: 5.5, mullions: 3,
     column: 3, frame: 0.05, slab: 0.3, lit: 0.55 },
+  panorama: { kind: 0, glass: true, bay: 2.2, floor: 5.5, win: [0.97, 0.9, 0.05], recess: 0.06, room: 9, mullions: 1,
+    column: 0, frame: 0.04, slab: 0, lit: 0.45 }, // the tower's observation glass: one tall continuous band
   industrial: { kind: 1, bay: 4, floor: F, win: [0.86, 0.28, 0.6], recess: 0.1, room: 8, mullions: 4, column: 1,
     frame: 0.06, slab: 0, lit: 0.5 },
 };
