@@ -7,7 +7,7 @@ import { facadeClock } from './facade.js';
 import { buildCity, cityLayout } from './city.js';
 import { REACH, buildDesert } from './desert.js';
 import { traffic, trains } from './life.js';
-import { airships, cloudDeck, horizon, mist, moon, rain, rainAmount, searchlights, stars } from './atmosphere.js';
+import { airships, cloudDeck, horizon, mist, moon, rain, rainAmount, stars } from './atmosphere.js';
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
 const SCHEMA = 3;
@@ -43,7 +43,7 @@ onFrame(() => {
 const { desert, lanes: highwayLanes } = buildDesert(kit, edge, lines, onFrame);
 scene.add(city, desert, traffic(kit, [...lanes, ...highwayLanes], onFrame, warp, hub));
 if (rail) scene.add(trains(kit, rail, onFrame));
-scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), cloudDeck(REACH * 6, onFrame), ...mist(half, onFrame), ...searchlights(half, onFrame), ...airships(kit, half, onFrame));
+scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), cloudDeck(REACH * 6, onFrame), ...mist(half, onFrame), ...airships(kit, half, onFrame));
 // ?rain=0..1 previews weather the snapshot does not have.
 const wet = params.has('rain') ? Number(params.get('rain')) : rainAmount(snap);
 if (wet) scene.add(rain(wet, controls.target, onFrame));
