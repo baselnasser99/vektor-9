@@ -204,7 +204,8 @@ void facade(inout vec3 albedo) {
   glow = mix(glow, hue * min(avg, 1.0) * fLight.y * 0.6 * cover, far);
   outAlbedo = mix(outAlbedo, mix(wall, fGlass, cover), far);
   shine = mix(shine, cover * 0.6, far);
-  albedo = mix(albedo, outAlbedo, side);
+  // Street canyon: lower storeys see less sky, so walls darken towards the street (window light is unaffected).
+  albedo = mix(albedo, outAlbedo, side) * mix(0.55, 1.0, smoothstep(0.0, 45.0, vFPos.y));
   fGlow = glow * side;
   fShine = shine * side;
 }

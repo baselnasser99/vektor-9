@@ -86,6 +86,8 @@ Built so far (`web/src/tiles.js`, `plant.js`, `city.js`): towers get a shop podi
 
 **Beyond the grid** (`web/src/desert.js`, decoration only): no wall. No buildings outside the grid: the city ends at a wasteland of packed dark dirt that fades along a ragged line into moonlit sand (`#7d6a78`), with boulders, dry scrub, abandoned cars along the tracks, a few scrapyards, half-buried containers and the odd steady barrel fire; sand drifts onto the edge of the asphalt; streets carry on as dirt tracks. Four highways climb from the ring road onto causeways with lamps and real traffic. A line of dead pylons and mesas sit further out.
 
+**Light and air** (`web/src/stage.js`, tuned in `LOOK` there): a cool moon is the key light, with shadows, and the sky fill is kept low, so every building shows its form even with its windows dark and lit sides separate from unlit ones; walls darken towards the street (the canyon gets less sky). Warm windows and lamps play against that cool light. Haze is thickest among the streets and thins with height: near buildings keep full contrast, the middle distance softens, the far city fades into the night, and tall landmarks stay crisp. AgX tone mapping, restrained bloom (only the brightest light blooms), and a light grade that takes a little saturation out of darks and mid-tones while bright signs and neon keep their colour. No dynamic lights besides the moon and the sky.
+
 **Sky** (`web/src/atmosphere.js`): a patchy cloud deck lit mauve from below (`#7a5a7e`), stars and a hazy moon showing through the gaps, and two airships circling with lit ads and steady nav lights; thin mist over the city.
 
 Detail should scale with distance (level of detail): full detail near the camera, simplified far away where the haze hides it anyway.

@@ -5,8 +5,37 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { css, palette, ui } from './palette.js';
 import { MOON, skyDome } from './atmosphere.js';
+
+// The look, in one place: exposure, key (moon) and fill (sky) light, bloom [strength, radius, threshold], and the
+// haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
+export const LOOK = { exposure: 1.35, key: 1.7, fill: 1.3, bloom: [0.5, 0.45, 0.82] };
+const HAZE = { aloft: 0.3, low: 25, high: 220 };
+
+// Haze in every material's fog: thickest among the streets and thinning with height, so distant streets fade into
+// the night while tall landmarks stay crisp. The fragment's height comes from the view-space position (the view
+// matrix is rigid, so its inverse is a transpose), so sprites and points get it too.
+THREE.ShaderChunk.fog_pars_vertex = `#ifdef USE_FOG
+  varying float vFogDepth;
+  varying float vFogHeight;
+#endif`;
+THREE.ShaderChunk.fog_vertex = `#ifdef USE_FOG
+  vFogDepth = - mvPosition.z;
+  vFogHeight = (transpose(mat3(viewMatrix)) * (mvPosition.xyz - viewMatrix[3].xyz)).y;
+#endif`;
+THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment
+  .replace('varying float vFogDepth;', 'varying float vFogDepth;\n  varying float vFogHeight;');
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogThin = fogDensity * mix(1.0, ${HAZE.aloft.toFixed(2)}, smoothstep(${HAZE.low.toFixed(1)}, ${HAZE.high.toFixed(1)}, vFogHeight));
+    float fogFactor = 1.0 - exp(- fogThin * fogThin * vFogDepth * vFogDepth);
+  #else
+    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+  #endif
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+#endif`;
 
 // span: half-width in metres of the area that needs shadows and fits in the view.
 export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, tz] }) {
@@ -125,20 +154,22 @@ function createRenderer() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // The city does not move, so its shadows are drawn once (on start), not every frame.
   renderer.shadowMap.autoUpdate = false;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.35;
+  // AgX keeps saturated neon from clipping to flat hues the way ACES did, and rolls highlights off gently.
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = LOOK.exposure;
   document.body.appendChild(renderer.domElement);
   return renderer;
 }
 
-// Night: deep blue zenith, blue haze lit from below by the city; a cool sky fill with a mauve bounce from the lit
-// streets so dark facades show their detail, and a soft blue moon for shape and shadows. Warm lamps and neon do the rest.
+// Night: deep blue zenith, blue haze lit from below by the city. A cool moon is the key light, strong enough to
+// model every building's form and cast its shadows; the sky fill (cool above, a mauve bounce from the lit streets
+// below) is kept low so lit and unlit sides separate. Warm windows, lamps and neon do the rest.
 function nightScene(span, fog, far) {
   const scene = new THREE.Scene();
   scene.add(skyDome([[0, palette.nightFog], [0.05, palette.nightHorizon], [0.25, palette.nightSky], [1, palette.nightZenith]], far * 0.8));
   scene.fog = new THREE.FogExp2(palette.nightFog, fog);
-  scene.add(new THREE.HemisphereLight(palette.nightHorizon, palette.nightSand, 6));
-  const moon = new THREE.DirectionalLight(palette.moon, 1.1);
+  scene.add(new THREE.HemisphereLight(palette.nightHorizon, palette.nightSand, LOOK.fill));
+  const moon = new THREE.DirectionalLight(palette.moon, LOOK.key);
   moon.position.copy(MOON).multiplyScalar(span * 2.5);
   moon.castShadow = true;
   moon.shadow.mapSize.setScalar(span > 100 ? 4096 : 2048);
@@ -149,17 +180,37 @@ function nightScene(span, fog, far) {
   return scene;
 }
 
-// Bloom gives lamps and neon soft halos; kept modest so signs stay readable.
-// shortcut: GTAOPass washed the frame out, so contact shading comes only from texture AO and shadows; revisit with a tuned AO pass.
+// Bloom gives lamps and neon soft halos; only the brightest light blooms (threshold), so facades keep their detail.
+// Then a light grade (one cheap full-screen pass, see GRADE).
+// shortcut: GTAOPass washed the frame out, so contact shading comes from shadows, texture AO and the facades'
+// street-canyon darkening (facade.js); revisit with a tuned half-resolution AO pass if it is still missing.
 function createComposer(renderer, scene, camera) {
   // Multisampled target: the composer otherwise drops the canvas antialiasing and edges go jagged.
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.7, 0.55, 0.65));
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ...LOOK.bloom));
   composer.addPass(new OutputPass());
+  composer.addPass(new ShaderPass(GRADE));
   return composer;
 }
+
+// The grade, on the final image: darks and mid-tones lose a little saturation (so concrete, steel and glass read as
+// themselves) while bright light keeps its colour (signs, neon, windows); shadows lean cool and highlights warm;
+// a soft vignette.
+const GRADE = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      vec3 g = mix(vec3(l), c.rgb, mix(0.8, 1.05, smoothstep(0.3, 0.75, l)));
+      g *= mix(vec3(0.97, 0.99, 1.04), vec3(1.03, 1.0, 0.97), smoothstep(0.15, 0.7, l));
+      g *= 1.0 - 0.2 * pow(length(vUv - 0.5) * 1.25, 2.0);
+      gl_FragColor = vec4(g, c.a);
+    }`,
+};
 
 // ?bench in the URL: time 30 frames, log draw calls and triangles for one whole frame (scene, shadows and post
 // passes), and which materials hold the most triangles.
