@@ -10,9 +10,9 @@ import { spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { ALLEY, BLOCK, F, HALF, STREETS, TALL, TERRAIN, TILE, WARM, pick } from './world.js';
 
-// Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits every sector in half
-// both ways. lines: every main street, k = 0 and the last being the ring road: its centre c, width w, and kind per
-// axis (kind.x runs along x at z = c, kind.z along z at x = c). The same lines serve both axes.
+// Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
+// every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
+// width w, and kind per axis (kind.x runs along x at z = c, kind.z along z at x = c). The same lines serve both axes.
 export function cityLayout(snap) {
   const n = snap.size, sectors = n / BLOCK, mid = sectors / 2, rand = rng(snap.seed * 13 + 5);
   // A boulevard through the middle (it meets the highways), then narrow and full streets alternating out to the
@@ -27,8 +27,9 @@ export function cityLayout(snap) {
   const widths = kinds.map((k) => STREETS[k.x].w); // both axes' kinds at a line have the same width
   const before = (s) => widths.slice(1, s + 1).reduce((a, b) => a + b, 0); // street width before sector s
   const span = n * TILE + before(sectors - 1) + sectors * ALLEY;
-  const pos = (i) => i * TILE + before(Math.floor(i / BLOCK)) + (Math.floor(i / HALF) - Math.floor(i / BLOCK)) * ALLEY
-    - span / 2 + TILE / 2;
+  const centres = Array.from({ length: n }, (_, i) => i * TILE + before(Math.floor(i / BLOCK))
+    + (Math.floor(i / HALF) - Math.floor(i / BLOCK)) * ALLEY - span / 2 + TILE / 2);
+  const pos = (i) => centres[i];
   const lines = kinds.map((kind, k) => ({ kind, w: widths[k],
     c: k < sectors ? pos(k * BLOCK) - TILE / 2 - widths[k] / 2 : pos(n - 1) + TILE / 2 + widths[k] / 2 }));
   // Old town: of the four 2x2-sector quarters touching the centre, the one with the least terrain.
@@ -77,11 +78,7 @@ export function buildCity(kit, snap) {
   const layout = cityLayout(snap), { n, pos, inTown } = layout, root = new THREE.Group();
   const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
-  // Signature towers: the tallest, then the next tallest at least 12 tiles from those picked, up to three
-  // (ties to the first in row order), so they mark different parts of the skyline.
-  const signature = new Set(), far = (i, j) => Math.max(Math.abs((i % n) - (j % n)), Math.abs(Math.floor(i / n) - Math.floor(j / n))) >= 12;
-  for (const [, i] of snap.tiles.map((t, i) => [t.k === 'house' && t.f >= TALL ? t.f : -1, i]).filter(([f]) => f >= 0)
-    .sort((p, q) => q[0] - p[0] || p[1] - q[1])) if (signature.size < 3 && [...signature].every((j) => far(i, j))) signature.add(i);
+  const signature = signatureTowers(snap);
 
   snap.tiles.forEach((t, i) => {
     const rand = rng(t.s), fw = footprint(t, rand), col = i % n, row = Math.floor(i / n);
@@ -104,7 +101,7 @@ export function buildCity(kit, snap) {
     }
     g.position.set((dx ? dx / 2 : rand() - 0.5) * slack, 0.18, (dz ? dz / 2 : rand() - 0.5) * slack);
     g.rotation.y = Math.floor(rand() * 4) * (Math.PI / 2) + (inTown(col, row) ? (rand() - 0.5) * 0.2 : 0); // old town: a little askew
-    if (t.k !== 'plant' && t.k !== 'lot') shopfronts(kit, lot, t, rand, 0, 0, dx, dz);
+    if (t.k !== 'plant' && t.k !== 'lot') shopfronts(kit, lot, t, rand, dx, dz);
     if (signature.has(i)) spire(kit, g, t.f * F, fw, t.on);
     settle(lot, warp);
     // Skybridge to the east neighbour in the same sector when both are tall enough.
@@ -119,24 +116,37 @@ export function buildCity(kit, snap) {
   return { city: mergeByMaterial(root, warp), warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi };
 }
 
+// Signature towers: the tallest, then the next tallest at least 12 tiles from those picked, up to three (ties to
+// the first in row order), so they mark different parts of the skyline. Returns their tile indices.
+function signatureTowers({ size: n, tiles }) {
+  const picked = new Set();
+  const far = (i, j) => Math.max(Math.abs((i % n) - (j % n)), Math.abs(Math.floor(i / n) - Math.floor(j / n))) >= 12;
+  const tall = tiles.flatMap((t, i) => (t.k === 'house' && t.f >= TALL ? [i] : []));
+  for (const i of tall.sort((a, b) => tiles[b].f - tiles[a].f || a - b)) {
+    if (picked.size === 3) break;
+    if ([...picked].every((j) => far(i, j))) picked.add(i);
+  }
+  return picked;
+}
+
 // Which side of its quarter-block a tile row or column faces: -1 or 1 on the edge, 0 inside.
 const frontage = (i) => (i % HALF === 0 ? -1 : i % HALF === HALF - 1 ? 1 : 0);
 
 // A one-storey strip of shops along each street side of the lot, the full lot wide, so neighbouring strips join
 // into a street wall even where the buildings above are narrow. Construction sites get a site hoarding instead.
-function shopfronts(kit, root, t, rand, cx, cz, dx, dz) {
+function shopfronts(kit, root, t, rand, dx, dz) {
   const site = t.k === 'build', [h, d] = site ? [2.4, 0.3] : [4.5, 3];
   const wall = site ? kit.steel(palette.gunmetal, 0.8) : kit.windows(3, t.on, true, 'shop');
   const awning = t.on && !site && kit.glow(pick(rand, WARM), 1.2);
   const at = TILE / 2 - 0.3 - d / 2;
   // x-facing strips are a hair lower than z-facing ones so their roofs never fight at the corner.
   if (dx) {
-    part(root, box(d, h, TILE, 0), wall, cx + dx * at, 0.18 + h / 2, cz);
-    if (awning) part(root, box(0.15, 0.15, TILE - 1, 0), awning, cx + dx * (at + d / 2 + 0.1), h - 0.4, cz);
+    part(root, box(d, h, TILE, 0), wall, dx * at, 0.18 + h / 2, 0);
+    if (awning) part(root, box(0.15, 0.15, TILE - 1, 0), awning, dx * (at + d / 2 + 0.1), h - 0.4, 0);
   }
   if (dz) {
-    part(root, box(TILE, h + 0.1, d, 0), wall, cx, 0.18 + (h + 0.1) / 2, cz + dz * at);
-    if (awning) part(root, box(TILE - 1, 0.15, 0.15, 0), awning, cx, h - 0.4, cz + dz * (at + d / 2 + 0.1));
+    part(root, box(TILE, h + 0.1, d, 0), wall, 0, 0.18 + (h + 0.1) / 2, dz * at);
+    if (awning) part(root, box(TILE - 1, 0.15, 0.15, 0), awning, 0, h - 0.4, dz * (at + d / 2 + 0.1));
   }
 }
 

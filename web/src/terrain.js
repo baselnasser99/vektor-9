@@ -67,7 +67,8 @@ export function railway(kit, root, centres, edge) {
     return [x, DECK + ground(x, z), z];
   };
   const along = centres.map(([x, z]) => (x - mx) * ux + (z - mz) * uz), [lo, hi] = [Math.min(...along), Math.max(...along)];
-  const dir = Math.hypot(...[0, 2].map((k) => at(lo)[k])) < Math.hypot(...[0, 2].map((k) => at(hi)[k])) ? 1 : -1;
+  const fromCentre = (t) => Math.hypot(mx + ux * t, mz + uz * t);
+  const dir = fromCentre(lo) < fromCentre(hi) ? 1 : -1; // +1: the terminus is at the low end
   const end = dir > 0 ? lo - TILE / 2 : hi + TILE / 2, out = dir * RUN; // terminus, and the far end in the haze
   const deck = kit.concrete(palette.gunmetal), steel = kit.steel(palette.slate, 0.4), led = kit.glow(palette.sodium, 1);
   const onRail = (x, z) => centres.some(([cx, cz]) => Math.abs(x - cx) < TILE / 2 - 1 && Math.abs(z - cz) < TILE / 2 - 1);
