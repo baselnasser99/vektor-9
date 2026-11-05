@@ -54,31 +54,42 @@ function projectUV(g) {
 // three's RoundedBoxGeometry, without its work the city does not need: each vertex's rounding direction depends only
 // on the detail level, so it is worked out once (template), and each size is the same two terms three computes,
 // in the same order, so the vertices and normals match it to the bit. Its UVs are skipped (projectUV replaces them).
+// Indexed: three's copy has three vertices per triangle, but everything about a vertex follows from its place in
+// the unit box, so corners at the same place are one vertex. Same triangles, same values, a fraction of the
+// vertex work (the city is limited by vertices on integrated GPUs).
 const templates = new Map();
 function rounded(w, h, d, seg, radius) {
   if (!templates.has(seg)) {
     const S = seg * 2 + 1, base = new THREE.BoxGeometry(1, 1, 1, S, S, S), flat = base.toNonIndexed(), p = flat.attributes.position.array;
-    const half = 0.5 / S, n = new THREE.Vector3(), sign = new Float64Array(p.length), dir = new Float64Array(p.length);
+    const half = 0.5 / S, n = new THREE.Vector3(), sign = [], dir = [], index = new Uint16Array(p.length / 3), seen = new Map();
     for (let i = 0; i < p.length; i += 3) {
+      const key = `${p[i]},${p[i + 1]},${p[i + 2]}`;
+      if (seen.has(key)) {
+        index[i / 3] = seen.get(key);
+        continue;
+      }
+      seen.set(key, sign.length / 3);
+      index[i / 3] = sign.length / 3;
       n.set(p[i], p[i + 1], p[i + 2]);
       n.x -= Math.sign(n.x) * half;
       n.y -= Math.sign(n.y) * half;
       n.z -= Math.sign(n.z) * half;
       n.normalize();
       for (let k = 0; k < 3; k++) {
-        sign[i + k] = Math.sign(p[i + k]);
-        dir[i + k] = n.getComponent(k);
+        sign.push(Math.sign(p[i + k]));
+        dir.push(n.getComponent(k));
       }
     }
-    templates.set(seg, { sign, dir, normals: new Float32Array(dir), groups: base.groups });
+    templates.set(seg, { sign, dir, normals: new Float32Array(dir), index, groups: base.groups });
   }
-  const { sign, dir, normals, groups } = templates.get(seg), count = sign.length;
+  const { sign, dir, normals, index, groups } = templates.get(seg), count = sign.length;
   const r = Math.min(w / 2, h / 2, d / 2, radius), half = [w / 2 - r, h / 2 - r, d / 2 - r], pos = new Float32Array(count);
   for (let i = 0; i < count; i++) pos[i] = half[i % 3] * sign[i] + dir[i] * r;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(normals.slice(), 3));
   g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array((count / 3) * 2), 2));
+  g.setIndex(new THREE.BufferAttribute(index, 1)); // shared by every size; nothing writes to it
   for (const { start, count: n, materialIndex } of groups) g.addGroup(start, n, materialIndex);
   return g;
 }

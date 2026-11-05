@@ -9,6 +9,7 @@ import { pick } from './world.js';
 import { streetLamp } from './parts.js';
 import { mergeByMaterial } from './merge.js';
 import { radialTexture } from './textures.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const REACH = 1900; // metres from the centre to the end of the dunes; fog hides everything past ~1.5 km
 const SPRAWL = 420; // depth of the flat ring of packed dirt around the city, before the dunes rise
@@ -150,7 +151,8 @@ function wastes(kit, root, edge, lines, height, rand) {
   const rock = kit.concrete(palette.charcoal), dust = kit.concrete(palette.nightSand), rust = kit.mat('rusty_painted_metal', palette.slate);
   const hulls = [palette.gunmetal, palette.brick, palette.slate, palette.roseGrey].map((c) => kit.mat('rusty_painted_metal', c));
   const tyre = kit.steel(palette.charcoal, 0.9), container = kit.mat('rusty_corrugated_iron', palette.brick);
-  const stone = new THREE.DodecahedronGeometry(1, 0), drum = cyl(0.3, 0.3, 0.9, 8), ring = new THREE.TorusGeometry(0.45, 0.2, 5, 10);
+  // The stone with its corners shared (61 vertices, not 108): the same stone for less vertex work, thousands of times.
+  const stone = mergeVertices(new THREE.DodecahedronGeometry(1, 0), 1e-6), drum = cyl(0.3, 0.3, 0.9, 8), ring = new THREE.TorusGeometry(0.45, 0.2, 5, 10);
   const tracks = lines.filter((c) => Math.abs(c) > 1); // the centre lines are highways, not tracks
   const fire = new THREE.SpriteMaterial({ map: radialTexture(64), color: palette.sodium, transparent: true, opacity: 0.6,
     blending: THREE.AdditiveBlending, depthWrite: false });
