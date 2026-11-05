@@ -5,6 +5,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { CopyShader } from 'three/addons/shaders/CopyShader.js';
 import { css, palette, ui } from './palette.js';
 import { MOON, glslColor, skyDome, skyGlsl } from './atmosphere.js';
 
@@ -182,7 +184,9 @@ function hint() {
 }
 
 function createRenderer() {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // No canvas antialiasing: the composer antialiases the scene (createComposer) and the canvas only ever gets one
+  // full-screen picture, where four samples per pixel would all be the same colour.
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
@@ -248,10 +252,15 @@ export function governor(renderer, composer, step = 0.15, floor = 0.7) {
 // shortcut: GTAOPass washed the frame out, so contact shading comes from shadows, texture AO and the facades'
 // street-canyon darkening (facade.js); revisit with a tuned half-resolution AO pass if it is still missing.
 function createComposer(renderer, scene, camera) {
-  // Multisampled target: the composer otherwise drops the canvas antialiasing and edges go jagged.
+  // The scene draws into a multisampled target (antialiased edges), then is copied once into a plain one, where
+  // bloom adds its glow: adding it to every one of four samples cost several times as much for the same picture.
+  // The copy swaps the two targets and so does the output pass, so the scene always lands in the multisampled one
+  // (renderTarget2, the first read buffer); keep the swaps per frame even when adding passes.
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 }));
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType }));
+  composer.renderTarget2.samples = 4;
   composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new ShaderPass(CopyShader));
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ...LOOK.bloom));
   const output = new OutputPass(), shader = output.material.fragmentShader, end = shader.lastIndexOf('}');
   output.material.fragmentShader = `${shader.slice(0, end).replace('void main() {', `${GRADE}\nvoid main() {`)}
