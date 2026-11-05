@@ -46,7 +46,7 @@ onFrame(() => {
 const desert = buildDesert(kit, edge, lines, onFrame);
 scene.add(city, desert, traffic(kit, outOfTown(lanes, edge), onFrame, warp, hub));
 if (rail) scene.add(trains(kit, rail, onFrame));
-scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame));
+scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), ...cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame));
 // ?rain=0..1 previews weather the snapshot does not have.
 const wet = params.has('rain') ? Number(params.get('rain')) : rainAmount(snap);
 if (wet) scene.add(rain(wet, controls.target, onFrame));

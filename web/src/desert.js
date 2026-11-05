@@ -77,6 +77,9 @@ function ground(kit, root, edge, height) {
   const mat = kit.concrete(palette.glare).clone();
   mat.vertexColors = true;
   part(root, geo, mat);
+  // Flat sand on out past the horizon, just under the dunes: from high up the eye sees beyond the dunes' edge, and
+  // without it the sky dome's underside showed through as a dark patch. Fully fogged out there, so no seam.
+  part(root, new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2), kit.concrete(palette.nightSand), 0, -3, 0);
 }
 
 // Sand blown onto the outer edge of the asphalt, so the city's road surface has no clean border.

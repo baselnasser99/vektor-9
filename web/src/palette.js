@@ -33,6 +33,13 @@ export const palette = {
   nightFog: 0x1d2645,
   moon: 0x9fb4ff,
   cloudGlow: 0x7a5a7e,
+  // Polluted twilight sky (atmosphere.js): smog low on the horizon, blue-grey haze, a desaturated dusk above.
+  smogOrange: 0x8a5e3f,
+  smogHaze: 0x56607a,
+  duskBlue: 0x2c3360,
+  duskZenith: 0x121633,
+  smogCloud: 0x5b5866,
+  cityGlow: 0x7a6250,
   nightSand: 0x7d6a78,
   charcoal: 0x1e2333,
   gunmetal: 0x2f3648,
