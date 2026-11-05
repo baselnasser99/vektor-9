@@ -13,28 +13,34 @@ const CYCLE = 40; // seconds for a full traffic-light cycle: half green along x,
 // green long enough left to clear the crossing (the roundabout takes longest) and room to get out the far side
 // (gap: free road to the car ahead), and once it commits it keeps going.
 // Returns how far the car may still go before the next stop line it has to wait at (Infinity if none).
-function stopLine(c, lane, t, hub, gap) {
-  const s = Math.sign(lane.to - lane.from), along = lane.from + (lane.to - lane.from) * c.u;
-  const ring = Math.abs(lane.at - hub.c) < hub.w; // this lane swings round the roundabout at the hub
+function stopLine(c, lane, t, gap) {
+  const along = lane.from + (lane.to - lane.from) * c.u, s = lane.s;
   let room = Infinity;
-  for (const [centre, half] of lane.stops ?? []) {
-    const round = ring && Math.abs(centre - hub.c) < 1, side = Math.abs(lane.at - hub.c), rho = hub.r + side;
-    const reach = round ? hub.r + hub.w - 4 : half; // every ring lane waits outside the outermost ring
+  for (const { centre, reach, cycle, offset, clear } of lane.lights) {
     const d = (centre - s * reach - along) * s - CAR / 2 - 0.5; // to where the car's nose meets the line
     // Already in it (a car wrapping round to the lane's start still waits), or a nearer line matters more.
     if (d < -3 || d > room || c.cleared === centre) continue;
-    const [x, z] = lane.axis === 'x' ? [centre, lane.c] : [lane.c, centre], cycle = round ? 2 * CYCLE : CYCLE;
-    const phase = (t + cycle * fract(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453)) % cycle; // each crossing its own
-    const green = lane.axis === 'x' ? cycle / 2 - phase : cycle - phase; // seconds of green left
-    // Distance to clear the crossing: straight over, or round the ring's arc and out (life.js spot).
-    const inner = round ? Math.sqrt(rho * rho - side * side) : 0;
-    const across = (round ? rho * (Math.PI - 2 * Math.asin(side / rho)) + 2 * (reach - inner) : 2 * reach) + CAR + Math.max(0, d) + 2;
+    const phase = (t + offset) % cycle, green = lane.axis === 'x' ? cycle / 2 - phase : cycle - phase; // seconds of green left
     // Timed at the slowest car's pace (and slower, for pulling away), since a car may be stuck behind one.
-    const open = (lane.axis === 'x') === phase < cycle / 2 && green > across / 7 && gap > Math.max(0, d) + 2 * reach + CAR + 1;
+    const open = (lane.axis === 'x') === phase < cycle / 2 && green > (clear + Math.max(0, d) + 2) / 7 && gap > Math.max(0, d) + 2 * reach + CAR + 1;
     if (open && d < 4) c.cleared = centre; // committed: it goes now, even if the light changes
     else if (!open) room = Math.max(0, d);
   }
   return room;
+}
+
+// The fixed part of every light on a lane, worked out once: where its stop line is (reach from the crossing's
+// centre), its cycle and offset (each crossing its own), and the distance to clear it, straight over or round
+// the roundabout's arc and out (spot in traffic).
+function lights(lane, hub) {
+  const ring = Math.abs(lane.at - hub.c) < hub.w, side = Math.abs(lane.at - hub.c), rho = hub.r + side;
+  return (lane.stops ?? []).map(([centre, half]) => {
+    const round = ring && Math.abs(centre - hub.c) < 1, reach = round ? hub.r + hub.w - 4 : half; // ring lanes wait outside the outermost ring
+    const [x, z] = lane.axis === 'x' ? [centre, lane.c] : [lane.c, centre], cycle = round ? 2 * CYCLE : CYCLE;
+    const inner = round ? Math.sqrt(rho * rho - side * side) : 0;
+    const clear = (round ? rho * (Math.PI - 2 * Math.asin(side / rho)) + 2 * (reach - inner) : 2 * reach) + CAR;
+    return { centre, reach, cycle, offset: cycle * fract(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453), clear };
+  });
 }
 const fract = (v) => v - Math.floor(v);
 
@@ -53,8 +59,10 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   for (const lane of lanes) {
     lane.queue = []; // its cars in order along it, each following the one ahead, so none ever pass through another
     lane.len = Math.abs(lane.to - lane.from);
+    lane.s = Math.sign(lane.to - lane.from);
+    lane.lights = lights(lane, hub);
     for (let k = 0; k < lane.cars; k++) {
-      const car = { lane, u: (k + rand() * 0.5) / lane.cars, speed: 9 + rand() * 7, v: 0, cleared: null };
+      const car = { lane, u: (k + rand() * 0.5) / lane.cars, speed: 9 + rand() * 7, v: 0, cleared: null, placed: -1 };
       lane.queue.push(car);
       cars.push(car);
     }
@@ -76,6 +84,8 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   };
   const place = () => {
     cars.forEach((c, i) => {
+      if (c.placed === c.u) return; // a car waiting at a light has not moved: its matrices still hold
+      c.placed = c.u;
       const { from, to, y, lift } = c.lane, along = from + (to - from) * (c.u % 1), s = to > from ? 1 : -1;
       // Rear and front axles both on the lane's path, so the car turns with the bend of the street and its body
       // never swings out across the next lane (the roundabout's entry is a sharp turn).
@@ -97,7 +107,7 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
       lane.queue.forEach((c, k) => {
         const next = lane.queue[(k + 1) % lane.queue.length];
         let room = next === c ? Infinity : (((next.u - c.u) % 1) + 1) % 1 * lane.len - CAR - 2;
-        room = Math.min(room, stopLine(c, lane, t, hub, room));
+        room = Math.min(room, stopLine(c, lane, t, room));
         // Slow smoothly into the gap; pick up speed gently when it opens.
         c.v = Math.min(c.speed, Math.max(0, room) * 1.2, c.v + 5 * dt);
         c.u += (c.v * dt) / lane.len;

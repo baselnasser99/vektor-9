@@ -73,9 +73,10 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
     start() {
       renderer.shadowMap.needsUpdate = true;
       if (still) return render();
-      const clock = new THREE.Clock();
+      const clock = new THREE.Clock(), govern = governor(renderer, composer);
       renderer.setAnimationLoop(() => {
-        const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+        const raw = clock.getDelta(), dt = Math.min(raw, 0.1), t = clock.elapsedTime;
+        govern(raw, t);
         for (const fn of updates) fn(dt, t);
         render();
       });
@@ -182,6 +183,29 @@ function nightScene(span, fog, far) {
   glow.position.set(-MOON.x, 0.3, -MOON.z);
   scene.add(glow);
   return scene;
+}
+
+// Frame rate first on slow GPUs: when frames average over 22 ms (under about 45 fps) for two seconds, draw fewer
+// pixels, a step at a time down to 0.7 per CSS pixel. It never steps back up (no see-sawing), and a GPU that keeps
+// up is never touched, so the look only changes where it was stuttering. A stalled or hidden tab says nothing about
+// the GPU, and the first seconds are shader compiles, so neither counts.
+export function governor(renderer, composer, step = 0.15, floor = 0.7) {
+  let sum = 0, n = 0;
+  return (dt, t) => {
+    if (t < 4 || dt >= 0.25) return;
+    sum += dt;
+    n++;
+    if (sum < 2) return;
+    const slow = sum / n > 0.022, now = renderer.getPixelRatio();
+    sum = n = 0;
+    if (!slow || now <= floor) return;
+    const next = Math.max(floor, now - step);
+    renderer.setPixelRatio(next);
+    composer.setPixelRatio(next);
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+    console.info(`resolution: ${next.toFixed(2)} pixels per CSS pixel (frames were slow)`);
+  };
 }
 
 // Bloom gives lamps and neon soft halos; only the brightest light blooms (threshold), so facades keep their detail.
