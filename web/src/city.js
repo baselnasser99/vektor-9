@@ -7,7 +7,7 @@ import { construction, market, plaza } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
-import { spire } from './landmarks.js';
+import { retrofit, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, pick } from './world.js';
 
@@ -108,7 +108,10 @@ export function buildCity(kit, snap) {
     g.position.set((dx ? dx / 2 : rand() - 0.5) * slack, 0.18, (dz ? dz / 2 : rand() - 0.5) * slack);
     g.rotation.y = Math.floor(rand() * 4) * (Math.PI / 2) + (inTown(col, row) ? (rand() - 0.5) * 0.2 : 0); // old town: a little askew
     if (!['plant', 'lot', 'market'].includes(t.k)) shopfronts(kit, lot, t, rand, dx, dz); // a market is its own shop
-    if (signature.has(i)) spire(kit, g, t.f * F, fw, t.on);
+    if (signature.has(i)) {
+      spire(kit, g, t.f * F, fw, t.on);
+      retrofit(kit, g, (k) => openAbove(snap, col, row, g.rotation.y, k), rng(t.s * 7 + 3)); // its own generator: other buildings keep theirs
+    }
     const small = g.getObjectByName('detail'); // drawn only near the camera, merged per sector
     if (small) {
       small.userData.lod = sector;
@@ -161,6 +164,17 @@ function signatureTowers({ size: n, tiles }) {
     if ([...picked].every((j) => far(i, j))) picked.add(i);
   }
   return picked;
+}
+
+// How high (m) the building next to face k (+x, +z, -x, -z, before the building's turn by `turn`) of the tile at
+// col, row stands: 0 where that face looks onto a main street or off the map, else the neighbour's roof.
+function openAbove({ size: n, tiles }, col, row, turn, k) {
+  const [lx, lz] = [[1, 0], [0, 1], [-1, 0], [0, -1]][k];
+  const dx = Math.round(lx * Math.cos(turn) + lz * Math.sin(turn)), dz = Math.round(lz * Math.cos(turn) - lx * Math.sin(turn));
+  const street = (i, d) => (d > 0 ? i % BLOCK === BLOCK - 1 : d < 0 && i % BLOCK === 0);
+  if (street(col, dx) || street(row, dz)) return 0;
+  const [u, v] = [col + dx, row + dz];
+  return u < 0 || v < 0 || u >= n || v >= n ? 0 : (tiles[v * n + u].f ?? 0) * F;
 }
 
 // Which side of its quarter-block a tile row or column faces: -1 or 1 on the edge, 0 inside.
