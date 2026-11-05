@@ -92,7 +92,7 @@ Built so far (`web/src/tiles.js`, `plant.js`, `city.js`): towers get a shop podi
 
 **Light and air** (`web/src/stage.js`, tuned in `LOOK` there): a cool moon is the key light, with shadows, and the sky fill is kept low, so every building shows its form even with its windows dark and lit sides separate from unlit ones; a soft mauve city glow (`#7a5a7e`), low and opposite the moon with no shadows, keeps the sides turned away from the moon from going black (about 2:1 lit to unlit, not 3:1); walls darken towards the street (the canyon gets less sky). Warm windows and lamps play against that cool light. Haze is thickest among the streets and thins with height: near buildings keep full contrast, the middle distance softens, the far city fades into the night, and tall landmarks stay crisp. AgX tone mapping, restrained bloom (only the brightest light blooms), and a light grade that takes a little saturation out of darks and mid-tones while bright signs and neon keep their colour. No dynamic lights besides the moon, the city glow and the sky.
 
-**Sky** (`web/src/atmosphere.js`): a patchy cloud deck lit mauve from below (`#7a5a7e`), stars and a hazy moon showing through the gaps, and two airships circling with lit ads and steady nav lights; thin mist over the city.
+**Sky** (`web/src/atmosphere.js`): a patchy cloud deck lit mauve from below (`#7a5a7e`), stars and a hazy moon showing through the gaps, and two airships circling with lit ads and steady nav lights; a ground mist, pale blue, that thickens smoothly toward the streets (part of the fog, so it never draws a line across a building).
 
 Detail should scale with distance (level of detail): full detail near the camera, simplified far away where the haze hides it anyway.
 
@@ -102,7 +102,7 @@ Generated in the browser, never simulated on the server, always consistent with 
 
 - Built: cars with head- and taillights in both directions on every street, each keeping its distance from the car ahead and waiting at traffic lights at every crossing (the roundabout included), so no two cars ever overlap; the lights themselves are not drawn; rain in three-hour spells derived from the world seed and tick (dry about three times in four, otherwise a light shower), so every visitor sees the same weather (`?rain=0..1` previews it).
 - Planned: pedestrians on sidewalks (denser near markets), rooftop people (none in blacked-out districts), the elevated monorail, flying vehicles, crane motion, steam from vents and plants.
-- With `prefers-reduced-motion`, the frame loop does not run: rain, traffic, mist and highway streams stay still and the city is drawn only when the camera moves.
+- With `prefers-reduced-motion`, the frame loop does not run: rain, traffic and highway streams stay still and the city is drawn only when the camera moves.
 
 ## 6. Motion and accessibility (non-negotiable)
 

@@ -1,4 +1,4 @@
-// The air: sky dome, stars, moon, the cloud deck lit by the city, far skylines and cloud banks on the horizon, airships, mist and rain.
+// The air: sky dome, stars, moon, the cloud deck lit by the city, far skylines and cloud banks on the horizon, airships and rain (the mist is in the fog, stage.js).
 // All of it is decoration (ADR-0002); rain strength comes from the snapshot so every visitor sees the same weather.
 import * as THREE from 'three';
 import { palette } from './palette.js';
@@ -114,20 +114,6 @@ export function airships(kit, half, onFrame) {
     place(s);
   }));
   return ships.map((s) => s.g);
-}
-
-// Two thin layers of mist drifting between the towers.
-export function mist(half, onFrame) {
-  return [28, 55].map((y, k) => {
-    const map = noiseTexture(20 + k, 160);
-    map.repeat.set(3, 3);
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(half * 5, half * 5), new THREE.MeshBasicMaterial({
-      map, color: palette.nightHorizon, transparent: true, opacity: 0.15, depthWrite: false }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = y;
-    onFrame((dt) => (map.offset.x += dt * 0.004 * (k ? -1 : 1)));
-    return mesh;
-  });
 }
 
 // Rain from the snapshot: three-hour spells, dry about three times in four, otherwise a light shower.

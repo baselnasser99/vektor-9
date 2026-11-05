@@ -12,6 +12,11 @@ import { MOON, skyDome } from './atmosphere.js';
 // threshold], and the haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
 export const LOOK = { exposure: 1.35, key: 1.7, fill: 1.3, bounce: 1.5, bloom: [0.5, 0.45, 0.82] };
 const HAZE = { aloft: 0.3, low: 25, high: 220 };
+// Ground mist: extra haze per metre of sight line at street level, halving every `half` metres of height. It is
+// summed along the line from the eye to each point, so it has no edge where a building rises out of it (the flat
+// mist layers it replaces left a hard line across every tower they cut).
+const MIST = { street: 0.005, half: 25 };
+const MIST_RGB = new THREE.Color(palette.nightHorizon).toArray().map((v) => v.toFixed(4)).join(', '); // lit from below, paler than the haze
 
 // Haze in every material's fog: thickest among the streets and thinning with height, so distant streets fade into
 // the night while tall landmarks stay crisp. The fragment's height comes from the view-space position (the view
@@ -29,11 +34,16 @@ THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment
 THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
   #ifdef FOG_EXP2
     float fogThin = fogDensity * mix(1.0, ${HAZE.aloft.toFixed(2)}, smoothstep(${HAZE.low.toFixed(1)}, ${HAZE.high.toFixed(1)}, vFogHeight));
+    // Mist density e^(-y/H) averaged over the heights the sight line passes (its exact integral over a straight line).
+    float mistH = ${(MIST.half / Math.LN2).toFixed(2)}, mistRise = vFogHeight - cameraPosition.y;
+    float mistAvg = abs(mistRise) < 0.5 ? exp(-max(vFogHeight, 0.0) / mistH)
+      : mistH * (exp(-max(cameraPosition.y, 0.0) / mistH) - exp(-max(vFogHeight, 0.0) / mistH)) / mistRise;
     float fogFactor = 1.0 - exp(- fogThin * fogThin * vFogDepth * vFogDepth);
+    float mistFactor = 1.0 - exp(- ${MIST.street.toFixed(4)} * mistAvg * vFogDepth);
   #else
-    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth), mistFactor = 0.0;
   #endif
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+  gl_FragColor.rgb = mix(mix(gl_FragColor.rgb, vec3(${MIST_RGB}), mistFactor), fogColor, fogFactor);
 #endif`;
 
 // span: half-width in metres of the area that needs shadows and fits in the view.
