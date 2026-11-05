@@ -10,7 +10,7 @@ const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_m
 const NEON = 0.65;
 
 // models: the glTF models (web/assets/models) this page uses; the city's are its own (telecom_tower, power_plant,
-// ADR-0005), the rest CC0 kit pieces for close-ups.
+// market_hall, ADR-0005), the rest CC0 kit pieces for close-ups.
 export async function loadKit(renderer, models = [], base = './assets') {
   const tl = new THREE.TextureLoader();
   const aniso = renderer.capabilities.getMaxAnisotropy();
@@ -82,6 +82,17 @@ export async function loadKit(renderer, models = [], base = './assets') {
         o.material = roles[role];
         if (!o.material) throw new Error(`${name}: no material for role ${role} (mesh ${o.name})`);
       });
+      return g;
+    },
+    // A model's near-camera detail is merged per sector, so every material in it is a draw call in every sector that
+    // has one: keep the materials in `keep`, move its lights (anything emissive) to the always-drawn model, and give
+    // every other part one common steel.
+    foldDetail(g, keep = []) {
+      const detail = g.getObjectByName('detail'), metal = this.steel(palette.gunmetal, 0.6);
+      for (const o of [...detail.children]) {
+        if (o.material.emissive?.getHex()) g.add(o);
+        else if (!keep.includes(o.material)) o.material = metal;
+      }
       return g;
     },
     // A named piece from a CC0 model, or the whole model when no node is given; its sheet offset is cleared.

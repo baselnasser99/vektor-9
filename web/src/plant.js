@@ -19,12 +19,5 @@ export function powerPlant(kit) {
     dark, mech: kit.steel(palette.slate, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7),
     yellow: kit.steel(palette.warningYellow, 0.7), stencil: kit.steel(palette.stencilPaint, 0.8), ice, lamp, red,
   });
-  // Detail is merged per sector, so every material in it is a draw call in every sector with a plant: its small metal
-  // parts share two common steels, and its few tiny lights move out to the always-drawn part.
-  const detail = g.getObjectByName('detail'), metal = kit.steel(palette.gunmetal, 0.6);
-  for (const o of [...detail.children]) {
-    if ([ice, lamp, red].includes(o.material)) g.add(o);
-    else if (o.material !== dark && o.material !== kit.steel(palette.hazardPaint, 0.7)) o.material = metal;
-  }
-  return g;
+  return kit.foldDetail(g, [dark, kit.steel(palette.hazardPaint, 0.7)]);
 }

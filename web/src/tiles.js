@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
-import { AD_COLORS, CAR_COLORS, F, WARM, WORDS, pick } from './world.js';
+import { AD_COLORS, CAR_COLORS, F, SHOPS, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
 export function podium(kit, g, rand, lit, warm, fw) {
@@ -84,16 +84,31 @@ export function construction(kit, floors, rand, lit, fw) {
   return g;
 }
 
-// Market hall: low curved-roof shed with striped awnings, stall lights and a big sign.
+// Market tile: a cybernetics shop under the old barrel roof, modelled in Blender by tools/blender/market_hall.py
+// (ADR-0005) and loaded as a glTF built at a nominal 11.2 m slab, scaled here to the footprint fw. Futuristic by its
+// armoured architecture, not its lights: angular off-white and olive plates over graphite walls, a deep storefront
+// under a layered canopy, a ventilation tower, a cooling rig, a corner sign, a sign frame, a mast. Each tile gets a
+// shop from SHOPS: its name on the roof sign and its mark on the corner sign, both lit white, and the name again in
+// the window's product hologram. Restrained light: white signs, aged amber screens, a few cold cyan displays, red
+// indicators. Dark during a blackout: no lit panels, no hologram. About 4k triangles, 2k more up close.
 export function market(kit, rand, lit, fw) {
-  const g = new THREE.Group(), warm = pick(rand, WARM), w = fw * 0.92, bay = w / 4.2;
-  part(g, box(w, 4, w, 1), kit.concrete(palette.gunmetal), 0, 2, 0);
-  part(g, cyl(w / 2, w / 2, w, 16, -Math.PI / 2, Math.PI), kit.mat('box_profile_metal_sheet', palette.charcoal), 0, 4, 0).rotation.x = -Math.PI / 2;
-  for (let k = 0; k < 4; k++) {
-    part(g, box(bay, 0.2, 1.6, 1), kit.mat('box_profile_metal_sheet', k % 2 ? palette.cream : warm), (k - 1.5) * bay, 3, w / 2 + 0.7).rotation.x = 0.2;
-  }
-  if (!lit) return g;
-  for (let k = 0; k < 4; k++) part(g, box(bay * 0.77, 0.15, 0.15, 1), kit.glow(palette.warmWindow, 2), (k - 1.5) * bay, 2.6, w / 2 + 1.4);
-  part(g, box(7, 1.6, 0.3, 1), kit.sign(pick(rand, WORDS), warm), 0, 9.8, 0).rotation.y = Math.PI / 2;
-  return g;
+  const [name, mark] = pick(rand, SHOPS);
+  const worn = (color, roughness) => kit.mat('rusty_painted_metal', color, roughness); // scuffed, rust-streaked paint
+  const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark);
+  const g = kit.model('market_hall', {
+    soot: kit.concrete(palette.blackenedConcrete), graphite: kit.steel(palette.graphite, 0.6),
+    steel: worn(palette.gunmetal, 0.7), titanium: worn(palette.weatheredTitanium, 0.6),
+    // The armour and cladding are painted, not rusted: their off-white and olive are what make the shop read.
+    olive: kit.steel(palette.oliveGrey, 0.6), armor: kit.steel(palette.armorWhite, 0.6), dark,
+    mech: kit.steel(palette.slate, 0.6),
+    glass: kit.glass(palette.charcoal), yellow: kit.steel(palette.warningYellow, 0.7),
+    deepred: kit.steel(palette.deepRed, 0.6), stencil: kit.steel(palette.stencilPaint, 0.8),
+    glow_white: off(kit.glow(palette.glare, 1.2)), glow_amber: off(kit.glow(palette.agedAmber, 1.2)),
+    glow_cyan: off(kit.glow(palette.coldCyan, 0.9)), red: off(kit.glow(palette.signal, 3)),
+    sign: off(kit.sign(name, palette.glare)), blade: off(kit.sign(mark, palette.glare, true)),
+    holo: kit.holo(name, palette.coldCyan),
+  });
+  if (!lit) g.getObjectByName('holo').removeFromParent(); // no hologram without power
+  g.scale.setScalar(fw / 11.2);
+  return kit.foldDetail(g, [dark]);
 }

@@ -42,6 +42,26 @@ ROLES = {
     "yellow": (0x8E7A3A, 0.1, 0.7, None, 0, 1, "rust"),  # warning labels
     "stencil": (0x8F9498, 0.0, 0.8, None, 0, 1, None),  # worn painted letters, gauge faces
     "scorch": (0x24201D, 0.5, 0.6, None, 0, 1, "rust"),  # heat-discoloured, sooted steel
+    "sign": (0x0B0F17, 0.0, 0.4, 0xFF5C8A, 2.0, 1, None),  # a lit sign; its word is the renderer's
+    "blade": (
+        0x0B0F17,
+        0.0,
+        0.4,
+        0x3FE6FF,
+        2.0,
+        1,
+        None,
+    ),  # a vertical lit sign, also the renderer's
+    "armor": (0xB9B4A8, 0.2, 0.55, None, 0, 1, "rust"),  # faded off-white armour panels
+    "olive": (0x5D6157, 0.3, 0.6, None, 0, 1, "rust"),  # desaturated olive-grey cladding
+    "graphite": (0x26282B, 0.4, 0.5, None, 0, 1, None),  # dark graphite structure
+    "deepred": (0x6E2723, 0.2, 0.6, None, 0, 1, None),  # deep red paint, accents
+    "glow_white": (0xD8DEE2, 0.0, 0.5, 0xE8EEF2, 2.2, 1, None),  # restrained white sign light
+    "glow_amber": (0x8C5A22, 0.0, 0.5, 0xE09A45, 1.8, 1, None),  # aged amber screens
+    "glow_cyan": (0x6FA9B2, 0.0, 0.5, 0x8CCAD2, 1.4, 1, None),  # cold cyan technical displays
+    "holo": (0x7FB6BF, 0.0, 0.3, 0xA8DCE4, 1.2, 0.45, None),  # a see-through product hologram
+    "awning_a": (0xA8452E, 0.0, 0.8, None, 0, 1, None),  # awning stripes: the tile's warm colour
+    "awning_b": (0xCFC6B8, 0.0, 0.8, None, 0, 1, None),  # and cream
 }
 TO_BLENDER = Matrix.Rotation(math.pi / 2, 4, "X")  # three (x, y, z) -> Blender (x, -z, y)
 parts = {}  # (role, detail) -> [objects]
@@ -125,7 +145,7 @@ def material(role):
             nt.links.new(ramp(spots.outputs["Fac"], 0.45, 0.7), mult.inputs[1])
             colour = mix(mult.outputs[0], colour, linear(0x6A4732))
         nt.links.new(colour, bsdf.inputs["Base Color"])
-    if role == "ad":  # placeholder content: slow bands of colour, mostly dark
+    if role in ("ad", "sign", "blade"):  # placeholder content: slow bands of colour, mostly dark
         uvn = nt.nodes.new("ShaderNodeTexCoord")
         wave = nt.nodes.new("ShaderNodeTexWave")
         wave.inputs["Scale"].default_value = 0.7
@@ -312,6 +332,32 @@ def ring(role, r, tube_r, y, seg=64, radial_seg=6, detail=False, center=(0, 0)):
     return add(bm, role, None, detail, smooth_angle=80)
 
 
+def around(c, a, r, y):
+    """The point at angle a, radius r and height y round the vertical axis through c = (x, z)."""
+    p = radial(a, r, y)
+    return (c[0] + p[0], y, c[1] + p[2])
+
+
+def radius_at(profile, y):
+    """Radius of a lathe profile [(r, y), ...] at height y (clamped to its ends)."""
+    for (r0, a), (r1, b) in zip(profile, profile[1:], strict=False):
+        if a <= y <= b:
+            return r0 + (r1 - r0) * (y - a) / (b - a)
+    return profile[-1][0] if y > profile[-1][1] else profile[0][0]
+
+
+def screen(role, w, h, m, detail=False):
+    """A flat panel w x h facing local +z with UVs 0..1 across it, for a texture the renderer
+    draws on it (a sign's word, a display)."""
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.verify()
+    vs = [bm.verts.new((x * w / 2, y * h / 2, 0)) for x, y in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    f = bm.faces.new(vs)
+    for loop, (u, v) in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1)), strict=True):
+        loop[uv].uv = (u, 1 - v)  # glTF export flips v
+    return add(bm, role, m, detail, project=False)
+
+
 def lamp(p, r=0.4):
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=8, v_segments=6, radius=r)
@@ -407,7 +453,7 @@ def fan(c, y, r=1.4):
     lathe("dark", [(r - 0.2, y + 0.85), (0, y + 0.85)], 16, center=(c[0], c[2]))
 
 
-def radiator(c, a, y, n, width, h, depth=0.9):
+def radiator(c, a, y, n, width, h, depth=0.9, detail=False):
     """A bank of n vertical cooling fins standing off a face that looks out along angle a,
     with header pipes top and bottom; c is the bank's centre on the face."""
     for i in range(n):
@@ -416,11 +462,11 @@ def radiator(c, a, y, n, width, h, depth=0.9):
             a,
             (i / (n - 1) - 0.5) * width,
         )
-        block("mech", depth, h, 0.07, at(facing(a), *p))
+        block("mech", depth, h, 0.07, at(facing(a), *p), detail)
     for yy in (y - h / 2 - 0.15, y + h / 2 + 0.15):
         e0 = offset((c[0], yy, c[2]), a, -width / 2 - 0.3)
         e1 = offset((c[0], yy, c[2]), a, width / 2 + 0.3)
-        tube("steel", e0, e1, 0.16, seg=8)
+        tube("steel", e0, e1, 0.16, detail, seg=8)
 
 
 def grille(c, a, y, w, h):
@@ -567,6 +613,128 @@ def proxy_material():
     nt.links.new(both.outputs[0], dim.inputs[0])
     nt.links.new(dim.outputs[0], bsdf.inputs["Emission Strength"])
     return mat
+
+
+def night_street(name, scene_name, cam_loc, cam_target, lens=20, seed=4, low_behind=True):
+    """Review scene `scene_name`: the model under the empty `name` linked in at the origin, on a
+    wet street (along x, in front of it) among stand-in towers on the city's 14 m grid, with
+    haze, a moon and sky fill, sodium lamps and a few signs on the towers. low_behind keeps the
+    blocks just behind low, so a tall model reads against the sky. Camera in Blender
+    coordinates. Returns (scene, cube, light): helpers that add to it. Not part of any export."""
+    import random
+
+    rnd = random.Random(seed)
+    scene = bpy.data.scenes.get(scene_name) or bpy.data.scenes.new(scene_name)
+    for o in list(scene.objects):
+        if o.name.startswith(("proxy", "night_")):
+            bpy.data.objects.remove(o)
+        else:
+            scene.collection.objects.unlink(o)
+    root = bpy.data.objects[name]
+    for o in [root, *root.children_recursive]:
+        scene.collection.objects.link(o)
+    mat = proxy_material().copy()  # finer, dimmer rooms than the tower's distant proxies
+    for n in mat.node_tree.nodes:
+        if n.type == "VECT_MATH" and n.operation == "MULTIPLY":
+            n.inputs[1].default_value = (0.55, 0.55, 0.32)  # rooms about 1.8 m wide, 3.1 m tall
+        if n.type == "MATH" and n.operation == "MULTIPLY" and n.inputs[1].default_value == 0.55:
+            n.inputs[1].default_value = 0.2
+
+    def cube(label, w, d, h, x, y, z, m):  # Blender coordinates, z from the ground up
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1)
+        bmesh.ops.scale(bm, vec=(w, d, h), verts=bm.verts)
+        bmesh.ops.translate(bm, vec=(x, y, z + h / 2), verts=bm.verts)
+        me = bpy.data.meshes.new(label)
+        bm.to_mesh(me)
+        bm.free()
+        me.materials.append(m)
+        scene.collection.objects.link(bpy.data.objects.new(label, me))
+
+    def light(kind, label, loc, energy, color, target=None):
+        data = bpy.data.lights.new(label, kind)
+        data.energy, data.color = energy, color
+        o = bpy.data.objects.new(label, data)
+        o.location = loc
+        if target:
+            o.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
+        scene.collection.objects.link(o)
+        return o
+
+    signs = [material(r) for r in ("pink", "ice", "lamp", "lamp")]  # the district round it
+    for gx in range(-3, 4):  # the street runs along x in front (Blender -y)
+        for gy in range(-3, 4):
+            if (gx, gy) == (0, 0) or gy == -1:
+                continue
+            x, y = gx * 14, gy * 14 + (-8 if gy < -1 else 0)
+            h = rnd.uniform(18, 70) * (1.4 if abs(gx) + abs(gy) > 2 else 1)
+            if low_behind and gy == 1 and abs(gx) <= 1:
+                h = rnd.uniform(7, 11)
+            cube("proxy", 12, 12, h, x, y, 0, mat)
+            face = -1 if gy >= 0 else 1  # the side towards the street
+            for _ in range(rnd.randint(0, 2)):
+                zz, m = rnd.uniform(4, min(h - 2, 30)), rnd.choice(signs)
+                if rnd.random() < 0.5:
+                    cube("proxy_sign", 12.2, 0.15, 0.12, x, y + face * 6.1, zz, m)
+                else:
+                    cube("proxy_sign", 0.25, 1.0, 4, x + rnd.uniform(-5, 5), y + face * 6.6, zz, m)
+    gm = bpy.data.materials.get("night_wet") or bpy.data.materials.new("night_wet")
+    gm.use_nodes = True
+    gb = next(n for n in gm.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    gb.inputs["Base Color"].default_value = linear(0x0C0E14)
+    gb.inputs["Roughness"].default_value = 0.12
+    cube("night_ground", 400, 400, 0.02, 0, 0, -0.03, gm)
+    world = bpy.data.worlds.get("night_street") or bpy.data.worlds.new("night_street")
+    world.use_nodes = True
+    nt = world.node_tree
+    bg = next(n for n in nt.nodes if n.type == "BACKGROUND")
+    bg.inputs[0].default_value = linear(0x1B2A57)
+    bg.inputs[1].default_value = 1.2
+    out = next(n for n in nt.nodes if n.type == "OUTPUT_WORLD")
+    fog = next((n for n in nt.nodes if n.type == "VOLUME_SCATTER"), None)
+    fog = fog or nt.nodes.new("ShaderNodeVolumeScatter")
+    fog.inputs["Color"].default_value = linear(0x3D528F)
+    fog.inputs["Density"].default_value = 0.02
+    nt.links.new(fog.outputs[0], out.inputs["Volume"])
+    scene.world = world
+    moon = light("SUN", "night_moon", (0, 0, 50), 0.6, (0.65, 0.72, 1.0))  # key: nothing goes black
+    moon.rotation_euler = (math.radians(60), 0, math.radians(-30))
+    for x in (-21, -7, 7, 21):  # sodium lamps along the street
+        light("POINT", "night_lamp", (x, -9.5, 7), 900, (1.0, 0.62, 0.25))
+    light("AREA", "night_fill", (0, 0, 60), 6000, (0.55, 0.62, 0.85)).data.size = 60  # sky glow
+    cam = bpy.data.objects.new("night_cam", bpy.data.cameras.new("night_cam"))
+    cam.data.lens = lens
+    cam.location = cam_loc
+    cam.rotation_euler = (Vector(cam_target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.render.resolution_x, scene.render.resolution_y = 1456, 816
+    try:
+        scene.eevee.use_raytracing = True
+        scene.eevee.volumetric_end = 200
+    except AttributeError:
+        pass
+    return scene, cube, light
+
+
+def steam_material():
+    """Review-only steam: a noisy grey volume."""
+    steam = bpy.data.materials.get("night_steam") or bpy.data.materials.new("night_steam")
+    steam.use_nodes = True
+    snt = steam.node_tree
+    snt.nodes.clear()
+    vol = snt.nodes.new("ShaderNodeVolumePrincipled")
+    vol.inputs["Color"].default_value = (0.75, 0.78, 0.82, 1)
+    noise = snt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 1.6
+    grad = snt.nodes.new("ShaderNodeMapRange")
+    grad.inputs[1].default_value, grad.inputs[2].default_value = 0.5, 0.75
+    grad.inputs[3].default_value, grad.inputs[4].default_value = 0.0, 0.6
+    snt.links.new(noise.outputs["Fac"], grad.inputs[0])
+    snt.links.new(grad.outputs[0], vol.inputs["Density"])
+    sout = snt.nodes.new("ShaderNodeOutputMaterial")
+    snt.links.new(vol.outputs[0], sout.inputs["Volume"])
+    return steam
 
 
 def plain_names(objs):

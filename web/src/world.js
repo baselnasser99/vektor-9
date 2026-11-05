@@ -18,6 +18,9 @@ export const F = 3.5; // floor height
 export const TALL = 20; // floors; towers this tall get a crown (sim/rules.py TALL)
 export const TERRAIN = ['rail', 'park', 'works']; // laid out by the sim, never built on (sim/rules.py TERRAIN)
 
+// Market tiles are cybernetics shops: each gets a name (roof sign) and a short mark (corner sign), all invented.
+export const SHOPS = [['KUROTECH', 'KURO'], ['ZENKO TECH', 'ZENKO'], ['NEXA PARTS', 'NEXA'], ['TOKU WORKS', 'TOKU'],
+  ['SEIRA CYBER', 'SEIRA'], ['VX9 REPAIR', 'VX9']];
 export const WORDS = ['ODEN 24', 'NOVA', 'VX9', 'KORU', 'SEIRA', 'ZENKO', 'NEXA', 'TOKU']; // invented sign text
 export const WARM = [palette.neonRed, palette.neonPink, palette.sodium, palette.neonOrange];
 export const AD_COLORS = [[palette.neonPink, palette.neonViolet], [palette.neonOrange, palette.neonRed],

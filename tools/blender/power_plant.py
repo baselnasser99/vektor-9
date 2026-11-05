@@ -27,15 +27,15 @@ import math
 import os
 import sys
 
-import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix
 
 sys.path.insert(0, os.path.join(REPO, "tools", "blender"))  # noqa: F821
 import kit  # noqa: E402
 
 importlib.reload(kit)  # Blender keeps modules between runs
 from kit import (  # noqa: E402
+    around,
     at,
     bar,
     block,
@@ -46,12 +46,10 @@ from kit import (  # noqa: E402
     join,
     lamp,
     lathe,
-    linear,
     offset,
     parts,
-    proxy_material,
-    radial,
     radiator,
+    radius_at,
     rail,
     ring,
     studio,
@@ -75,20 +73,6 @@ HALL = (3.4, 0.4, 4.6, 7.0, 5.6)  # control block: centre x, z; width (x), heigh
 SEG = 32  # segments round the big turned shapes
 STACK_SEG = 16  # and round the towers' slimmer ones
 ID = Matrix()
-
-
-def around(c, a, r, y):
-    """The point at angle a, radius r and height y round the vertical axis through c = (x, z)."""
-    p = radial(a, r, y)
-    return (c[0] + p[0], y, c[1] + p[2])
-
-
-def radius_at(profile, y):
-    """Radius of a lathe profile [(r, y), ...] at height y (clamped to its ends)."""
-    for (r0, a), (r1, b) in zip(profile, profile[1:], strict=False):
-        if a <= y <= b:
-            return r0 + (r1 - r0) * (y - a) / (b - a)
-    return profile[-1][0] if y > profile[-1][1] else profile[0][0]
 
 
 def on_lot(v):
@@ -502,90 +486,9 @@ def build():
 
 
 def night_review(seed=4):
-    """Review scene "plant_night": the plant linked in, a wet street and a block of stand-in
-    towers round it on the city's 14 m grid (low sheds behind, so the towers read against the
-    sky), haze, steam over the vents, a moon and sky fill, sodium lamps and cold work lights."""
-    import random
-
-    rnd = random.Random(seed)
-    scene = bpy.data.scenes.get("plant_night") or bpy.data.scenes.new("plant_night")
-    for o in list(scene.objects):
-        if o.name.startswith(("proxy", "night_")):
-            bpy.data.objects.remove(o)
-        else:
-            scene.collection.objects.unlink(o)
-    root = bpy.data.objects[NAME]
-    for o in [root, *root.children_recursive]:
-        scene.collection.objects.link(o)
-    mat = proxy_material().copy()  # finer, dimmer rooms than the tower's distant proxies
-    for n in mat.node_tree.nodes:
-        if n.type == "VECT_MATH" and n.operation == "MULTIPLY":
-            n.inputs[1].default_value = (0.55, 0.55, 0.32)  # rooms about 1.8 m wide, 3.1 m tall
-        if n.type == "MATH" and n.operation == "MULTIPLY" and n.inputs[1].default_value == 0.55:
-            n.inputs[1].default_value = 0.2
-
-    def cube(name, w, d, h, x, y, z, m):  # Blender coordinates
-        bm = bmesh.new()
-        bmesh.ops.create_cube(bm, size=1)
-        bmesh.ops.scale(bm, vec=(w, d, h), verts=bm.verts)
-        bmesh.ops.translate(bm, vec=(x, y, z + h / 2), verts=bm.verts)
-        me = bpy.data.meshes.new(name)
-        bm.to_mesh(me)
-        bm.free()
-        me.materials.append(m)
-        scene.collection.objects.link(bpy.data.objects.new(name, me))
-
-    def light(kind, name, loc, energy, color, target=None):
-        data = bpy.data.lights.new(name, kind)
-        data.energy, data.color = energy, color
-        o = bpy.data.objects.new(name, data)
-        o.location = loc
-        if target:
-            o.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
-        scene.collection.objects.link(o)
-        return o
-
-    signs = [kit.material(r) for r in ("pink", "ice", "lamp", "lamp")]  # the district round it
-    for gx in range(-3, 4):  # Blender x, y = three x, -z; the street runs along x in front (+z)
-        for gy in range(-3, 4):
-            if (gx, gy) == (0, 0) or gy == -1:
-                continue
-            x, y = gx * 14, gy * 14 + (-8 if gy < -1 else 0)
-            h = rnd.uniform(18, 70) * (1.4 if abs(gx) + abs(gy) > 2 else 1)
-            if gy == 1 and abs(gx) <= 1:
-                h = rnd.uniform(7, 11)  # low sheds behind, so the towers stand against the sky
-            cube("proxy", 12, 12, h, x, y, 0, mat)
-            face = -1 if gy >= 0 else 1  # the side towards the street
-            for _ in range(rnd.randint(0, 2)):  # signs and strips on the street faces
-                zz, m = rnd.uniform(4, min(h - 2, 30)), rnd.choice(signs)
-                if rnd.random() < 0.5:
-                    cube("proxy_sign", 12.2, 0.15, 0.12, x, y + face * 6.1, zz, m)
-                else:
-                    cube("proxy_sign", 0.25, 1.0, 4, x + rnd.uniform(-5, 5), y + face * 6.6, zz, m)
-    gm = bpy.data.materials.get("night_wet") or bpy.data.materials.new("night_wet")
-    gm.use_nodes = True
-    gb = next(n for n in gm.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    gb.inputs["Base Color"].default_value = linear(0x0C0E14)
-    gb.inputs["Roughness"].default_value = 0.12
-    cube("night_ground", 400, 400, 0.02, 0, 0, -0.03, gm)
-    world = bpy.data.worlds.get("plant_night") or bpy.data.worlds.new("plant_night")
-    world.use_nodes = True
-    nt = world.node_tree
-    bg = next(n for n in nt.nodes if n.type == "BACKGROUND")
-    bg.inputs[0].default_value = linear(0x1B2A57)
-    bg.inputs[1].default_value = 1.2
-    out = next(n for n in nt.nodes if n.type == "OUTPUT_WORLD")
-    fog = next((n for n in nt.nodes if n.type == "VOLUME_SCATTER"), None)
-    fog = fog or nt.nodes.new("ShaderNodeVolumeScatter")
-    fog.inputs["Color"].default_value = linear(0x3D528F)
-    fog.inputs["Density"].default_value = 0.02
-    nt.links.new(fog.outputs[0], out.inputs["Volume"])
-    scene.world = world
-    moon = light("SUN", "night_moon", (0, 0, 50), 0.6, (0.65, 0.72, 1.0))  # key: nothing goes black
-    moon.rotation_euler = (math.radians(60), 0, math.radians(-30))
-    for x in (-21, -7, 7, 21):  # sodium lamps along the street
-        light("POINT", "night_lamp", (x, -9.5, 7), 900, (1.0, 0.62, 0.25))
-    light("AREA", "night_fill", (0, 0, 60), 6000, (0.55, 0.62, 0.85)).data.size = 60  # sky glow
+    """Review scene "plant_night": the plant on the kit's night street (low sheds behind, so the
+    towers read against the sky), with cold work lights on poles and steam over the vents."""
+    scene, cube, light = kit.night_street(NAME, "plant_night", (12, -28, 4), (0, 0, 13), 18, seed)
     hx, hz, _, hh, _ = HALL
     for loc, target, energy in (  # cold-white work lights on poles, one up the towers
         ((4.8, -6.4, 8.5), (2.5, -3.5, 1.0), 900),
@@ -594,37 +497,11 @@ def night_review(seed=4):
     ):
         spot = light("SPOT", "night_work", loc, energy, (0.86, 0.92, 1.0), target).data
         spot.spot_size, spot.spot_blend = math.radians(70), 0.6
-    steam = bpy.data.materials.get("night_steam") or bpy.data.materials.new("night_steam")
-    steam.use_nodes = True
-    snt = steam.node_tree
-    snt.nodes.clear()
-    vol = snt.nodes.new("ShaderNodeVolumePrincipled")
-    vol.inputs["Color"].default_value = (0.75, 0.78, 0.82, 1)
-    noise = snt.nodes.new("ShaderNodeTexNoise")
-    noise.inputs["Scale"].default_value = 1.6
-    grad = snt.nodes.new("ShaderNodeMapRange")
-    grad.inputs[1].default_value, grad.inputs[2].default_value = 0.5, 0.75
-    grad.inputs[3].default_value, grad.inputs[4].default_value = 0.0, 0.6
-    snt.links.new(noise.outputs["Fac"], grad.inputs[0])
-    snt.links.new(grad.outputs[0], vol.inputs["Density"])
-    sout = snt.nodes.new("ShaderNodeOutputMaterial")
-    snt.links.new(vol.outputs[0], sout.inputs["Volume"])
     # Review only: in the city, steam is ambient life drawn by the browser (ADR-0002).
+    steam = kit.steam_material()
     for x, z, h in STACKS:
         cube("night_steam", 2.6, 2.6, 7.0, x + 0.4, -z, h + 0.6, steam)
     cube("night_steam", 2.6, 1.4, 2.0, hx, -(hz - 1.3), PLINTH + hh + 0.8, steam)
-    cam = bpy.data.objects.new("night_cam", bpy.data.cameras.new("night_cam"))
-    cam.data.lens = 18
-    cam.location = (12, -28, 4)  # across the street, eye a few storeys up
-    cam.rotation_euler = (Vector((0, 0, 13)) - cam.location).to_track_quat("-Z", "Y").to_euler()
-    scene.collection.objects.link(cam)
-    scene.camera = cam
-    scene.render.resolution_x, scene.render.resolution_y = 1456, 816
-    try:
-        scene.eevee.use_raytracing = True
-        scene.eevee.volumetric_end = 200
-    except AttributeError:
-        pass
     return scene
 
 
