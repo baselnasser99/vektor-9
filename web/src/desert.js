@@ -77,15 +77,20 @@ function sandDrifts(root, edge, rand) {
   }
 }
 
-// Every city street carries on out of town as a dirt track (the centre ones become highways instead).
+// Every city street carries on out of town as a dirt track (the centre ones become highways instead), narrowing
+// and breaking up as it goes, so it wears out into the sand rather than stopping at a line.
 function dirtTracks(kit, root, edge, lines) {
-  const track = kit.concrete(palette.charcoal), len = SPRAWL + 80;
+  const track = kit.concrete(palette.gunmetal), len = SPRAWL + 80, PIECE = 20, rand = rng(4242);
   for (const c of lines) {
     if (Math.abs(c) < 1) continue;
     for (const s of [-1, 1]) {
-      const mid = s * (edge + len / 2);
-      part(root, box(10, 0.04, len, 0), track, c, -0.08, mid);
-      part(root, box(len, 0.04, 10, 0), track, mid, -0.08, c);
+      for (let v = 0; v < len; v += PIECE) {
+        const t = v / len;
+        if (rand() < t * t) continue; // gaps, more of them further out
+        const w = 10 - 6 * t + (rand() - 0.5) * 1.5, mid = s * (edge + v + PIECE / 2), wobble = (rand() - 0.5) * 2 * t;
+        part(root, box(w, 0.04, PIECE + 0.5, 0), track, c + wobble, -0.08, mid);
+        part(root, box(PIECE + 0.5, 0.04, w, 0), track, mid, -0.08, c + wobble);
+      }
     }
   }
 }
@@ -141,7 +146,8 @@ function wastes(kit, root, edge, lines, height, rand) {
       const [a, r] = [rand() * Math.PI * 2, edge + 15 + out];
       const k = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))); // square city: push the ring out to its corners
       const [x, z] = [(Math.cos(a) / k) * r, (Math.sin(a) / k) * r];
-      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD) return [x, height(x, z), z];
+      const onTrack = r < edge + SPRAWL + 80 && tracks.some((c) => Math.abs(x - c) < 9 || Math.abs(z - c) < 9);
+      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD && !onTrack) return [x, height(x, z), z];
     }
   };
   const near = () => spot(rand() ** 2 * 1100); // most things close in
