@@ -30,7 +30,9 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
   controls.update();
 }
 
-const kit = await loadKit(renderer, ['telecom_tower', 'power_plant', 'market_hall']);
+const kit = await loadKit(renderer, ['telecom_tower', 'power_plant', 'market_hall', 'storefront', 'storefront_l',
+  'shop_stalls', 'shop_counter', 'shop_frame', 'shop_arcade',
+  'skybridge_bay', 'skybridge_window', 'skybridge_end']);
 facadeClock(((snap.tick * 5) / 60) % 24, onFrame); // ticks are 5 minutes; room lights follow the hour
 const { city, details, warp, hub, rail, lanes, edge, lines } = buildCity(kit, snap);
 // Small building parts (balconies, rooftop plant, pipes) only near the camera: one group per sector.

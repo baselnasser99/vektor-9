@@ -3,13 +3,13 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, part, rng } from './geometry.js';
 import { powerPlant } from './plant.js';
-import { construction, market, plaza } from './tiles.js';
+import { construction, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
 import { retrofit, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
-import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, pick } from './world.js';
+import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
 // every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
@@ -80,7 +80,7 @@ export function buildCity(kit, snap) {
   const layout = cityLayout(snap), { n, pos, inTown } = layout, root = new THREE.Group();
   const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
-  const signature = signatureTowers(snap), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
+  const signature = signatureTowers(snap), shops = storefrontTiles(snap), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
@@ -107,16 +107,17 @@ export function buildCity(kit, snap) {
     }
     g.position.set((dx ? dx / 2 : rand() - 0.5) * slack, 0.18, (dz ? dz / 2 : rand() - 0.5) * slack);
     g.rotation.y = Math.floor(rand() * 4) * (Math.PI / 2) + (inTown(col, row) ? (rand() - 0.5) * 0.2 : 0); // old town: a little askew
-    if (!['plant', 'lot', 'market'].includes(t.k)) shopfronts(kit, lot, t, rand, dx, dz); // a market is its own shop
+    if (shops.has(i)) {
+      if (t.on) rand(); // what shopfronts would have drawn (its awning colour), so the rest of this tile is unchanged
+      storefront(kit, lot, rng(t.s * 11 + 5), t.on, dx, dz);
+    } else if (!['plant', 'lot', 'market'].includes(t.k)) shopfronts(kit, lot, t, rand, dx, dz); // a market is its own shop
     if (signature.has(i)) {
       spire(kit, g, t.f * F, fw, t.on);
       retrofit(kit, g, (k) => openAbove(snap, col, row, g.rotation.y, k), rng(t.s * 7 + 3)); // its own generator: other buildings keep theirs
     }
-    const small = g.getObjectByName('detail'); // drawn only near the camera, merged per sector
-    if (small) {
-      small.userData.lod = sector;
-      if (!detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
-    }
+    let small = false; // small parts are drawn only near the camera, merged per sector (a storefront has its own)
+    lot.traverse((o) => { if (o.name === 'detail') small = o.userData.lod = sector; });
+    if (small !== false && !detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
     settle(lot, warp);
     // Skybridge to the east neighbour in the same sector when both are tall enough.
     const east = snap.tiles[i + 1];
@@ -127,6 +128,7 @@ export function buildCity(kit, snap) {
       if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
     }
   });
+  for (const bridge of bridgePairs(snap, layout, signature)) root.add(skybridge(kit, snap, pos, bridge));
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
   const city = mergeByMaterial(root, warp);
@@ -166,6 +168,72 @@ function signatureTowers({ size: n, tiles }) {
   return picked;
 }
 
+// Storefront tiles: the buildings on the corners where the boulevard (through the centre) meets the next full
+// street toward the opening view, or the one the other way if that crossing has fewer than three. Up to three.
+function storefrontTiles({ size: n, tiles }) {
+  const mid = n / BLOCK / 2;
+  for (const k of [mid + 2, mid - 2]) {
+    const corners = [mid * BLOCK - 1, mid * BLOCK].flatMap((col) => [k * BLOCK - 1, k * BLOCK].map((row) => row * n + col));
+    const houses = corners.filter((i) => tiles[i]?.k === 'house');
+    if (houses.length >= 3) return new Set(houses.slice(0, 3));
+  }
+  return new Set();
+}
+
+// Two skybridges over main streets (skybridge below): the pairs of towers facing each other across one with the
+// most floors between them, both 16 floors or more, outside the old town (its streets bend) and not signature
+// towers (their machinery faces the streets), the second at least 16 tiles from the first. Each is
+// { a, b, axis }: tile a on the low side, b across the street, the bridge running along axis.
+function bridgePairs({ size: n, tiles }, { inTown }, signature) {
+  const ok = (i) => tiles[i].k === 'house' && tiles[i].f >= 16 && !signature.has(i) && !inTown(i % n, Math.floor(i / n));
+  const pairs = [];
+  for (let k = 1; k < n / BLOCK; k++) {
+    for (let r = 0; r < n; r++) {
+      const [c, d] = [k * BLOCK - 1, k * BLOCK];
+      for (const [axis, a, b] of [['x', r * n + c, r * n + d], ['z', c * n + r, d * n + r]]) {
+        if (ok(a) && ok(b)) pairs.push({ a, b, axis, f: Math.min(tiles[a].f, tiles[b].f) });
+      }
+    }
+  }
+  const at = (i) => [i % n, Math.floor(i / n)], picked = [];
+  for (const p of pairs.sort((p, q) => q.f - p.f || p.a - q.a)) {
+    if (picked.length === 2) break;
+    if (picked.every((q) => Math.max(...at(p.a).map((v, j) => Math.abs(v - at(q.a)[j]))) >= 16)) picked.push(p);
+  }
+  return picked;
+}
+
+// An enclosed corridor from tower a to tower b over the street between them, from the Blender modules
+// (tools/blender/skybridge.py): an end portal at each tower's face (perimeter towers stand up to their street,
+// 6.5 m from their tile's centre), then 4 m bays, every third with a small window, stretched to fit. Its floor is a
+// floor of both towers, about 40% of the lower one's height. Lit inside unless either tower is blacked out.
+function skybridge(kit, { size: n, tiles }, pos, { a, b, axis, f }) {
+  const lit = tiles[a].on && tiles[b].on, dark = kit.steel(palette.charcoal, 0.6);
+  const roles = {
+    graphite: kit.steel(palette.graphite, 0.6), steel: kit.steel(palette.gunmetal, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
+    titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
+    sheet: kit.mat('box_profile_metal_sheet', palette.gunmetal), interior: lit ? kit.glow(palette.warmWindow, 0.5) : dark,
+    lamp: lit ? kit.glow(palette.dirtyAmber, 1.2) : dark, glow_amber: lit ? kit.glow(palette.agedAmber, 1) : dark,
+  };
+  const along = (i) => pos(axis === 'x' ? i % n : Math.floor(i / n)), across = pos(axis === 'x' ? Math.floor(a / n) : a % n);
+  const [u0, u1] = [along(a) + (TILE - 1) / 2, along(b) - (TILE - 1) / 2], g = new THREE.Group();
+  const piece = (name, u, turn = 0, stretch = 1) => {
+    const m = kit.foldDetail(kit.model(name, roles), [dark]);
+    m.position.x = u;
+    m.rotation.y = turn;
+    m.scale.x = stretch;
+    g.add(m);
+  };
+  piece('skybridge_end', u0);
+  piece('skybridge_end', u1, Math.PI);
+  const span = u1 - u0 - 2.1, bays = Math.max(1, Math.round(span / 4)), bay = span / bays; // between the portals' rings
+  for (let k = 0; k < bays; k++) piece(k % 3 === 1 ? 'skybridge_window' : 'skybridge_bay', u0 + 1.05 + (k + 0.5) * bay, 0, bay / 4);
+  g.position.set(axis === 'x' ? 0 : across, 0.18 + Math.round(f * 0.4) * F, axis === 'x' ? across : 0);
+  g.rotation.y = axis === 'x' ? 0 : -Math.PI / 2; // the span along x, or turned to run along z
+  g.userData.rigid = true;
+  return g;
+}
+
 // How high (m) the building next to face k (+x, +z, -x, -z, before the building's turn by `turn`) of the tile at
 // col, row stands: 0 where that face looks onto a main street or off the map, else the neighbour's roof.
 function openAbove({ size: n, tiles }, col, row, turn, k) {
@@ -181,21 +249,46 @@ function openAbove({ size: n, tiles }, col, row, turn, k) {
 const frontage = (i) => (i % HALF === 0 ? -1 : i % HALF === HALF - 1 ? 1 : 0);
 
 // A one-storey strip of shops along each street side of the lot, the full lot wide, so neighbouring strips join
-// into a street wall even where the buildings above are narrow. Construction sites get a site hoarding instead.
+// into a street wall even where the buildings above are narrow. Each side is one of the Blender strips
+// (tools/blender/shop_strips.py: shutter stalls, a food counter, a framed glass front, an arcade) or, one time in
+// five, the plain lit strip with its awning light. Construction sites get a site hoarding instead.
+const STRIPS = ['stalls', 'counter', 'frame', 'arcade'];
 function shopfronts(kit, root, t, rand, dx, dz) {
   const site = t.k === 'build', [h, d] = site ? [2.4, 0.3] : [4.5, 3];
   const wall = site ? kit.steel(palette.gunmetal, 0.8) : kit.windows(3, t.on, true, 'shop');
   const awning = t.on && !site && kit.glow(pick(rand, WARM), 1.2);
-  const at = TILE / 2 - 0.3 - d / 2;
+  const at = TILE / 2 - 0.3 - d / 2, own = rng(t.s * 17 + 9); // its own generator: the tile's other choices stay
   // x-facing strips are a hair lower than z-facing ones so their roofs never fight at the corner.
-  if (dx) {
-    part(root, box(d, h, TILE, 0), wall, dx * at, 0.18 + h / 2, 0);
-    if (awning) part(root, box(0.15, 0.15, TILE - 1, 0), awning, dx * (at + d / 2 + 0.1), h - 0.4, 0);
+  for (const [axis, s] of [['x', dx], ['z', dz]]) {
+    if (!s) continue;
+    const kind = !site && own() >= 0.2 && pick(own, STRIPS);
+    if (kind) {
+      root.add(strip(kit, kind, t.on, own, axis, s, at + d / 2));
+      continue;
+    }
+    const tall = axis === 'z' ? 0.1 : 0;
+    if (axis === 'x') part(root, box(d, h, TILE, 0), wall, s * at, 0.18 + h / 2, 0);
+    else part(root, box(TILE, h + tall, d, 0), wall, 0, 0.18 + (h + tall) / 2, s * at);
+    if (!awning) continue;
+    if (axis === 'x') part(root, box(0.15, 0.15, TILE - 1, 0), awning, s * (at + d / 2 + 0.1), h - 0.4, 0);
+    else part(root, box(TILE - 1, 0.15, 0.15, 0), awning, 0, h - 0.4, s * (at + d / 2 + 0.1));
   }
-  if (dz) {
-    part(root, box(TILE, h + 0.1, d, 0), wall, 0, 0.18 + (h + 0.1) / 2, dz * at);
-    if (awning) part(root, box(TILE - 1, 0.15, 0.15, 0), awning, 0, h - 0.4, dz * (at + d / 2 + 0.1));
-  }
+}
+
+// One Blender shop strip with its front (the model's +z) on the street side s of axis, `front` metres out.
+function strip(kit, kind, lit, rand, axis, s, front) {
+  const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark);
+  const g = kit.model(`shop_${kind}`, {
+    graphite: kit.steel(palette.graphite, 0.6), steel: kit.steel(palette.gunmetal, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
+    titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
+    sheet: kit.mat('box_profile_metal_sheet', palette.gunmetal), shopwall: kit.windows(pick(rand, [3, 3, 6]), lit, true, 'shop'),
+    lamp: off(kit.glow(palette.dirtyAmber, 1.2)), glow_amber: off(kit.glow(palette.agedAmber, 1)),
+    glow_cyan: off(kit.glow(palette.coldCyan, 0.8)), sign: off(kit.sign(pick(rand, WORDS), pick(rand, WARM))),
+  });
+  g.rotation.y = axis === 'x' ? (s * Math.PI) / 2 : s > 0 ? 0 : Math.PI;
+  g.position.set(axis === 'x' ? s * front : 0, 0.18, axis === 'x' ? 0 : s * front);
+  if (axis === 'z') g.scale.y = 1.02; // as the plain strips: z-facing roofs a hair higher, so corners never fight
+  return kit.foldDetail(g, [dark]);
 }
 
 // Footprint width from the style seed: low-rises are small, towers fill most of their lot.
