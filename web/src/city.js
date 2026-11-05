@@ -7,7 +7,7 @@ import { construction, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
-import { retrofit, spire } from './landmarks.js';
+import { exoframe, retrofit, roofworks, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { warningLamp } from './parts.js';
 import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, SIDEWALK, pick } from './world.js';
@@ -81,7 +81,7 @@ export function buildCity(kit, snap) {
   const layout = cityLayout(snap), { n, pos, inTown } = layout, root = new THREE.Group();
   const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
-  const signature = signatureTowers(snap), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
+  const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
@@ -118,6 +118,13 @@ export function buildCity(kit, snap) {
       spire(kit, g, t.f * F, fw, t.on);
       retrofit(kit, g, (k) => openAbove(snap, col, row, g.rotation.y, k), rng(t.s * 7 + 3)); // its own generator: other buildings keep theirs
     }
+    if (heavy.has(i)) { // the same retrofit, held in an exoskeleton, with plant on the roof
+      const clear = (k) => openAbove(snap, col, row, g.rotation.y, k), own = rng(t.s * 7 + 3), used = retrofit(kit, g, clear, own);
+      if (used) {
+        exoframe(g, clear, own, used);
+        roofworks(kit, g, own);
+      } else heavy.delete(i); // no shaft to dress: it stays as it was, sign and all
+    }
     let small = false; // small parts are drawn only near the camera, merged per sector (a storefront has its own)
     lot.traverse((o) => { if (o.name === 'detail') small = o.userData.lod = sector; });
     if (small !== false && !detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
@@ -132,11 +139,11 @@ export function buildCity(kit, snap) {
       if (t.on) for (const x of [a + 6.5, b - 6.5]) warningLamp(kit, root, x, y - 1.7, cz - 1.85); // clearance lamps
     }
   });
-  const bridges = bridgePairs(snap, layout, signature, towers);
+  const bridges = bridgePairs(snap, layout, new Set([...signature, ...heavy]), towers); // their machinery faces the streets
   for (const bridge of bridges) root.add(skybridge(kit, snap, bridge));
   billboards(kit, root, snap, towers);
   const askew = [...towers.keys()].filter((i) => inTown(i % n, Math.floor(i / n))); // turned a little: signs would not sit flush
-  corpSigns(kit, root, snap, towers, new Set([...signature, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
+  corpSigns(kit, root, snap, towers, new Set([...signature, ...heavy, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
   streetProps(kit, root, snap, layout, streets.lamps);
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
@@ -182,6 +189,26 @@ function signatureTowers({ size: n, tiles }) {
   for (const i of tall.sort((a, b) => tiles[b].f - tiles[a].f || a - b)) {
     if (picked.size === 3) break;
     if ([...picked].every((j) => far(i, j))) picked.add(i);
+  }
+  return picked;
+}
+
+// Heavy towers: up to five buildings on a main street (a lot on a sector's edge), 16 floors or more, outside the
+// old town (askew) and off the busiest crossing (its billboards), each at least 10 tiles from the others and from
+// the signature towers, so they spread along the streets. The most prominent first: the most wall standing clear
+// of the neighbouring roofs, summed over the four sides, so their add-ons have room and show from the air. They get
+// the signature towers' industrial retrofit plus an exoskeleton and rooftop plant (landmarks.js), and no corporate
+// sign or skybridge.
+function heavyTowers(snap, { inTown }, signature) {
+  const { size: n, tiles } = snap, at = (i) => [i % n, Math.floor(i / n)], picked = new Set(), corner = new Set(crossing(snap).houses);
+  const far = (i, j) => Math.max(Math.abs(at(i)[0] - at(j)[0]), Math.abs(at(i)[1] - at(j)[1])) >= 10;
+  const main = (i) => at(i).some((v) => v % BLOCK === 0 || v % BLOCK === BLOCK - 1);
+  const ok = (t, i) => t.k === 'house' && t.f >= 16 && main(i) && !signature.has(i) && !corner.has(i) && !inTown(...at(i));
+  const clear = (i) => [0, 1, 2, 3].reduce((sum, k) => sum + Math.max(0, tiles[i].f * F - openAbove(snap, ...at(i), 0, k)), 0);
+  const score = new Map(tiles.flatMap((t, i) => (ok(t, i) ? [[i, clear(i)]] : [])));
+  for (const i of [...score.keys()].sort((a, b) => score.get(b) - score.get(a) || a - b)) {
+    if (picked.size === 5) break;
+    if ([...picked, ...signature].every((j) => far(i, j))) picked.add(i);
   }
   return picked;
 }

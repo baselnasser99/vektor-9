@@ -64,7 +64,7 @@ export function spire(kit, g, h, w, lit) {
   part(g, new THREE.SphereGeometry(0.4, 8, 6), kit.warning(), 0, h + 2 * F + needle + 0.3, 0);
 }
 
-// Retrofit for a signature tower (the city's three tallest, city.js): heavy industrial add-ons hung on its main
+// Retrofit for a signature or heavy tower (city.js): heavy industrial add-ons hung on its main
 // shaft, so it reads as cyberpunk from its architecture rather than from light. Asymmetric on purpose: armoured
 // plate modules on one face, a mechanical spine with ventilation units on the next, a cantilevered machine pod
 // with maintenance platforms on the opposite face, and exposed conduits climbing beside the spine. Worn dark
@@ -91,31 +91,37 @@ function stacks(g) {
   return out;
 }
 
-export function retrofit(kit, g, clear, rand) {
-  // The shaft to dress: the stack, over 15 m tall, that stands the most clear of the neighbouring roofs.
+// The shaft to dress on tower g (the stack, over 15 m tall, that stands the most clear of the neighbouring roofs)
+// and what the add-ons share: their materials (painted steel, not the fully metallic worn texture: at night a metal
+// surface has little to reflect and goes black), where deep parts may start on face k (top), the point `u` along
+// face k (0..3: +x, +z, -x, -z) from its middle and `off` metres out from the shaft's centre as [x, z] (on), a box
+// on face k (face: `w` along the face, `h` tall, `d` deep, `u` along it from its middle, `out` metres off it, centred
+// at height y) and the width of face k (span). null if the tower has no such shaft.
+function shaftOf(kit, g, clear) {
   const low = Math.min(...[0, 1, 2, 3].map(clear));
   const shaft = stacks(g).filter((q) => q.y1 - q.y0 > 15).sort((p, q) => (q.y1 - Math.max(q.y0, low)) * q.W - (p.y1 - Math.max(p.y0, low)) * p.W)[0];
-  if (!shaft) return;
-  const { x: cx, z: cz, W, D, y0, y1 } = shaft;
-  const Hs = y1 - y0, top = (k) => Math.max(clear(k) + 4, y0 + Hs * 0.3); // where deep parts may start on face k
-  // Painted steel, not the fully metallic worn texture: at night a metal surface has little to reflect and goes black.
+  if (!shaft) return null;
+  const { x: cx, z: cz, W, D, y0, y1 } = shaft, Hs = y1 - y0;
   const mat = { steel: kit.steel(palette.gunmetal, 0.6), titanium: kit.steel(palette.weatheredTitanium, 0.6), dark: kit.steel(palette.charcoal, 0.6),
     grate: kit.mat('metal_grate_rusty', palette.gunmetal), hazard: kit.steel(palette.hazardPaint, 0.7), lamp: kit.glow(palette.dirtyAmber, 1.2),
     small: kit.steel(palette.charcoal, 0.4) }; // small: the steel every building's near-camera detail already uses (families.js)
-  const detail = g.getObjectByName('detail') ?? g;
-  // The point `u` along face k (0..3: +x, +z, -x, -z) from its middle and `off` metres out from the shaft's centre,
-  // as [x, z].
   const on = (k, u, off) => {
     const [nx, nz] = FACES[k];
     return [cx + nx * off - nz * u, cz + nz * off + nx * u];
   };
-  // A box on face k: `w` along the face, `h` tall, `d` deep, `u` along it from its middle, `out` metres off it (its
-  // back), centred at height y.
   const face = (k, parent, w, h, d, m, u, y, out) => {
     const [x, z] = on(k, u, (FACES[k][0] ? W / 2 : D / 2) + out + d / 2);
     return part(parent, FACES[k][0] ? box(d, h, w, 1) : box(w, h, d, 1), m, x, y, z);
   };
-  const span = (k) => (k % 2 ? W : D); // width of face k
+  return { W, D, y0, y1, Hs, mat, on, face, span: (k) => (k % 2 ? W : D), top: (k) => Math.max(clear(k) + 4, y0 + Hs * 0.3),
+    detail: g.getObjectByName('detail') ?? g };
+}
+
+// Returns the faces it used ({ a, b, c }: armour, spine, pod) with the shaft (s), for exoframe; null if no shaft.
+export function retrofit(kit, g, clear, rand) {
+  const s = shaftOf(kit, g, clear);
+  if (!s) return null;
+  const { W, D, y0, y1, Hs, top, mat, detail, on, face, span } = s;
   // c: the most open face (ties by chance) for the pod; a, opposite, for the armour; b, the more open of the other two.
   const c = [0, 1, 2, 3].map((k) => [clear(k) + rand(), k]).sort((p, q) => p[0] - q[0])[0][1], a = (c + 2) % 4;
   const b = clear((c + 1) % 4) <= clear((c + 3) % 4) ? (c + 1) % 4 : (c + 3) % 4;
@@ -169,5 +175,84 @@ export function retrofit(kit, g, clear, rand) {
     face(c, g, 6.5, 0.2, 1.6, mat.grate, du, y, 0);
     face(c, detail, 6.5, 1.1, 0.06, mat.small, du, y + 0.65, 1.5); // rail
     face(c, g, 0.3, 0.2, 0.15, mat.lamp, du + 2.8, y + 2.4, 0); // work lamp, always drawn like every light
+  }
+  return { a, b, c, s };
+}
+
+// Exoskeleton for a heavy tower (city.js), after its retrofit (`used`: what retrofit returned): the shaft held in a
+// reinforced frame standing proud of one face, so its outline reads as engineered rather than a plain box from the
+// air. The face is the first with two belts' height clear of the neighbouring roof (it stands out further than a
+// plate): the one the retrofit left bare, else the armour face (the frame a metre out, in front of the plates),
+// else the pod's (the pod hangs in front of it); never the spine's. Heavy columns just in from both its edges, from
+// above the neighbour's roof to past the roof line; transfer belts across it every BELT metres; and between the
+// belts mega braces crossing it in big X's, one bay left plain so the face stays lopsided. No lights.
+const BELT = 14;
+export function exoframe(g, clear, rand, { a, b, c, s }) {
+  const { W, D, y0, y1, mat, on, face, span } = s, stop = y1 + 2.5, from = (k) => Math.max(y0 + 2, clear(k) + 1);
+  const e = [[0, 1, 2, 3].find((k) => k !== a && k !== b && k !== c), a, c].find((k) => stop - from(k) >= 2 * BELT);
+  if (e === undefined) return;
+  const start = from(e), out = e === a ? 1 : 0, wall = (FACES[e][0] ? W : D) / 2, inner = span(e) - 1.2;
+  for (const u of [-1, 1]) { // the columns
+    const [x, z] = on(e, (u * inner) / 2, wall + out + 0.6);
+    part(g, box(1.2, stop - start, 1.2, 1), mat.dark, x, (start + stop) / 2, z);
+    part(g, box(1.6, 0.8, 1.6, 1), mat.steel, x, stop + 0.4, z); // a cap above the roof line
+  }
+  const belts = [];
+  for (let y = start + BELT / 2; y < y1 - 2; y += BELT) belts.push(y);
+  for (const y of belts) face(e, g, span(e), 1.1, 0.7, mat.steel, 0, y, out);
+  const plain = belts.length > 2 ? Math.floor(rand() * (belts.length - 1)) : -1;
+  for (let i = 0; i + 1 < belts.length; i++) {
+    if (i === plain) continue;
+    const h = belts[i + 1] - belts[i], tilt = Math.atan2(h, inner);
+    for (const sign of [-1, 1]) { // the X: two braces, column to column across the bay, in the face's plane
+      const m = face(e, g, Math.hypot(inner, h), 0.7, 0.5, mat.titanium, 0, belts[i] + h / 2, out + 0.2);
+      if (FACES[e][0]) m.rotation.x = sign * tilt;
+      else m.rotation.z = sign * tilt;
+    }
+  }
+}
+
+// Rooftop plant for a heavy tower, crowning it: on its highest solid top (the roof, its penthouse or its crown's
+// plate, whichever is highest and at least 4 m across), a plant deck the size of that top carrying a heat exchanger
+// (louvred grate sides under a steel lid) and two squat cooling stacks, and a pair of lattice masts of different
+// heights rising from one corner. Sized to read from the air; no lights (the roof keeps its own).
+const roofGear = new THREE.Box3();
+export function roofworks(kit, g, rand) {
+  const mat = { steel: kit.steel(palette.gunmetal, 0.6), dark: kit.steel(palette.charcoal, 0.6),
+    titanium: kit.steel(palette.weatheredTitanium, 0.6), grate: kit.mat('metal_grate_rusty', palette.gunmetal) };
+  g.updateWorldMatrix(true, true);
+  const into = g.matrixWorld.clone().invert();
+  let top = null;
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    const q = roofGear.setFromObject(o).applyMatrix4(into);
+    if (q.max.x - q.min.x >= 4 && q.max.z - q.min.z >= 4 && (!top || q.max.y > top.max.y)) top = q.clone();
+  });
+  if (!top) return;
+  const w = top.max.x - top.min.x, d = top.max.z - top.min.z, y = top.max.y, [px, pz] = [(top.min.x + top.max.x) / 2, (top.min.z + top.max.z) / 2];
+  // The new plant replaces the roof's own: unlit gear standing on this top, clear of its edges (the parapet and the
+  // corner lamps' posts stay, and so does every light).
+  const old = [];
+  g.traverse((o) => {
+    if (!o.isMesh || o.material.emissive?.getHex()) return;
+    const q = roofGear.setFromObject(o).applyMatrix4(into);
+    if (q.min.y >= y - 0.3 && q.min.x > top.min.x + 0.6 && q.max.x < top.max.x - 0.6 && q.min.z > top.min.z + 0.6 && q.max.z < top.max.z - 0.6) old.push(o);
+  });
+  for (const o of old) o.removeFromParent();
+  const sx = rand() < 0.5 ? -1 : 1, sz = rand() < 0.5 ? -1 : 1; // the masts' corner; the exchanger sits away from it
+  part(g, box(w * 0.92, 0.9, d * 0.92, 1), mat.dark, px, y + 0.45, pz); // the deck
+  const hh = 3 + rand() * 2, [hx, hz] = [px - sx * w * 0.18, pz - sz * d * 0.12];
+  part(g, box(w * 0.5, hh, d * 0.5, 1), mat.grate, hx, y + 0.9 + hh / 2, hz);
+  part(g, box(w * 0.5 + 0.5, 0.5, d * 0.5 + 0.5, 1), mat.steel, hx, y + 1.15 + hh, hz);
+  const r = Math.min(w, d) * 0.11;
+  for (const k of [-1, 1]) { // cooling stacks beside the exchanger, on the masts' side
+    const h = 2.2 + rand() * 1.8, [cx, cz] = [px + sx * w * 0.25, pz + k * d * 0.2];
+    part(g, cyl(r, r * 1.15, h, 10), mat.titanium, cx, y + 0.9 + h / 2, cz);
+    part(g, cyl(r * 1.08, r * 1.08, 0.35, 10), mat.dark, cx, y + 1.05 + h, cz);
+  }
+  for (const [f, du] of [[1, 0], [0.6, -1.8]]) { // lattice masts, the second shorter, in from the corner
+    const h = (9 + rand() * 5) * f, ax = px + sx * (w / 2 - 1) + sx * du, az = pz + sz * (d / 2 - 1);
+    for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) part(g, box(0.16, h, 0.16, 0), mat.steel, ax + ox, y + 0.9 + h / 2, az + oz);
+    for (let t = 2; t < h; t += 2.5) part(g, box(1.05, 0.14, 1.05, 0), mat.dark, ax, y + 0.9 + t, az);
   }
 }
