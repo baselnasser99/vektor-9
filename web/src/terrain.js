@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
-import { streetLamp, tree } from './parts.js';
+import { streetLamp, tree, warningLamp } from './parts.js';
 import { TILE } from './world.js';
 import { duneHeight } from './desert.js';
 import { station } from './landmarks.js';
@@ -84,7 +84,7 @@ export function railway(kit, root, centres, edge) {
     for (const side of [-1, 1]) {
       part(piece, box(span + 0.05, 0.9, 0.3, 0), deck, 0, 1.05, side * 4.35);
       part(piece, box(span + 0.05, 0.1, 0.1, 0), led, 0, -0.65, side * 4.5);
-      if (Math.round(t / span) % 4 === 0) part(piece, box(0.6, 0.6, 0.6, 0), kit.warning(), 0, 1.62, side * 4.35); // clearance lamp
+      if (Math.round(t / span) % 4 === 0) warningLamp(kit, piece, 0, 1.62, side * 4.35); // clearance lamp
     }
     piece.position.set(x, y, z);
     piece.rotation.set(0, -angle, Math.atan2(rise, span)); // a box's length runs along x; -angle points it along (ux, uz)

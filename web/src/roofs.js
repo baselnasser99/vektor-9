@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
 import { F } from './world.js';
+import { warningLamp } from './parts.js';
 
 const AVIATION = 24; // floors from which a tower carries red aviation lamps on two roof corners
 
@@ -46,9 +47,9 @@ export function roof(c, type, w, d, y, wall, glass, x = 0, z = 0) {
 
 // ---- parts -------------------------------------------------------------------------------------------------------
 
-// A small steady crimson warning lamp (lit buildings only), on machinery, masts and tall corners.
+// A warning lamp on lit buildings only, on machinery, masts and tall corners.
 function lamp(r, x, y, z) {
-  if (r.lit) part(r.g, box(0.7, 0.7, 0.7, 0), r.kit.warning(), x, y, z);
+  if (r.lit) warningLamp(r.kit, r.g, x, y, z, 0.7);
 }
 
 // A parapet: a low wall round the roof edge, in the facade's edge material.

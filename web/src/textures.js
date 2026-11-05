@@ -360,22 +360,26 @@ const MARKS = {
 
 // A large corporate sign's face (or an ad in the same style): weathered dark panels, a mark (deep red unless
 // markColor says otherwise) and the name and its line in ink (cold white unless given). Tall (a pylon or a blade):
-// the mark on top and the name stacked below; wide: mark left, name right.
-export const corpTexture = (name, line, mark, w, h, ink = palette.windowWhite, markColor = palette.crimson) => painted(w, h, (g) => {
-  const tall = h > w * 1.6, rand = rng([...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 11) % 9973);
-  g.fillStyle = css(palette.graphite);
+// the mark on top and the name stacked below; portrait (a wall projection): the mark on top, the name across and
+// its line under it; wide: mark left, name right. bare: black with no panel, for a
+// projection (black adds no light), and no frame.
+export const corpTexture = (name, line, mark, w, h, ink = palette.windowWhite, markColor = palette.crimson, bare = false) => painted(w, h, (g) => {
+  const tall = h > w * 1.6, portrait = !tall && h > w * 1.15, rand = rng([...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 11) % 9973);
+  g.fillStyle = bare ? '#000' : css(palette.graphite);
   g.fillRect(0, 0, w, h);
-  const seams = tall ? [w, h / 6] : [w / 6, h]; // panel seams and grime: a weathered electronic panel
-  g.fillStyle = rgba(palette.charcoal, 0.9);
-  for (let x = seams[0]; x < w; x += seams[0]) g.fillRect(x - 1, 0, 3, h);
-  for (let y = seams[1]; y < h; y += seams[1]) g.fillRect(0, y - 1, w, 3);
-  for (let k = 0; k < 40; k++) {
-    g.fillStyle = rgba(palette.deepNavy, 0.25 + rand() * 0.35);
-    g.fillRect(rand() * w, rand() * h, 3 + rand() * 6, 10 + rand() * h * 0.15); // rain streaks
+  if (!bare) { // panel seams, rain streaks and faint scanlines: a weathered electronic panel
+    const seams = tall ? [w, h / 6] : [w / 6, h];
+    g.fillStyle = rgba(palette.charcoal, 0.9);
+    for (let x = seams[0]; x < w; x += seams[0]) g.fillRect(x - 1, 0, 3, h);
+    for (let y = seams[1]; y < h; y += seams[1]) g.fillRect(0, y - 1, w, 3);
+    for (let k = 0; k < 40; k++) {
+      g.fillStyle = rgba(palette.deepNavy, 0.25 + rand() * 0.35);
+      g.fillRect(rand() * w, rand() * h, 3 + rand() * 6, 10 + rand() * h * 0.15);
+    }
+    g.fillStyle = rgba(palette.charcoal, 0.45);
+    for (let y = 0; y < h; y += 5) g.fillRect(0, y, w, 1);
   }
-  g.fillStyle = rgba(palette.charcoal, 0.45); // faint scanlines
-  for (let y = 0; y < h; y += 5) g.fillRect(0, y, w, 1);
-  const s = tall ? w * 0.36 : h * 0.34, [mx, my] = tall ? [w / 2, w * 0.5] : [h * 0.55, h / 2];
+  const s = tall || portrait ? w * 0.34 : h * 0.34, [mx, my] = tall || portrait ? [w / 2, w * 0.48] : [h * 0.55, h / 2];
   g.save();
   g.translate(mx, my);
   g.scale(s / 100, s / 100);
@@ -395,6 +399,11 @@ export const corpTexture = (name, line, mark, w, h, ink = palette.windowWhite, m
     g.font = `bold ${Math.round(w * 0.14)}px monospace`;
     g.fillText(line, 0, w * 0.26, room);
     g.restore();
+  } else if (portrait) {
+    g.font = `bold ${Math.round(Math.min(w * 0.2, (w * 1.5) / name.length))}px monospace`;
+    g.fillText(name, w / 2, w * 1.05, w - 16);
+    g.font = `bold ${Math.round(w * 0.065)}px monospace`;
+    g.fillText(line, w / 2, w * 1.05 + w * 0.2, w - 16);
   } else if (tall) {
     const top = w * 1.05, step = (h - top - w * 0.4) / name.length;
     g.font = `bold ${Math.round(Math.min(w * 0.5, step * 0.8))}px monospace`;
@@ -409,6 +418,7 @@ export const corpTexture = (name, line, mark, w, h, ink = palette.windowWhite, m
     g.font = `bold ${Math.round(h * 0.13)}px monospace`;
     g.fillText(line, x0 + 4, h * 0.76, room);
   }
+  if (bare) return;
   g.fillStyle = css(markColor); // a thin rule framing the panel
   for (const [x, y, rw, rh] of [[0, 0, w, 4], [0, h - 4, w, 4], [0, 0, 4, h], [w - 4, 0, 4, h]]) g.fillRect(x, y, rw, rh);
 });

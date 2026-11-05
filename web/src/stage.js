@@ -131,7 +131,10 @@ function navigate(controls, camera, reach) {
     fast = e.shiftKey;
     held.delete(e.code);
   });
-  addEventListener('blur', () => held.clear());
+  addEventListener('blur', () => {
+    held.clear();
+    fast = false;
+  });
   const up = new THREE.Vector3(0, 1, 0), fwd = new THREE.Vector3(), side = new THREE.Vector3(), shift = new THREE.Vector3();
   // Slide camera and focus together, keeping the focus inside the city's surroundings.
   const slide = (v) => {

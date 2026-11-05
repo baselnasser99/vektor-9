@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, ring } from './geometry.js';
 
+// A small steady crimson warning lamp (kit.warning), s metres across, on machinery, masts, frames and corners.
+export const warningLamp = (kit, parent, x, y, z, s = 0.6) => part(parent, box(s, s, s, 0), kit.warning(), x, y, z);
+
 // Steel lattice girder along x: four chords, verticals and X bracing in each bay.
 // seg: box detail (see geometry.js box); the city passes 1.
 export function truss(kit, length, height, width, seg = 3) {

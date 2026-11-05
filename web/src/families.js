@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
-import { pipe } from './parts.js';
+import { pipe, warningLamp } from './parts.js';
 import { dress, podium } from './tiles.js';
 import { roof, roofType } from './roofs.js';
 import { F, WARM, pick } from './world.js';
@@ -139,7 +139,7 @@ function office(c) {
     for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) part(c.g, box(0.7, y1 - y0, 0.7, 1), frame, sx * cw / 2, (y0 + y1) / 2, sz * cw / 2);
   };
   columns(w, lobby, split);
-  if (lit && seed % 2) part(c.g, box(0.3, 0.3, 0.3, 0), kit.warning(), fw * 0.46 + 0.05, 2.4, fw * 0.3); // security panel at the lobby
+  if (lit && seed % 2) warningLamp(kit, c.g, fw * 0.46 + 0.05, 2.4, fw * 0.3, 0.3); // security panel at the lobby
   if (lit && seed === 4 && f >= 14) { // now and then a narrow red corporate sign up one corner
     const h = Math.min(12, (split - lobby) * 0.35);
     part(c.g, box(0.3, h, 1.1, 1), kit.sign(['NOVA', 'VX9', 'SEIRA'][f % 3], palette.crimson, true), w / 2 + 0.5, split - F - h / 2, w / 2 - 1);
@@ -206,7 +206,7 @@ function industrial(c) {
     part(c.d, box(len, 0.2, 0.2, 0), c.m.steel, -w / 2 + (k + 0.5) * (w / 3), H / 2, d / 2 + 0.3).rotation.z = Math.atan2(H, w / 3) * (k % 2 ? 1 : -1);
   }
   // Indicator lamps along the frame on lit halls of every other seed: a working section.
-  if (lit && seed % 2) for (let k = 0; k <= 3; k++) part(c.g, box(0.6, 0.6, 0.6, 0), kit.warning(), -w / 2 + (k * w) / 3, H - 0.6, d / 2 + 0.6);
+  if (lit && seed % 2) for (let k = 0; k <= 3; k++) warningLamp(kit, c.g, -w / 2 + (k * w) / 3, H - 0.6, d / 2 + 0.6);
   // Pipes up the -x face and across the roof.
   for (const [z, r] of [[-d * 0.25, 0.3], [d * 0.1, 0.2]]) pipe(kit, c.d, [[-w / 2 - 0.5, 0.4, z], [-w / 2 - 0.5, H + 1, z], [w * 0.2, H + 1, z]], r, pipes, 8);
   if (seed % 3 === 0) {

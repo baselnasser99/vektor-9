@@ -40,29 +40,48 @@ export function storefront(kit, root, rand, lit, dx, dz) {
   });
 }
 
-// Signs: a banner down one face, and over a roof with room in the middle (free) a billboard or, on tall
-// buildings, a hologram. Banner and billboard carry an odd ad (ADS) on a display of their own, animated like the
-// corporate signs (materials.js liveSign), in a dark steel frame. Roof gear itself is roofs.js.
-export function dress({ kit, g, rand, lit, warm, H, y, w, tall }, floors, roofY, free) {
+// Signs: down one face a banner or (every third tower) a projected ad floating out from the wall; over a roof
+// with room in the middle (free) a framed billboard or (on even floor counts, and every rooftop hologram) a
+// projector throwing its ad into the air above. All carry odd ads (ADS). Framed displays animate like the corporate
+// signs (materials.js liveSign); projections are light, in the hologram shader. Roof gear itself is roofs.js.
+export function dress({ kit, g, rand, lit, H, y, w, tall }, floors, roofY, free) {
   const frame = kit.steel(palette.graphite, 0.6);
   if (lit && rand() < 0.45) {
-    const h = Math.min(24, (H - y) * 0.6), side = rand() < 0.5 ? 1 : -1, [name, line, mark, ink, color] = pick(rand, ADS);
+    const h = Math.min(24, (H - y) * 0.6), side = rand() < 0.5 ? 1 : -1, ad = pick(rand, ADS), [name, line, mark, ink, color] = ad;
     const x = side * (w / 2 + 0.3), cy = y + (H - y) * 0.5;
-    part(g, box(0.4, h, 2.6, 1), frame, x, cy, w / 4);
-    part(g, new THREE.PlaneGeometry(2.4, h - 0.3), kit.corp(name, line, mark, 128, 768, ink, color), x + side * 0.21, cy, w / 4)
-      .rotation.y = side * (Math.PI / 2);
+    // Named 'banner' so a corporate sign on the same tower can take its place (city.js corpSigns).
+    if (floors % 3 === 0 && cy - 3 >= 6) projector(kit, g, 'wall', ad, side * w / 2, cy - 3, w / 4, side * (Math.PI / 2)).name = 'banner'; // clear of the shops
+    else {
+      part(g, box(0.4, h, 2.6, 1), frame, x, cy, w / 4).name = 'banner';
+      const shown = part(g, new THREE.PlaneGeometry(2.4, h - 0.3), kit.corp(name, line, mark, 128, 768, ink, color), x + side * 0.21, cy, w / 4);
+      shown.rotation.y = side * (Math.PI / 2);
+      shown.name = 'banner';
+    }
   }
   if (!lit || !free) return;
   if (floors >= 8 && rand() < 0.3) {
-    const [name, line, mark, ink, color] = pick(rand, ADS);
+    const ad = pick(rand, ADS), [name, line, mark, ink, color] = ad;
     rand(); // what the old word pick drew, so the rest of the tile is unchanged
+    if (floors % 2 === 0) return projector(kit, g, 'roof', ad, 0, roofY, 0, 0);
     for (const x of [-3.5, 3.5]) part(g, box(0.3, 4, 0.3, 1), kit.steel(palette.charcoal), x, roofY + 2, 0);
     part(g, box(9, 4.5, 0.4, 1), frame, 0, roofY + 6, 0);
-    const ad = kit.corp(name, line, mark, 512, 256, ink, color);
-    for (const s of [-1, 1]) part(g, new THREE.PlaneGeometry(8.6, 4.1), ad, 0, roofY + 6, s * 0.21).rotation.y = s < 0 ? Math.PI : 0;
+    const shown = kit.corp(name, line, mark, 512, 256, ink, color);
+    for (const s of [-1, 1]) part(g, new THREE.PlaneGeometry(8.6, 4.1), shown, 0, roofY + 6, s * 0.21).rotation.y = s < 0 ? Math.PI : 0;
   } else if (tall && rand() < 0.25) {
-    part(g, new THREE.PlaneGeometry(8, 2), kit.holo(pick(rand, WORDS), warm), 0, roofY + 6, 0);
+    projector(kit, g, 'roof', pick(rand, ADS), 0, roofY, 0, 0);
   }
+}
+
+// A hologram projector (tools/blender/holo_projectors.py, kind 'roof' or 'wall') at (x, y, z) in g, turned by
+// turn, throwing ad (an ADS entry) into the air in its ink's light.
+function projector(kit, g, kind, [name, line, mark, ink, color], x, y, z, turn) {
+  const base = kit.industrial(true), [w, h] = kind === 'roof' ? [512, 288] : [256, 384];
+  const m = kit.foldDetail(kit.model(`holo_${kind}`, { ...base, panel: kit.mat('rusty_painted_metal', palette.gunmetal),
+    holo: kit.projection(name, line, mark, ink, color, w, h), beam: kit.beam(ink), lens: kit.glow(palette.coldCyan, 1.6) }), [base.dark]);
+  m.position.set(x, y, z);
+  m.rotation.y = turn;
+  g.add(m);
+  return m;
 }
 
 // Empty lot as a small plaza: paving, parked cars (some of them taxis), sometimes a kiosk with a sign.

@@ -14,9 +14,14 @@ export function mergeByMaterial(root, warp) {
   root.updateMatrixWorld(true);
   const sets = new Map(); // lod key (undefined: always drawn) -> material -> meshes
   root.traverse((o) => {
-    if (o.userData.rigid) o.traverse((m) => { m.userData.rigid = true; }); // moved whole by its builder: no warp
-    if (o.userData.lod !== undefined) o.traverse((m) => { m.userData.lod = o.userData.lod; });
-    if (o.userData.building !== undefined) o.traverse((m) => { m.userData.building = o.userData.building; });
+    // Flags pass down: traverse visits a parent before its children, so copying the parent's is enough (the
+    // outermost lod or building wins, as before; rigid: moved whole by its builder, no warp).
+    const up = o !== root && o.parent.userData;
+    if (up) {
+      if (up.rigid) o.userData.rigid = true;
+      if (up.lod !== undefined) o.userData.lod = up.lod;
+      if (up.building !== undefined) o.userData.building = up.building;
+    }
     if (!o.isMesh) return;
     const key = o.userData.lod;
     if (!sets.has(key)) sets.set(key, new Map());
