@@ -6,7 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { css, palette, ui } from './palette.js';
-import { MOON, skyDome } from './atmosphere.js';
+import { MOON, skyDome, skyGlsl } from './atmosphere.js';
 
 // The look, in one place: exposure, key (moon), fill (sky) and bounce (city glow) light, bloom [strength, radius,
 // threshold], and the haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
@@ -18,19 +18,29 @@ const HAZE = { aloft: 0.3, low: 25, high: 220 };
 const MIST = { street: 0.005, half: 25 };
 const MIST_RGB = new THREE.Color(palette.nightHorizon).toArray().map((v) => v.toFixed(4)).join(', '); // lit from below, paler than the haze
 
+// The sky (atmosphere.js skyGlsl), shared by the dome and the fog. Polluted twilight: haze at the ground, muted smog
+// orange just over the horizon, blue-grey haze, a desaturated dusk blue and a deep zenith; light pollution from the
+// city warms the lowest sky.
+const SKY = skyGlsl([[0, palette.nightFog], [0.015, palette.smogOrange], [0.07, palette.smogHaze], [0.25, palette.duskBlue],
+  [1, palette.duskZenith]], [palette.cityGlow, 0.35]);
+
 // Haze in every material's fog: thickest among the streets and thinning with height, so distant streets fade into
 // the night while tall landmarks stay crisp. The fragment's height comes from the view-space position (the view
 // matrix is rigid, so its inverse is a transpose), so sprites and points get it too.
+// Its colour is the sky's toward the fragment (vFogDir, from the eye), so what the haze swallows melts into the sky
+// behind it; looking down at the streets that is the plain night haze.
 THREE.ShaderChunk.fog_pars_vertex = `#ifdef USE_FOG
   varying float vFogDepth;
   varying float vFogHeight;
+  varying vec3 vFogDir;
 #endif`;
 THREE.ShaderChunk.fog_vertex = `#ifdef USE_FOG
   vFogDepth = - mvPosition.z;
   vFogHeight = (transpose(mat3(viewMatrix)) * (mvPosition.xyz - viewMatrix[3].xyz)).y;
+  vFogDir = transpose(mat3(viewMatrix)) * mvPosition.xyz;
 #endif`;
 THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment
-  .replace('varying float vFogDepth;', 'varying float vFogDepth;\n  varying float vFogHeight;');
+  .replace('varying float vFogDepth;', `varying float vFogDepth;\n  varying float vFogHeight;\n  varying vec3 vFogDir;\n  ${SKY}`);
 THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
   #ifdef FOG_EXP2
     float fogThin = fogDensity * mix(1.0, ${HAZE.aloft.toFixed(2)}, smoothstep(${HAZE.low.toFixed(1)}, ${HAZE.high.toFixed(1)}, vFogHeight));
@@ -43,7 +53,7 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
   #else
     float fogFactor = smoothstep(fogNear, fogFar, vFogDepth), mistFactor = 0.0;
   #endif
-  gl_FragColor.rgb = mix(mix(gl_FragColor.rgb, vec3(${MIST_RGB}), mistFactor), fogColor, fogFactor);
+  gl_FragColor.rgb = mix(mix(gl_FragColor.rgb, vec3(${MIST_RGB}), mistFactor), skyAt(normalize(vFogDir)), fogFactor);
 #endif`;
 
 // span: half-width in metres of the area that needs shadows and fits in the view.
@@ -178,7 +188,7 @@ function createRenderer() {
 // Warm windows, lamps and neon do the rest.
 function nightScene(span, fog, far) {
   const scene = new THREE.Scene();
-  scene.add(skyDome([[0, palette.nightFog], [0.05, palette.nightHorizon], [0.25, palette.nightSky], [1, palette.nightZenith]], far * 0.8));
+  scene.add(skyDome(SKY, far * 0.8));
   scene.fog = new THREE.FogExp2(palette.nightFog, fog);
   scene.add(new THREE.HemisphereLight(palette.nightHorizon, palette.nightSand, LOOK.fill));
   const moon = new THREE.DirectionalLight(palette.moon, LOOK.key);
