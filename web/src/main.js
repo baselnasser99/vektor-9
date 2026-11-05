@@ -5,7 +5,7 @@ import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { facadeClock } from './facade.js';
 import { buildCity, cityLayout } from './city.js';
-import { REACH, buildDesert } from './desert.js';
+import { REACH, buildDesert, outOfTown } from './desert.js';
 import { traffic, trains } from './life.js';
 import { airships, cloudDeck, horizon, mist, moon, rain, rainAmount, stars } from './atmosphere.js';
 
@@ -40,8 +40,8 @@ onFrame(() => {
   const { x, y, z } = camera.position;
   for (const { group, at } of details) group.visible = (x - at[0]) ** 2 + y * y * 0.5 + (z - at[1]) ** 2 < DETAIL * DETAIL;
 });
-const { desert, lanes: highwayLanes } = buildDesert(kit, edge, lines, onFrame);
-scene.add(city, desert, traffic(kit, [...lanes, ...highwayLanes], onFrame, warp, hub));
+const desert = buildDesert(kit, edge, lines, onFrame);
+scene.add(city, desert, traffic(kit, outOfTown(lanes, edge), onFrame, warp, hub));
 if (rail) scene.add(trains(kit, rail, onFrame));
 scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), cloudDeck(REACH * 6, onFrame), ...mist(half, onFrame), ...airships(kit, half, onFrame));
 // ?rain=0..1 previews weather the snapshot does not have.

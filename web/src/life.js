@@ -39,7 +39,7 @@ function stopLine(c, lane, t, hub, gap) {
 const fract = (v) => v - Math.floor(v);
 
 // Cars with head- and taillights. Each lane runs along its axis at offset `at` and height `y`, from `from` to
-// `to`, carrying `cars` cars that wrap back to the start; city streets and highways use the same lanes.
+// `to`, carrying `cars` cars that wrap back to the start; lift(along), if set, is its height there (desert.js outOfTown).
 // warp: the city's bend (city.js), so cars follow the curved streets; it is zero out on the highways.
 // hub: the roundabout { c, r, w } (streets.js): lanes through it swing out onto a circle round the island, each at
 // the island radius plus its own offset, so they nest and keep circling the same way.
@@ -76,12 +76,12 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   };
   const place = () => {
     cars.forEach((c, i) => {
-      const { from, to, y } = c.lane, along = from + (to - from) * (c.u % 1), s = to > from ? 1 : -1;
+      const { from, to, y, lift } = c.lane, along = from + (to - from) * (c.u % 1), s = to > from ? 1 : -1;
       // Rear and front axles both on the lane's path, so the car turns with the bend of the street and its body
       // never swings out across the next lane (the roundabout's entry is a sharp turn).
       spot(c.lane, along - s * 1.4, here);
       spot(c.lane, along + s * 1.4, ahead);
-      p.set((here[0] + ahead[0]) / 2, y, (here[1] + ahead[1]) / 2);
+      p.set((here[0] + ahead[0]) / 2, lift ? lift(along) : y, (here[1] + ahead[1]) / 2);
       q.setFromAxisAngle(up, Math.atan2(ahead[0] - here[0], ahead[1] - here[1]));
       m.compose(p, q, one);
       for (const mesh of meshes) mesh.setMatrixAt(i, m);

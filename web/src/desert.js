@@ -23,11 +23,27 @@ export function buildDesert(kit, edge, lines, onFrame) {
   ground(kit, root, edge, height);
   sandDrifts(root, edge, rand);
   dirtTracks(kit, root, edge, lines);
-  const lanes = highways(kit, root, edge);
+  highways(kit, root, edge);
   wastes(kit, root, edge, lines, height, rand);
   pylons(kit, root, edge, height);
   mesas(kit, root, edge, height, rand);
-  return { desert: mergeByMaterial(root), lanes };
+  return mergeByMaterial(root);
+}
+
+// The city's traffic lanes carried on out of town to the edge of the world, so cars come and go in the fog rather
+// than appearing at the city edge: the boulevard's up the ramps and along the highways, every other street's along
+// its dirt track, over the ground. Cars per lane grow with its length (fewer out there: nothing holds them up).
+export function outOfTown(lanes, edge) {
+  const height = duneHeight(edge), deck = DECK + 0.6;
+  for (const lane of lanes) {
+    const s = Math.sign(lane.to - lane.from), road = Math.abs(lane.c) < 1, base = lane.y;
+    lane.cars = Math.round(lane.cars * (1 + (0.6 * (2 * REACH - Math.abs(lane.to - lane.from))) / Math.abs(lane.to - lane.from)));
+    [lane.from, lane.to] = [-s * REACH, s * REACH];
+    lane.lift = road
+      ? (along) => base + deck * Math.min(1, Math.max(0, (Math.abs(along) - edge) / RAMP))
+      : (along) => base + (Math.abs(along) > edge ? height(...(lane.axis === 'x' ? [along, lane.at] : [lane.at, along])) : 0);
+  }
+  return lanes;
 }
 
 // Dune height: flat through the sprawl, rising over 500 m beyond it, flattened along the highway corridors.
@@ -95,19 +111,20 @@ function dirtTracks(kit, root, edge, lines) {
   }
 }
 
-// Highways climb from the city's ring road onto causeways and run to the horizon, with lamps every 150 m.
-// Returns their traffic lanes: two each way.
+// Highways climb from the city's ring road onto causeways and run to the horizon, with lamps every 150 m. They
+// carry the boulevard's three lanes each way (outOfTown).
+const WIDE = 30;
 function highways(kit, root, edge) {
-  const concrete = kit.concrete(palette.gunmetal), lanes = [], slope = Math.atan2(DECK, RAMP);
+  const concrete = kit.concrete(palette.gunmetal), slope = Math.atan2(DECK, RAMP);
   for (const [ax, sign] of [['z', 1], ['z', -1], ['x', 1], ['x', -1]]) {
     const start = edge + RAMP, len = REACH - start, mid = sign * (start + len / 2);
     const along = (v) => (ax === 'z' ? [0, v] : [v, 0]);
     const [rx, rz] = along(sign * (edge + RAMP / 2));
-    const ramp = part(root, box(ax === 'z' ? 22 : RAMP + 1, 1.2, ax === 'z' ? RAMP + 1 : 22, 0), concrete, rx, DECK / 2 - 0.3, rz);
+    const ramp = part(root, box(ax === 'z' ? WIDE : RAMP + 1, 1.2, ax === 'z' ? RAMP + 1 : WIDE, 0), concrete, rx, DECK / 2 - 0.3, rz);
     if (ax === 'z') ramp.rotation.x = -sign * slope;
     else ramp.rotation.z = sign * slope;
     const [x, z] = along(mid);
-    part(root, box(ax === 'z' ? 22 : len, 1.2, ax === 'z' ? len : 22, 0), concrete, x, DECK, z);
+    part(root, box(ax === 'z' ? WIDE : len, 1.2, ax === 'z' ? len : WIDE, 0), concrete, x, DECK, z);
     const deck = new THREE.Group();
     deck.position.y = DECK + 0.6;
     root.add(deck);
@@ -115,18 +132,12 @@ function highways(kit, root, edge) {
       const [px, pz] = along(sign * (start + t));
       part(root, box(3, DECK, 3, 0), kit.concrete(palette.slate), px, DECK / 2, pz);
       if (t % 150 !== 25) continue;
-      for (const off of [-11, 11]) {
+      for (const off of [-WIDE / 2, WIDE / 2]) {
         const [lx, lz] = ax === 'z' ? [off, pz] : [px, off];
         streetLamp(kit, deck, lx, lz, ax === 'z' ? (off < 0 ? 0 : Math.PI) : (off < 0 ? -Math.PI / 2 : Math.PI / 2));
       }
     }
-    const [a, b] = [sign * start, sign * REACH], y = DECK + 0.6 + 0.65, right = (ax === 'x' ? 1 : -1) * sign; // drive on the right
-    for (const off of [2.2, 5.8]) {
-      lanes.push({ axis: ax, at: right * off, from: a, to: b, y, cars: 5 });
-      lanes.push({ axis: ax, at: -right * off, from: b, to: a, y, cars: 5 });
-    }
   }
-  return lanes;
 }
 
 // The wasteland, densest by the city and thinning outward: boulders and dry scrub everywhere, abandoned cars and
@@ -146,7 +157,7 @@ function wastes(kit, root, edge, lines, height, rand) {
       const [a, r] = [rand() * Math.PI * 2, edge + 15 + out];
       const k = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))); // square city: push the ring out to its corners
       const [x, z] = [(Math.cos(a) / k) * r, (Math.sin(a) / k) * r];
-      const onTrack = r < edge + SPRAWL + 80 && tracks.some((c) => Math.abs(x - c) < 9 || Math.abs(z - c) < 9);
+      const onTrack = tracks.some((c) => Math.abs(x - c) < 9 || Math.abs(z - c) < 9); // cars drive these (outOfTown)
       if (Math.min(Math.abs(x), Math.abs(z)) > ROAD && !onTrack) return [x, height(x, z), z];
     }
   };
@@ -179,7 +190,7 @@ function wastes(kit, root, edge, lines, height, rand) {
     m.castShadow = false;
   }
   for (let k = 0; k < 220; k++) { // abandoned cars along the dirt tracks
-    const c = pick(rand, tracks), s = rand() < 0.5 ? -1 : 1, along = s * (edge + 20 + rand() ** 1.5 * 480), side = (rand() < 0.5 ? -1 : 1) * (6 + rand() * 4);
+    const c = pick(rand, tracks), s = rand() < 0.5 ? -1 : 1, along = s * (edge + 20 + rand() ** 1.5 * 480), side = (rand() < 0.5 ? -1 : 1) * (8 + rand() * 4); // clear of the lanes
     const at = rand() < 0.5 ? [c + side, 0, along] : [along, 0, c + side];
     at[1] = height(at[0], at[2]);
     const g = new THREE.Group();
@@ -231,18 +242,18 @@ function pylons(kit, root, edge, height) {
   }
 }
 
-// Mesas far out, read as silhouettes through the haze.
+// Mesas far out, read as silhouettes through the haze, off the bands where the city's streets run out of town.
 function mesas(kit, root, edge, height, rand) {
-  // A random spot 1100–1600 m from the centre, past the sprawl and off the highway corridors.
-  const spot = () => {
+  // A random spot 1100–1600 m from the centre, past the sprawl and off the streets' lanes (outOfTown), for a mesa this wide.
+  const spot = (size) => {
     for (;;) {
       const [a, r] = [rand() * Math.PI * 2, 1100 + rand() * 500];
       const [x, z] = [Math.cos(a) * r, Math.sin(a) * r];
-      if (Math.min(Math.abs(x), Math.abs(z)) > ROAD + 20 && Math.max(Math.abs(x), Math.abs(z)) > edge + SPRAWL) return [x, z];
+      if (Math.min(Math.abs(x), Math.abs(z)) > edge + size * 1.5 + 20) return [x, z];
     }
   };
   for (let k = 0; k < 10; k++) {
-    const [x, z] = spot(), r = 90 + rand() * 160, h = 60 + rand() * 120;
+    const r = 90 + rand() * 160, [x, z] = spot(r), h = 60 + rand() * 120;
     // Wide sloped flanks and a small top, so they read as eroded buttes rather than slabs.
     part(root, cyl(r * 0.6, r * 1.5, h, 18), kit.concrete(palette.charcoal), x, height(x, z) + h / 2 - 5, z).rotation.y = rand();
   }

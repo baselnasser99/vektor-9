@@ -72,7 +72,7 @@ function road(ctx, s) {
   for (const l of lines) {
     for (const side of [-1, 1]) {
       const at = l.c + side * (l.w / 2 + 1.8);
-      if (inRing(ctx, s, at)) continue;
+      if (inRing(ctx, s, at) || at < lo || at > hi) continue; // none on the outside of the city: no one walks there
       for (let off = -roadway / 2 + 0.6; off < roadway / 2; off += 1.2) {
         if (s.kind === 'boulevard' && Math.abs(off) < MEDIAN / 2) continue; // the median is a refuge, not paint
         lay(ctx, s, 3, 0.02, 0.6, paint, at, off, 0.01);
