@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
-import { AD_COLORS, CAR_COLORS, F, SHOPS, WARM, WORDS, pick } from './world.js';
+import { AD_COLORS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
 export function podium(kit, g, rand, lit, warm, fw) {
@@ -16,6 +16,34 @@ export function podium(kit, g, rand, lit, warm, fw) {
   if (!lit) return;
   if (rand() < 0.6) part(g, box(Math.min(6, fw - 2), 1.2, 0.25, 1), kit.sign(pick(rand, WORDS), warm), 0, 5.2, front + 0.15);
   if (rand() < 0.5) part(g, box(fw + 0.3, 0.14, fw + 0.3, 1), kit.glow(warm, 2), 0, 2 * F - 0.12, 0);
+}
+
+// Storefronts for the corner buildings at the busiest crossing (city.js storefrontTiles), in place of the plain
+// shop strip and on its footprint: on each street side a Blender model (tools/blender/storefront.py, ADR-0005), a
+// 14 m front 3 m deep, with a recessed mechanical entrance, a barred window, vending terminals, layered canopies,
+// conduits and roof gear. Its plain armoured end goes into the corner where the two fronts meet (storefront_l is
+// the mirror image, for sides where the corner is on the other hand). The shop's name is over each door, its mark
+// on the first side's blade sign. Dark in a blackout. About 2k triangles a side, 0.6k more up close.
+export function storefront(kit, root, rand, lit, dx, dz) {
+  const [name, mark] = pick(rand, SHOPS), ink = pick(rand, [palette.agedAmber, palette.coldCyan, palette.glare]);
+  const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark), f = TILE / 2 - 0.3;
+  const roles = {
+    graphite: kit.steel(palette.graphite, 0.6), steel: kit.steel(palette.gunmetal, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
+    titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
+    interior: off(kit.glow(palette.warmWindow, 0.5)), lamp: off(kit.glow(palette.dirtyAmber, 1.2)),
+    glow_amber: off(kit.glow(palette.agedAmber, 1)), glow_cyan: off(kit.glow(palette.coldCyan, 0.8)),
+    red: off(kit.glow(palette.signal, 3)), sign: off(kit.sign(name, ink)), blade: off(kit.sign(mark, ink, true)),
+  };
+  [['x', dx], ['z', dz]].filter(([, s]) => s).forEach(([axis, s], k) => {
+    const turn = axis === 'x' ? (s * Math.PI) / 2 : s > 0 ? 0 : Math.PI; // the model's front (+z) out to the street
+    const along = axis === 'x' ? -Math.sin(turn) : Math.cos(turn); // where its +x end, the plain one, points
+    const g = kit.model(Math.round(along) === (axis === 'x' ? dz : dx) ? 'storefront' : 'storefront_l', roles);
+    g.rotation.y = turn;
+    g.position.set(axis === 'x' ? s * f : 0, 0.18, axis === 'x' ? 0 : s * f);
+    if (axis === 'z') g.scale.y = 1.02; // a hair taller, so the two roofs never fight where they overlap
+    if (k) g.getObjectByName('blade').removeFromParent();
+    root.add(kit.foldDetail(g, [dark]));
+  });
 }
 
 // Signs: a banner down one face, and over a roof with room in the middle (free) a billboard or, on tall
