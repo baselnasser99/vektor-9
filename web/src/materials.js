@@ -101,6 +101,18 @@ export async function loadKit(renderer, models = [], base = './assets') {
       }
       return g;
     },
+    // The painted steels and dim lights the street-level Blender models share (storefronts, shop strips, skybridges),
+    // by role. In a blackout (lit false) the lights are dark steel too.
+    industrial(lit = true) {
+      const dark = this.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark);
+      return {
+        graphite: this.steel(palette.graphite, 0.6), steel: this.steel(palette.gunmetal, 0.6), olive: this.steel(palette.oliveGrey, 0.6),
+        titanium: this.steel(palette.weatheredTitanium, 0.6), hazard: this.steel(palette.hazardPaint, 0.7), dark,
+        sheet: this.mat('box_profile_metal_sheet', palette.gunmetal), interior: off(this.glow(palette.warmWindow, 0.5)),
+        lamp: off(this.glow(palette.dirtyAmber, 1.2)), glow_amber: off(this.glow(palette.agedAmber, 1)),
+        glow_cyan: off(this.glow(palette.coldCyan, 0.8)), red: off(this.glow(palette.signal, 3)),
+      };
+    },
     // A named piece from a CC0 model, or the whole model when no node is given; its sheet offset is cleared.
     piece(model, node) {
       const obj = (node ? scenes[model].getObjectByName(node) : scenes[model]).clone();

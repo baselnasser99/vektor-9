@@ -4,7 +4,7 @@
 // The style seed drives every choice; a blacked-out tile has dark rooms and no neon.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part } from './geometry.js';
+import { box, cyl, outward, part } from './geometry.js';
 import { AD_COLORS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
@@ -26,16 +26,10 @@ export function podium(kit, g, rand, lit, warm, fw) {
 // on the first side's blade sign. Dark in a blackout. About 2k triangles a side, 0.6k more up close.
 export function storefront(kit, root, rand, lit, dx, dz) {
   const [name, mark] = pick(rand, SHOPS), ink = pick(rand, [palette.agedAmber, palette.coldCyan, palette.glare]);
-  const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark), f = TILE / 2 - 0.3;
-  const roles = {
-    graphite: kit.steel(palette.graphite, 0.6), steel: kit.steel(palette.gunmetal, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
-    titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
-    interior: off(kit.glow(palette.warmWindow, 0.5)), lamp: off(kit.glow(palette.dirtyAmber, 1.2)),
-    glow_amber: off(kit.glow(palette.agedAmber, 1)), glow_cyan: off(kit.glow(palette.coldCyan, 0.8)),
-    red: off(kit.glow(palette.signal, 3)), sign: off(kit.sign(name, ink)), blade: off(kit.sign(mark, ink, true)),
-  };
+  const base = kit.industrial(lit), { dark } = base, f = TILE / 2 - 0.3;
+  const roles = { ...base, sign: lit ? kit.sign(name, ink) : dark, blade: lit ? kit.sign(mark, ink, true) : dark };
   [['x', dx], ['z', dz]].filter(([, s]) => s).forEach(([axis, s], k) => {
-    const turn = axis === 'x' ? (s * Math.PI) / 2 : s > 0 ? 0 : Math.PI; // the model's front (+z) out to the street
+    const turn = outward(axis, s); // the model's front out to the street
     const along = axis === 'x' ? -Math.sin(turn) : Math.cos(turn); // where its +x end, the plain one, points
     const g = kit.model(Math.round(along) === (axis === 'x' ? dz : dx) ? 'storefront' : 'storefront_l', roles);
     g.rotation.y = turn;
