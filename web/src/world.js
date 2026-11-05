@@ -22,6 +22,14 @@ export const TERRAIN = ['rail', 'park', 'works']; // laid out by the sim, never 
 export const SHOPS = [['KUROTECH', 'KURO'], ['ZENKO TECH', 'ZENKO'], ['NEXA PARTS', 'NEXA'], ['TOKU WORKS', 'TOKU'],
   ['SEIRA CYBER', 'SEIRA'], ['VX9 REPAIR', 'VX9']];
 export const WORDS = ['ODEN 24', 'NOVA', 'VX9', 'KORU', 'SEIRA', 'ZENKO', 'NEXA', 'TOKU']; // invented sign text
+// Invented corporations on the billboards (city.js billboards): brand, slogan, the product its ad shows
+// (textures.js PRODUCTS), and the ad's two colours, off-white or muted amber with an occasional red or cyan.
+export const BRANDS = [['HALDEN', 'CYBER ARMS', 'arm', palette.cream, palette.signal],
+  ['OKTAV', 'SEE FURTHER', 'eye', palette.cream, palette.coldCyan], ['ZEPHA', 'ICE COLD COLA', 'drink', palette.signal, palette.cream],
+  ['MOGU', 'HOT NOODLES 24H', 'noodles', palette.cream, palette.agedAmber],
+  ['ORVEX', 'DRONE FREIGHT', 'drone', palette.agedAmber, palette.coldCyan], ['KAZEMURA', 'GRID POWER', 'cell', palette.agedAmber, palette.cream]];
+// Messages on the electronic traffic signs (city.js streetProps), invented: one or two short lines each.
+export const MESSAGES = [['SPEED', '40'], ['DRONE', 'ZONE'], ['KEEP', 'LEFT'], ['TOLL', 'ACTIVE']];
 export const WARM = [palette.neonRed, palette.neonPink, palette.sodium, palette.neonOrange];
 export const AD_COLORS = [[palette.neonPink, palette.neonViolet], [palette.neonOrange, palette.neonRed],
   [palette.neonCyan, palette.neonViolet], [palette.sodium, palette.neonPink]];
