@@ -10,7 +10,7 @@ import { midRise } from './showcase.js';
 
 const { renderer, scene, start, captureReflections, bench } = createStage({ span: 35, fog: 0.008, camera: [46, 34, 58], target: [0, 13, 0] });
 
-const kit = await loadKit(renderer, ['modular_airduct_circular_01', 'modular_fire_escape', 'utility_box_01']);
+const kit = await loadKit(renderer, ['modular_airduct_circular_01', 'modular_fire_escape', 'power_plant']);
 // Wet street, but not a mirror: warm lights smear into soft streaks.
 part(scene, box(60, 0.2, 60), kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55), 0, -0.1, 0);
 const plant = powerPlant(kit);
@@ -21,7 +21,7 @@ tower.position.x = 9;
 scene.add(tower);
 
 // A few real lights where the neon is strongest, so color spills onto walls and the street.
-const lights = [[palette.neonCyan, 35, -11.4, 6.7, 0], [palette.neonPink, 45, 6.5, 22, 8],
+const lights = [[palette.neonPink, 45, 6.5, 22, 8],
   [palette.sodium, 70, 9, 3, 9], [palette.neonRed, 40, 9, 6, 7]];
 // Sodium lamps along the street, each with a real warm light under its head.
 for (const x of [-15, -4, 7, 18]) lights.push([palette.sodium, 120, ...streetLamp(kit, scene, x, 8.5, -Math.PI / 2).toArray()]);

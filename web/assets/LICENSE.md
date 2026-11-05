@@ -20,3 +20,4 @@ Everything in this folder except `models/telecom_tower/` comes from [Poly Haven]
 ## Our own
 
 - `models/telecom_tower`: the city's telecom tower, an original design built by `tools/blender/telecom_tower.py`.
+- `models/power_plant`: the city's power plant (SECTOR 07), an original design built by `tools/blender/power_plant.py`.

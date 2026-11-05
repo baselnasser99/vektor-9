@@ -21,12 +21,7 @@ export function telecomTower(kit, root, x, y, z) {
     cyan: kit.glow(palette.neonCyan, 1.5), ad: kit.billboard('NEON NOODLES', palette.neonMagenta, palette.neonCyan),
     red: kit.glow(palette.signal, 4),
   };
-  const g = kit.piece('telecom_tower');
-  g.traverse((o) => {
-    if (!o.isMesh) return;
-    o.material = roles[o.material.name];
-    if (!o.material) throw new Error(`telecom tower: no material for mesh ${o.name}`);
-  });
+  const g = kit.model('telecom_tower', roles);
   g.getObjectByName('detail').userData.lod = 'tower';
   g.userData.rigid = true; // placed whole at the hub, where the warp is zero anyway: skip it for every vertex
   g.position.set(x, y, z);

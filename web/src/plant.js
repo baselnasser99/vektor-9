@@ -1,110 +1,30 @@
-// The fusion plant, used for every plant tile and on the sample page.
-import * as THREE from 'three';
+// The fusion plant, SECTOR 07, used for every plant tile and on the sample page.
 import { palette } from './palette.js';
-import { box, cyl, metric, part, ring } from './geometry.js';
-import { cable, edgeLights, pipe, railing, truss } from './parts.js';
 
-// Fusion plant on a 12 m tile: turned reactor with a cyan core behind glass, LED-ringed cooling stacks,
-// a curved-roof hall with a hologram, a gantry, pipe runs and cables.
-// close: false is city detail: cheap chamfers, half the curve segments, and none of the detailed CC0 utility
-// boxes (thousands of triangles each). At close-up detail a plant is about 48k triangles; the city has dozens.
-export function powerPlant(kit, { close = true } = {}) {
-  const g = new THREE.Group();
-  // d.b: box detail; d.n(n): a segment count scaled to the detail level.
-  const d = { b: close ? 3 : 1, n: (n) => (close ? n : Math.max(4, Math.round(n / 2))) };
-  part(g, box(12, 1, 12, d.b), kit.concrete(palette.slate), 0, 0.5, 0);
-  reactor(kit, g, d, -2.4, 1, 0);
-  stacks(kit, g, d);
-  hall(kit, g, d);
-  gantry(kit, g, d);
-  pipework(kit, g, d);
-  if (close) for (const [x, z] of [[-5.3, 4.8], [-4.2, 4.8], [5.3, -5.3]]) {
-    const b = kit.piece('utility_box_01');
-    b.position.set(x, 1, z);
-    g.add(b);
+// Modelled in Blender by tools/blender/power_plant.py (its proportions live there) and loaded as a glTF (ADR-0005): an
+// aging power-generation block on a 12 m plinth that reads as machinery, not neon. A reactor (blackened concrete drum,
+// armoured band with grilled inspection slots, a tall gunmetal shell with coil-block and bolted armour bands, coolant
+// pipes), two discharge towers (welded collars, a painted hazard band, sooted heads, platforms, red aviation lamps), a
+// windowless control block with a restricted entrance and a small worn sign, transformers, pipework. Light is only
+// small dim amber lamps, cold-white indicators and red; almost every surface is unlit, worn metal and concrete. Each
+// mesh is named by its material role and gets a palette material here; its "detail" node (slats, bolts, gauges,
+// labels) is drawn only near the camera, like every building's (city.js). About 15k triangles, 4k more up close.
+export function powerPlant(kit) {
+  const worn = (color, roughness) => kit.mat('rusty_painted_metal', color, roughness); // scuffed, rust-streaked paint
+  const dark = kit.steel(palette.charcoal, 0.6), red = kit.glow(palette.signal, 4);
+  const ice = kit.glow(palette.coldWhite, 0.8), lamp = kit.glow(palette.dirtyAmber, 1.2);
+  const g = kit.model('power_plant', {
+    soot: kit.concrete(palette.blackenedConcrete), steel: worn(palette.gunmetal, 0.7),
+    titanium: worn(palette.weatheredTitanium, 0.6), scorch: worn(palette.scorched, 0.85),
+    dark, mech: kit.steel(palette.slate, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7),
+    yellow: kit.steel(palette.warningYellow, 0.7), stencil: kit.steel(palette.stencilPaint, 0.8), ice, lamp, red,
+  });
+  // Detail is merged per sector, so every material in it is a draw call in every sector with a plant: its small metal
+  // parts share two common steels, and its few tiny lights move out to the always-drawn part.
+  const detail = g.getObjectByName('detail'), metal = kit.steel(palette.gunmetal, 0.6);
+  for (const o of [...detail.children]) {
+    if ([ice, lamp, red].includes(o.material)) g.add(o);
+    else if (o.material !== dark && o.material !== kit.steel(palette.hazardPaint, 0.7)) o.material = metal;
   }
   return g;
-}
-
-// One turned profile (flared foot, tapering shell, domed crown) with a glass core window,
-// curved tube buttresses and a glowing coil wound around the upper shell. (rx, y0, rz) is the foot centre.
-function reactor(kit, g, d, rx, y0, rz) {
-  const shell = kit.steel(palette.charcoal, 0.4), dark = kit.steel(palette.gunmetal, 0.55), cage = kit.steel(palette.charcoal, 0.5);
-  const lower = [[3.6, 0], [3.6, 0.25], [3.25, 0.6], [3.05, 1.3], [3, 3.2]];
-  const upper = [[3, 6.2], [2.95, 8], [2.75, 10.5], [2.3, 12.4], [1.6, 13.6], [1.15, 14], [1.1, 15.4], [0.7, 15.8], [0, 15.9]];
-  const profile = [...lower, ...upper];
-  // Shell radius at height y, so rings and the coil hug the profile.
-  const rAt = (y) => {
-    const k = profile.findIndex(([, py]) => py >= y);
-    if (k <= 0) return profile[Math.max(k, 0)][0];
-    const [[r0, y1], [r1, y2]] = [profile[k - 1], profile[k]];
-    return r0 + ((r1 - r0) * (y - y1)) / (y2 - y1);
-  };
-  const lathe = (pts) => metric(new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), d.n(64)), () => [Math.PI * 6, 8]);
-  const torus = (r, tube, mat, y) => ring(g, r, tube, mat, rx, y0 + y, rz, d.n(40), d.n(8));
-  part(g, lathe(lower), shell, rx, y0, rz);
-  part(g, lathe(upper), kit.mat('box_profile_metal_sheet', palette.gunmetal), rx, y0, rz);
-  part(g, cyl(2.3, 2.3, 3, d.n(32)), kit.glow(palette.neonCyan, 2), rx, y0 + 4.7, rz);
-  part(g, cyl(2.95, 2.95, 3, d.n(48)), kit.veil(palette.glassHighlight, 0.3), rx, y0 + 4.7, rz).castShadow = false;
-  for (let k = 0; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2;
-    part(g, cyl(0.07, 0.07, 3, d.n(8)), dark, rx + Math.cos(a) * 3, y0 + 4.7, rz + Math.sin(a) * 3);
-  }
-  for (const y of [3.2, 6.2]) torus(3.1, 0.22, dark, y);
-  for (const y of [1.4, 11.6]) torus(rAt(y) + 0.05, 0.06, kit.glow(palette.neonMagenta, 3), y);
-  for (let k = 0; k < 4; k++) {
-    const a = (k / 4) * Math.PI * 2 + Math.PI / 4, [c, sn] = [Math.cos(a), Math.sin(a)];
-    const pts = [[4.2, 0], [3.8, 1.5], [3.55, 4.7], [3.4, 8.5], [3, 11.6], [1.9, 13.5]]
-      .map(([r, y]) => new THREE.Vector3(rx + c * r, y0 + y, rz + sn * r));
-    part(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), d.n(48), 0.2, d.n(10)), cage);
-    part(g, box(1, 0.4, 1, d.b), dark, rx + c * 4.2, y0 + 0.2, rz + sn * 4.2);
-  }
-  const coil = new THREE.CatmullRomCurve3(Array.from({ length: 97 }, (_, i) => {
-    const t = i / 96, y = 7 + t * 4.2, a = t * Math.PI * 2 * 3, r = rAt(y) + 0.08;
-    return new THREE.Vector3(rx + Math.cos(a) * r, y0 + y, rz + Math.sin(a) * r);
-  }));
-  part(g, new THREE.TubeGeometry(coil, d.n(300), 0.07, d.n(6)), kit.glow(palette.neonCyan, 2.5)).castShadow = false;
-  torus(1.15, 0.08, kit.glow(palette.neonCyan, 3), 15.4);
-}
-
-// Two cooling stacks with LED rings and aircraft lights.
-function stacks(kit, g, d) {
-  for (const z of [-4, 4]) {
-    part(g, cyl(0.75, 1, 20, d.n(24)), kit.steel(palette.gunmetal, 0.35), 4.2, 11, z);
-    for (const y of [6, 11, 16]) ring(g, 0.92 - y * 0.008, 0.06, kit.glow(palette.neonRed, 3), 4.2, y, z, d.n(40), d.n(8));
-    part(g, cyl(0.8, 0.8, 0.6, d.n(24)), kit.steel(palette.charcoal, 0.4), 4.2, 20.7, z);
-    part(g, new THREE.SphereGeometry(0.18, 8, 6), kit.glow(palette.signal, 2), 4.2, 21.2, z);
-  }
-}
-
-// Hall: ribbed walls, curved roof with a glowing skylight, a hologram sign.
-function hall(kit, g, d) {
-  part(g, box(4.5, 4, 6.4, d.b), kit.mat('box_profile_metal_sheet', palette.charcoal), 3.6, 3, 0);
-  part(g, cyl(2.25, 2.25, 6.4, d.n(16), -Math.PI / 2, Math.PI), kit.mat('box_profile_metal_sheet', palette.gunmetal), 3.6, 5, 0).rotation.x = -Math.PI / 2;
-  part(g, box(0.5, 0.1, 6, d.b), kit.glow(palette.neonViolet, 2), 3.6, 7.26, 0);
-  part(g, box(3.2, 1.6, 0.1, d.b), kit.glass(), 3.6, 2.4, 3.22);
-  part(g, new THREE.PlaneGeometry(4, 1), kit.holo('KORU', palette.neonRed), 3.6, 8.6, 3.2);
-  edgeLights(kit, g, 4.5, 4, 6.4, 3.6, 1, 0);
-}
-
-// Girder from the reactor cage to the hall, and a grated catwalk with a railing along the hall.
-function gantry(kit, g, d) {
-  const girder = truss(kit, 5.5, 1.4, 1.4, d.b);
-  girder.position.set(1.3, 9.5, 0);
-  g.add(girder);
-  part(g, box(1.4, 0.12, 6.4, d.b), kit.mat('metal_grate_rusty', palette.slate), 6.6, 4.4, 0);
-  const rail = railing(kit, 6.4, d.b);
-  rail.rotation.y = Math.PI / 2;
-  rail.position.set(7.25, 4.45, 0);
-  g.add(rail);
-}
-
-// Pipe runs from the reactor to the hall and down to the plinth, and cables off the stacks.
-function pipework(kit, g, d) {
-  const pipeMat = kit.steel(palette.slate, 0.35), seg = d.n(12);
-  pipe(kit, g, [[-0.2, 2.2, -2], [1.4, 2.2, -2], [1.4, 2.2, -3.6], [5.8, 2.2, -3.6]], 0.32, pipeMat, seg);
-  pipe(kit, g, [[-0.4, 4, 1.8], [1.3, 4, 1.8], [1.3, 1.3, 1.8], [1.3, 1.3, 4.8]], 0.25, kit.steel(palette.charcoal, 0.4), seg);
-  pipe(kit, g, [[-0.6, 12.5, 0.8], [0.9, 12.5, 0.8], [0.9, 7, 0.8]], 0.2, pipeMat, seg);
-  cable(kit, g, [4.2, 18, -4], [3.6, 7.2, -3.2], 1);
-  cable(kit, g, [4.2, 18, 4], [-2.4, 17.5, 0.9], 2);
 }

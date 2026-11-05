@@ -9,7 +9,8 @@ const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_m
 // Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
 const NEON = 0.65;
 
-// models: the glTF models (web/assets/models) this page uses; the city needs only telecom_tower (its own, ADR-0005).
+// models: the glTF models (web/assets/models) this page uses; the city's are its own (telecom_tower, power_plant,
+// ADR-0005), the rest CC0 kit pieces for close-ups.
 export async function loadKit(renderer, models = [], base = './assets') {
   const tl = new THREE.TextureLoader();
   const aniso = renderer.capabilities.getMaxAnisotropy();
@@ -71,6 +72,18 @@ export async function loadKit(renderer, models = [], base = './assets') {
     holo: (text, color) => once(`holo:${text}:${color}`, () => new THREE.MeshBasicMaterial({
       map: textTexture(text, color, false, null), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
       depthWrite: false, side: THREE.DoubleSide })),
+    // One of our Blender models (ADR-0005): a copy whose meshes, named by material role, get roles[role]. Throws
+    // on a role the caller has no material for, so a re-export with a new role cannot slip through unlit.
+    model(name, roles) {
+      const g = this.piece(name);
+      g.traverse((o) => {
+        if (!o.isMesh) return;
+        const role = o.material.name;
+        o.material = roles[role];
+        if (!o.material) throw new Error(`${name}: no material for role ${role} (mesh ${o.name})`);
+      });
+      return g;
+    },
     // A named piece from a CC0 model, or the whole model when no node is given; its sheet offset is cleared.
     piece(model, node) {
       const obj = (node ? scenes[model].getObjectByName(node) : scenes[model]).clone();
