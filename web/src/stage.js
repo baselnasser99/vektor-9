@@ -106,7 +106,7 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
       scene.environment = pmrem.fromScene(scene, 0.02, 0.5, far, { position: new THREE.Vector3(...at) }).texture;
       scene.environmentIntensity = 0.6;
     },
-    bench: () => bench(renderer, scene, render),
+    bench: () => bench(renderer, scene, render, updates),
   };
 }
 
@@ -272,8 +272,8 @@ const GRADE = `vec3 grade(vec3 c, vec2 uv) {
 }`;
 
 // ?bench in the URL: time 30 frames, log draw calls and triangles for one whole frame (scene, shadows and post
-// passes), and which materials hold the most triangles.
-function bench(renderer, scene, render) {
+// passes), which materials hold the most triangles, and what the per-frame updates cost on the CPU.
+function bench(renderer, scene, render, updates) {
   if (!new URLSearchParams(location.search).has('bench')) return;
   const gl = renderer.getContext();
   renderer.info.autoReset = false;
@@ -282,10 +282,15 @@ function bench(renderer, scene, render) {
   render();
   const { calls, triangles } = renderer.info.render;
   renderer.info.autoReset = true;
-  gl.finish();
+  // Reading a pixel back waits for the GPU to finish the frame; gl.finish() returns early on ANGLE (Windows), which
+  // made the bench report a fraction of the real frame time.
+  const px = new Uint8Array(4), wait = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  wait();
   const t0 = performance.now();
-  for (let i = 0; i < 30; i++) render();
-  gl.finish();
+  for (let i = 0; i < 30; i++) {
+    render();
+    wait();
+  }
   console.info(`bench: ${((performance.now() - t0) / 30).toFixed(1)} ms/frame, ${calls} draw calls, ${triangles} triangles per frame`);
   const byMat = new Map();
   scene.traverse((o) => {
@@ -294,5 +299,12 @@ function bench(renderer, scene, render) {
     const key = (o.material.name || o.material.type).split(':')[0];
     byMat.set(key, (byMat.get(key) ?? 0) + tris);
   });
+  const cost = updates.map((fn) => {
+    const u0 = performance.now();
+    for (let i = 0; i < 30; i++) fn(1 / 60, 10 + i / 60, 1 / 60);
+    return [(performance.now() - u0) / 30, fn.toString().replace(/\s+/g, ' ').slice(0, 70)];
+  }).sort((a, b) => b[0] - a[0]);
+  console.info(`bench updates: ${cost.reduce((a, [ms]) => a + ms, 0).toFixed(2)} ms/frame in ${updates.length}; top:
+${cost.slice(0, 6).map(([ms, src]) => `${ms.toFixed(2)} ms ${src}`).join('\n')}`);
   console.info('bench triangles by material:', [...byMat].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${(v / 1e6).toFixed(2)}M`).join(', '));
 }
