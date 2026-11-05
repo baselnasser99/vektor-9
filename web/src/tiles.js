@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, outward, part } from './geometry.js';
-import { AD_COLORS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
+import { ADS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
 export function podium(kit, g, rand, lit, warm, fw) {
@@ -41,17 +41,25 @@ export function storefront(kit, root, rand, lit, dx, dz) {
 }
 
 // Signs: a banner down one face, and over a roof with room in the middle (free) a billboard or, on tall
-// buildings, a hologram. Roof gear itself is roofs.js.
+// buildings, a hologram. Banner and billboard carry an odd ad (ADS) on a display of their own, animated like the
+// corporate signs (materials.js liveSign), in a dark steel frame. Roof gear itself is roofs.js.
 export function dress({ kit, g, rand, lit, warm, H, y, w, tall }, floors, roofY, free) {
+  const frame = kit.steel(palette.graphite, 0.6);
   if (lit && rand() < 0.45) {
-    const h = Math.min(24, (H - y) * 0.6), side = rand() < 0.5 ? 1 : -1;
-    part(g, box(0.4, h, 2.6, 1), kit.sign(pick(rand, WORDS), warm, true), side * (w / 2 + 0.3), y + (H - y) * 0.5, w / 4);
+    const h = Math.min(24, (H - y) * 0.6), side = rand() < 0.5 ? 1 : -1, [name, line, mark, ink, color] = pick(rand, ADS);
+    const x = side * (w / 2 + 0.3), cy = y + (H - y) * 0.5;
+    part(g, box(0.4, h, 2.6, 1), frame, x, cy, w / 4);
+    part(g, new THREE.PlaneGeometry(2.4, h - 0.3), kit.corp(name, line, mark, 128, 768, ink, color), x + side * 0.21, cy, w / 4)
+      .rotation.y = side * (Math.PI / 2);
   }
   if (!lit || !free) return;
   if (floors >= 8 && rand() < 0.3) {
-    const [a, b] = pick(rand, AD_COLORS);
+    const [name, line, mark, ink, color] = pick(rand, ADS);
+    rand(); // what the old word pick drew, so the rest of the tile is unchanged
     for (const x of [-3.5, 3.5]) part(g, box(0.3, 4, 0.3, 1), kit.steel(palette.charcoal), x, roofY + 2, 0);
-    part(g, box(9, 4.5, 0.4, 1), kit.billboard(pick(rand, WORDS), a, b), 0, roofY + 6, 0);
+    part(g, box(9, 4.5, 0.4, 1), frame, 0, roofY + 6, 0);
+    const ad = kit.corp(name, line, mark, 512, 256, ink, color);
+    for (const s of [-1, 1]) part(g, new THREE.PlaneGeometry(8.6, 4.1), ad, 0, roofY + 6, s * 0.21).rotation.y = s < 0 ? Math.PI : 0;
   } else if (tall && rand() < 0.25) {
     part(g, new THREE.PlaneGeometry(8, 2), kit.holo(pick(rand, WORDS), warm), 0, roofY + 6, 0);
   }

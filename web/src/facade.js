@@ -41,6 +41,7 @@ export const STYLES = {
 
 // Shared by every facade: seconds for slow light changes, and how lit homes and offices are at this hour.
 const clock = { time: { value: 0 }, homes: { value: 1 }, offices: { value: 1 } };
+export const facadeTime = clock.time; // also drives the animated corporate signs (materials.js liveSign)
 export function facadeClock(hour, onFrame) {
   // Evening is the busiest for homes; offices empty out after seven. Smooth through the day.
   const homes = [0.55, 0.4, 0.3, 0.25, 0.25, 0.35, 0.6, 0.7, 0.45, 0.35, 0.35, 0.4, 0.45, 0.45, 0.45, 0.5, 0.6, 0.8,

@@ -2,12 +2,45 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { palette } from './palette.js';
-import { adTexture, concreteTexture, messageTexture, posterTexture, textTexture } from './textures.js';
-import { STYLES, facadeMaterial } from './facade.js';
+import { adTexture, concreteTexture, corpTexture, messageTexture, posterTexture, textTexture } from './textures.js';
+import { STYLES, facadeMaterial, facadeTime } from './facade.js';
 
 const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_metal_sheet', 'metal_grate_rusty', 'aerial_asphalt_01'];
 // Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
 const NEON = 0.65;
+
+// A corporate sign's display, made to look digital in its own shader (no extra draw calls, no light): on a face
+// (kind 0) the crimson mark breathes slowly, a soft scan band sweeps down every few seconds, fine scanlines drift
+// and now and then one thin slice slips sideways for a moment; on an info display (kind 1) the amber text is
+// redrawn left to right every few seconds. Nothing flashes, and with reduced motion there is no frame loop, so
+// the time never advances and the sign holds still. phase keeps the signs out of step.
+function liveSign(m, kind, phase) {
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { sTime: facadeTime, sPhase: { value: phase }, sKind: { value: kind } });
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float sTime, sPhase, sKind;`)
+      .replace('#include <emissivemap_fragment>', `
+        vec2 sUv = vEmissiveMapUv;
+        float sT = sTime + sPhase;
+        // A glitch: for a quarter second in every eleven, one thin band of the face slips sideways.
+        float sGlitch = step(fract(sT / 11.0), 0.022) * step(abs(sUv.y - fract(sPhase * 0.37) * 0.8 - 0.1), 0.04);
+        vec3 sE = texture2D(emissiveMap, sUv + vec2(sGlitch * 0.035 * (1.0 - sKind), 0.0)).rgb;
+        if (sKind < 0.5) {
+          float red = clamp((sE.r - max(sE.g, sE.b)) * 3.0, 0.0, 1.0);
+          sE *= 1.0 + red * 0.4 * sin(sT * 1.5); // the mark breathes, about once every four seconds
+          float band = exp(-pow((sUv.y - (1.15 - fract(sT * 0.18) * 1.3)) * 12.0, 2.0)); // the scan band
+          sE += sE * band * 0.8;
+        } else {
+          float reveal = fract(sT * 0.2) * 1.4; // redrawn left to right every five seconds
+          sE *= smoothstep(reveal, reveal - 0.03, sUv.x) * 0.85 + 0.15;
+        }
+        sE *= 0.9 + 0.1 * sin(sUv.y * 180.0 - sT * 5.0); // fine scanlines drifting down
+        totalEmissiveRadiance *= sE;`);
+  };
+  m.customProgramCacheKey = () => 'liveSign';
+  return m;
+}
 
 // models: the glTF models (web/assets/models) this page uses; the city's are its own (telecom_tower, power_plant,
 // market_hall, ADR-0005), the rest CC0 kit pieces for close-ups.
@@ -75,8 +108,15 @@ export async function loadKit(renderer, models = [], base = './assets') {
     poster: (brand, line, product, ink, accent, w, h) => once(`poster:${brand}:${w}x${h}`, () => new THREE.MeshStandardMaterial({
       color: 0x000000, emissive: 0xffffff, emissiveMap: posterTexture(brand, line, product, ink, accent, w, h), emissiveIntensity: NEON })),
     // A traffic sign's dot-matrix message (textures.js messageTexture): lines of text.
-    message: (lines) => once(`message:${lines.join('/')}`, () => new THREE.MeshStandardMaterial({
-      color: 0x000000, emissive: 0xffffff, emissiveMap: messageTexture(lines), emissiveIntensity: NEON })),
+    message: (lines, w, h) => once(`message:${lines.join('/')}:${w}x${h}`, () => new THREE.MeshStandardMaterial({
+      color: 0x000000, emissive: 0xffffff, emissiveMap: messageTexture(lines, w, h), emissiveIntensity: NEON })),
+    // A large corporate sign's face (textures.js corpTexture), lit from within; size in pixels.
+    corp: (name, line, mark, w, h, ink, markColor) => once(`corp:${name}:${w}x${h}`, () => liveSign(new THREE.MeshStandardMaterial({
+      color: 0x000000, emissive: 0xffffff, emissiveMap: corpTexture(name, line, mark, w, h, ink, markColor), emissiveIntensity: NEON }),
+    0, w * 0.013 + name.length * 1.3)),
+    // A corporate sign's amber info display: a traffic sign's dot-matrix message, redrawn now and then (liveSign).
+    display: (lines, w, h) => once(`display:${lines.join('/')}:${w}x${h}`, () => liveSign(new THREE.MeshStandardMaterial({
+      color: 0x000000, emissive: 0xffffff, emissiveMap: messageTexture(lines, w, h), emissiveIntensity: NEON }), 1, lines[0].length * 1.7)),
     // Hologram: see-through, additive, with scanlines.
     holo: (text, color) => once(`holo:${text}:${color}`, () => new THREE.MeshBasicMaterial({
       map: textTexture(text, color, false, null), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,

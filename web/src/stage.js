@@ -76,7 +76,7 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
   if (still) {
     controls.addEventListener('change', render);
     addEventListener('keydown', () => move(0.05)); // no frame loop: step once per key repeat
-  } else updates.push(move);
+  } else updates.push((dt, t, raw) => move(Math.min(raw, 0.25))); // keys keep their pace on slow frames
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -96,7 +96,7 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
       renderer.setAnimationLoop(() => {
         const raw = clock.getDelta(), dt = Math.min(raw, 0.1), t = clock.elapsedTime;
         govern(raw, t);
-        for (const fn of updates) fn(dt, t);
+        for (const fn of updates) fn(dt, t, raw);
         render();
       });
     },
@@ -110,21 +110,27 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
   };
 }
 
-// Navigation: left-drag turns, right-drag or shift-drag slides over the ground, scroll zooms; WASD or arrows move,
-// Q and E turn. The focus point stays within `reach` of the centre. Returns a per-frame step for held keys.
+// Navigation: left-drag turns, right-drag or shift-drag slides over the ground, scroll zooms straight in;
+// WASD or arrows move (Shift to go fast), Q and E turn, R and F zoom in and out. The focus point stays within
+// `reach` of the centre. Returns a per-frame step for held keys.
 function navigate(controls, camera, reach) {
-  Object.assign(controls, { screenSpacePanning: false, minDistance: 15,
+  Object.assign(controls, { screenSpacePanning: false, minDistance: 15, zoomSpeed: 1.8, panSpeed: 1.6,
     mouseButtons: { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN },
     touches: { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN } });
   const keys = { KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1], KeyA: [-1, 0], ArrowLeft: [-1, 0],
-    KeyD: [1, 0], ArrowRight: [1, 0], KeyQ: [0, 0, 1], KeyE: [0, 0, -1] };
+    KeyD: [1, 0], ArrowRight: [1, 0], KeyQ: [0, 0, 1], KeyE: [0, 0, -1], KeyR: [0, 0, 0, -1], KeyF: [0, 0, 0, 1] };
   const held = new Set();
+  let fast = false;
   addEventListener('keydown', (e) => {
+    fast = e.shiftKey;
     if (!(e.code in keys)) return;
     held.add(e.code);
     e.preventDefault();
   });
-  addEventListener('keyup', (e) => held.delete(e.code));
+  addEventListener('keyup', (e) => {
+    fast = e.shiftKey;
+    held.delete(e.code);
+  });
   addEventListener('blur', () => held.clear());
   const up = new THREE.Vector3(0, 1, 0), fwd = new THREE.Vector3(), side = new THREE.Vector3(), shift = new THREE.Vector3();
   // Slide camera and focus together, keeping the focus inside the city's surroundings.
@@ -141,16 +147,23 @@ function navigate(controls, camera, reach) {
     if (!held.size) return;
     camera.getWorldDirection(fwd).setY(0).normalize();
     side.crossVectors(fwd, up);
-    const speed = camera.position.distanceTo(controls.target) * 0.8 * dt;
-    let turn = 0;
+    // Faster the higher the view, but never a crawl up close; Shift triples it.
+    const far = camera.position.distanceTo(controls.target), speed = Math.max(far, 80) * 1.4 * (fast ? 3 : 1) * dt;
+    let turn = 0, zoom = 0;
     shift.set(0, 0, 0);
     for (const code of held) {
-      const [x, z, q = 0] = keys[code];
+      const [x, z, q = 0, r = 0] = keys[code];
       shift.addScaledVector(side, x * speed).addScaledVector(fwd, z * speed);
       turn += q;
+      zoom += r;
     }
     slide(shift);
-    if (turn) camera.position.sub(controls.target).applyAxisAngle(up, turn * 1.2 * dt).add(controls.target);
+    if (turn) camera.position.sub(controls.target).applyAxisAngle(up, turn * 1.6 * dt).add(controls.target);
+    if (zoom) { // toward or away from the focus, within the orbit's limits
+      const to = camera.position.clone().sub(controls.target), d = to.length();
+      const next = Math.min(Math.max(d * Math.exp(zoom * 1.8 * dt), controls.minDistance), controls.maxDistance);
+      camera.position.copy(controls.target).addScaledVector(to, next / d);
+    }
     controls.update();
   };
 }
@@ -158,7 +171,7 @@ function navigate(controls, camera, reach) {
 // One line of help in the corner, so visitors know the city can be explored.
 function hint() {
   const el = Object.assign(document.createElement('div'), {
-    textContent: 'Drag to turn · right-drag or shift-drag to move · scroll to zoom · WASD / arrows, Q E' });
+    textContent: 'Drag to turn · right-drag to move · scroll to zoom · WASD / arrows (Shift: fast) · Q E turn · R F zoom' });
   Object.assign(el.style, { position: 'fixed', left: '12px', bottom: '12px', padding: '6px 10px', borderRadius: '6px',
     font: '12px system-ui, sans-serif', color: css(ui.muted), background: `${css(ui.panel)}cc`,
     border: `1px solid ${css(ui.border)}`, pointerEvents: 'none' });
