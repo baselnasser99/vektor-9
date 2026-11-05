@@ -99,6 +99,7 @@ export function buildCity(kit, snap) {
     const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;
     const [dx, dz] = [frontage(col), frontage(row)], lot = new THREE.Group();
     lot.position.set(cx, 0, cz);
+    lot.userData.building = i + 1; // its windows' light tones (facade.js); 0 is anything outside a lot
     lot.add(g);
     root.add(lot);
     if (t.k === 'house') towers.set(i, g); // for the skybridges over streets, which meet their walls
@@ -127,6 +128,7 @@ export function buildCity(kit, snap) {
       const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [cx, pos(col + 1)];
       part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, cz);
       if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
+      if (t.on) for (const x of [a + 6.5, b - 6.5]) part(root, box(0.6, 0.6, 0.6, 0), kit.warning(), x, y - 1.7, cz - 1.85); // clearance lamps
     }
   });
   for (const bridge of bridgePairs(snap, layout, signature, towers)) root.add(skybridge(kit, snap, bridge));

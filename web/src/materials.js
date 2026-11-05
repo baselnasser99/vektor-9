@@ -50,6 +50,9 @@ export async function loadKit(renderer, models = [], base = './assets') {
       new THREE.MeshStandardMaterial({ color, roughness: 0.25, transparent: true, opacity })),
     glow: (color, intensity = 2.5) => once(`glow:${color}:${intensity}`, () =>
       new THREE.MeshStandardMaterial({ color: palette.deepNavy, emissive: color, emissiveIntensity: intensity * NEON })),
+    // The one red warning light (masts, machinery, industry, security indicators): deep crimson, steady, never
+    // neon, one material so every lamp in the city merges into a single draw call.
+    warning() { return this.glow(palette.crimson, 5); },
     // Cast concrete drawn in code: soft blotches, rain streaks, faint formwork seams; no tiling grid.
     concrete: (color) => once(`concrete:${color}`, () => new THREE.MeshStandardMaterial({
       map: once('concreteMap', concreteTexture), color, roughness: 0.9, metalness: 0 })),
@@ -110,7 +113,7 @@ export async function loadKit(renderer, models = [], base = './assets') {
         titanium: this.steel(palette.weatheredTitanium, 0.6), hazard: this.steel(palette.hazardPaint, 0.7), dark,
         sheet: this.mat('box_profile_metal_sheet', palette.gunmetal), interior: off(this.glow(palette.warmWindow, 0.5)),
         lamp: off(this.glow(palette.dirtyAmber, 1.2)), glow_amber: off(this.glow(palette.agedAmber, 1)),
-        glow_cyan: off(this.glow(palette.coldCyan, 0.8)), red: off(this.glow(palette.signal, 3)),
+        glow_cyan: off(this.glow(palette.coldCyan, 0.8)), red: off(this.warning()),
       };
     },
     // A named piece from a CC0 model, or the whole model when no node is given; its sheet offset is cleared.

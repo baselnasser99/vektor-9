@@ -141,7 +141,7 @@ export function airships(kit, half, onFrame) {
     part(g, box(10, 2.5, 3, 0), kit.steel(palette.gunmetal), 0, -11.5, 0);
     part(g, box(7, 0.5, 3.05, 0), kit.glow(palette.agedAmber, 0.8), 0, -11.3, 0); // the gondola's windows
     for (const side of [-1, 1]) part(g, box(28, 6, 0.3, 0), kit.poster(...brand, 512, 110), 0, 0, side * 10.4);
-    part(g, new THREE.SphereGeometry(0.6, 8, 6), kit.glow(palette.signal, 3), -42, 0, 0);
+    part(g, new THREE.SphereGeometry(0.6, 8, 6), kit.warning(), -42, 0, 0);
     part(g, new THREE.SphereGeometry(0.6, 8, 6), kit.glow(palette.glare, 3), 42, 0, 0);
     ships.push({ g, r: half * (0.5 + rand() * 0.5), y: 240 + rand() * 80, a: rand() * Math.PI * 2, speed: 0.008 + rand() * 0.006 });
   }

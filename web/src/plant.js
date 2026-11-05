@@ -11,7 +11,7 @@ import { palette } from './palette.js';
 // labels) is drawn only near the camera, like every building's (city.js). About 15k triangles, 4k more up close.
 export function powerPlant(kit) {
   const worn = (color, roughness) => kit.mat('rusty_painted_metal', color, roughness); // scuffed, rust-streaked paint
-  const dark = kit.steel(palette.charcoal, 0.6), red = kit.glow(palette.signal, 4);
+  const dark = kit.steel(palette.charcoal, 0.6), red = kit.warning();
   const ice = kit.glow(palette.coldWhite, 0.8), lamp = kit.glow(palette.dirtyAmber, 1.2);
   const g = kit.model('power_plant', {
     soot: kit.concrete(palette.blackenedConcrete), steel: worn(palette.gunmetal, 0.7),

@@ -139,6 +139,11 @@ function office(c) {
     for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) part(c.g, box(0.7, y1 - y0, 0.7, 1), frame, sx * cw / 2, (y0 + y1) / 2, sz * cw / 2);
   };
   columns(w, lobby, split);
+  if (lit && seed % 2) part(c.g, box(0.3, 0.3, 0.3, 0), kit.warning(), fw * 0.46 + 0.05, 2.4, fw * 0.3); // security panel at the lobby
+  if (lit && seed === 4 && f >= 14) { // now and then a narrow red corporate sign up one corner
+    const h = Math.min(12, (split - lobby) * 0.35);
+    part(c.g, box(0.3, h, 1.1, 1), kit.sign(['NOVA', 'VX9', 'SEIRA'][f % 3], palette.crimson, true), w / 2 + 0.5, split - F - h / 2, w / 2 - 1);
+  }
   let top = w;
   if (split < H) {
     top = w * 0.78;
@@ -200,11 +205,13 @@ function industrial(c) {
     const len = Math.hypot(w / 3, H);
     part(c.d, box(len, 0.2, 0.2, 0), c.m.steel, -w / 2 + (k + 0.5) * (w / 3), H / 2, d / 2 + 0.3).rotation.z = Math.atan2(H, w / 3) * (k % 2 ? 1 : -1);
   }
+  // Indicator lamps along the frame on lit halls of every other seed: a working section.
+  if (lit && seed % 2) for (let k = 0; k <= 3; k++) part(c.g, box(0.6, 0.6, 0.6, 0), kit.warning(), -w / 2 + (k * w) / 3, H - 0.6, d / 2 + 0.6);
   // Pipes up the -x face and across the roof.
   for (const [z, r] of [[-d * 0.25, 0.3], [d * 0.1, 0.2]]) pipe(kit, c.d, [[-w / 2 - 0.5, 0.4, z], [-w / 2 - 0.5, H + 1, z], [w * 0.2, H + 1, z]], r, pipes, 8);
   if (seed % 3 === 0) {
     part(c.g, cyl(0.6, 0.9, H + 12, 10), kit.concrete(palette.slate), w * 0.35, (H + 12) / 2, -d * 0.3);
-    if (lit) part(c.g, new THREE.SphereGeometry(0.3, 8, 6), kit.glow(palette.signal, 3), w * 0.35, H + 12.3, -d * 0.3);
+    if (lit) part(c.g, new THREE.SphereGeometry(0.3, 8, 6), kit.warning(), w * 0.35, H + 12.3, -d * 0.3);
   }
 }
 

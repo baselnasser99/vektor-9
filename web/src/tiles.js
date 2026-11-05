@@ -101,7 +101,7 @@ export function construction(kit, floors, rand, lit, fw) {
     part(g, box(28, 1.2, 1.2, 1), lattice, c - 8, mast, c);
     part(g, box(3, 2, 2, 1), kit.concrete(palette.slate), c + 7, mast - 0.4, c);
     part(g, box(2, 2, 2, 1), kit.steel(palette.charcoal), c, mast - 2, c);
-    part(g, new THREE.SphereGeometry(0.3, 8, 6), kit.glow(palette.signal, 3), c - 22, mast + 0.8, c);
+    part(g, new THREE.SphereGeometry(0.3, 8, 6), kit.warning(), c - 22, mast + 0.8, c);
   }
   return g;
 }
@@ -126,7 +126,7 @@ export function market(kit, rand, lit, fw) {
     glass: kit.glass(palette.charcoal), yellow: kit.steel(palette.warningYellow, 0.7),
     deepred: kit.steel(palette.deepRed, 0.6), stencil: kit.steel(palette.stencilPaint, 0.8),
     glow_white: off(kit.glow(palette.glare, 1.2)), glow_amber: off(kit.glow(palette.agedAmber, 1.2)),
-    glow_cyan: off(kit.glow(palette.coldCyan, 0.9)), red: off(kit.glow(palette.signal, 3)),
+    glow_cyan: off(kit.glow(palette.coldCyan, 0.9)), red: off(kit.warning()),
     sign: off(kit.sign(name, palette.glare)), blade: off(kit.sign(mark, palette.glare, true)),
     holo: kit.holo(name, palette.coldCyan),
   });

@@ -69,6 +69,12 @@ export const palette = {
   neonRed: 0xff3b3b,
   sodium: 0xffa733,
   warmWindow: 0xffc46b,
+  // Window light tones besides warm amber (facade.js): offices, technical floors, industrial lighting.
+  windowWhite: 0xe6f0fa,
+  windowIce: 0x5a9ed6,
+  windowRed: 0xb0503a,
+  // Red accent light on technology: warning lamps, security indicators, the odd narrow corporate sign. Deep, never neon.
+  crimson: 0x8e1b10,
 };
 
 // A palette color as a CSS hex string, for canvases and the page.
