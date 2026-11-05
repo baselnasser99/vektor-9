@@ -1,7 +1,7 @@
 // The whole city from a snapshot: streets, then one building per tile, then one merged mesh per material.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, part, rng } from './geometry.js';
+import { box, outward, part, rng } from './geometry.js';
 import { powerPlant } from './plant.js';
 import { construction, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
@@ -174,20 +174,20 @@ function signatureTowers({ size: n, tiles }) {
 // Storefront tiles: the buildings on the corners where the boulevard (through the centre) meets the next full
 // street toward the opening view, or the one the other way if that crossing has fewer than three. Up to three.
 function storefrontTiles(snap) {
-  return new Set(crossing(snap).slice(0, 3));
+  return new Set(crossing(snap).houses.slice(0, 3));
 }
 
-// The busiest crossing's corner buildings (tile indices, row order): where the boulevard meets the next full
-// street toward the opening view, or the one the other way if that has fewer than three. Its storefronts and
-// billboards are here.
+// The busiest crossing: where the boulevard meets the next full street toward the opening view, or the one the
+// other way if that has fewer than three corner buildings. { corners, houses }: its four corner tiles and those of
+// them that are buildings (tile indices, row order). Its storefronts, billboards and street props are here.
 function crossing({ size: n, tiles }) {
   const mid = n / BLOCK / 2;
   for (const k of [mid + 2, mid - 2]) {
     const corners = [mid * BLOCK - 1, mid * BLOCK].flatMap((col) => [k * BLOCK - 1, k * BLOCK].map((row) => row * n + col));
     const houses = corners.filter((i) => tiles[i]?.k === 'house');
-    if (houses.length >= 3) return Object.assign(houses, { corners }); // and all four corners, for the street props
+    if (houses.length >= 3) return { corners, houses };
   }
-  return Object.assign([], { corners: [] });
+  return { corners: [], houses: [] };
 }
 
 // The street-prop kit (tools/blender/street_props.py) on the busiest crossing's four corner sidewalks, three a
@@ -202,7 +202,7 @@ function streetProps(kit, root, snap, { pos, n }, lamps) {
   const { tiles } = snap, kerb = TILE / 2 + SIDEWALK, rand = rng(snap.seed * 43 + 1);
   crossing(snap).corners.forEach((i, k) => {
     const [col, row] = [i % n, Math.floor(i / n)], [dx, dz] = [frontage(col), frontage(row)], [cx, cz] = [pos(col), pos(row)];
-    const lit = tiles[i].on !== false, dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark);
+    const lit = tiles[i].on !== false, base = kit.industrial(lit);
     for (const [side, from, kind] of CORNERS[k]) {
       // Side a runs along the boulevard (along z), b along the cross street (along x); `from` the corner's kerb.
       const back = kerb - 0.5 - PROPS[kind] / 2; // its centre, in from the kerb
@@ -212,12 +212,8 @@ function streetProps(kit, root, snap, { pos, n }, lamps) {
       const [x, z] = at(d), out = side === 'a' ? [dx, 0] : [0, dz]; // toward the street
       const face = kind === 'sign' ? (side === 'a' ? [0, -dz] : [-dx, 0]) // the traffic coming in
         : kind === 'camera' ? [dx, dz] : [-out[0], -out[1]]; // across the crossing; else the walkway
-      const g = kit.foldDetail(kit.model(`prop_${kind}`, {
-        steel: kit.steel(palette.gunmetal, 0.6), graphite: kit.steel(palette.graphite, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
-        titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
-        interior: off(kit.glow(palette.warmWindow, 0.5)), glow_amber: off(kit.glow(palette.agedAmber, 1)),
-        glow_cyan: off(kit.glow(palette.coldCyan, 0.8)), red: off(kit.glow(palette.signal, 3)), panel: off(kit.message(pick(rand, MESSAGES))),
-      }), [dark]);
+      const message = pick(rand, MESSAGES); // every prop draws one, so the signs' messages stay put
+      const g = kit.foldDetail(kit.model(`prop_${kind}`, { ...base, panel: lit ? kit.message(message) : base.dark }), [base.dark]);
       g.rotation.y = Math.atan2(face[0], face[1]); // its front (+z) toward face
       g.position.set(x, 0.18, z); // on the raised sidewalk
       root.add(g);
@@ -254,7 +250,7 @@ const BOARDS = { tower: { w: 5.2, h: 12.7, need: 4, y: 9, low: 1.6 }, wide: { w:
 const PIXELS = { tower: [256, 1024], wide: [384, 448], blade: [256, 1280] }; // each display's shape, for its poster
 function billboards(kit, root, snap, towers) {
   const { size: n, tiles } = snap, rand = rng(snap.seed * 41 + 3), brands = [...BRANDS];
-  const corners = crossing(snap).filter((i) => towers.has(i)).sort((a, b) => tiles[b].f - tiles[a].f || a - b);
+  const corners = crossing(snap).houses.filter((i) => towers.has(i)).sort((a, b) => tiles[b].f - tiles[a].f || a - b);
   const used = new Set(); // tile and face, so a board that moves to a tower's other face never lands on another
   for (const [k, planned, kind] of [[0, 'x', 'tower'], [0, 'z', 'blade'], [1, 'z', 'wide'], [2, 'z', 'tower'], [3, 'x', 'blade']]) {
     const { w, h, need, y, low } = BOARDS[kind];
@@ -271,16 +267,11 @@ function billboards(kit, root, snap, towers) {
     used.add(i + axis);
     const [col, row] = [i % n, Math.floor(i / n)], toward = frontage(axis === 'x' ? row : col); // which end of the wall is at the corner
     const across = wall.hi - wall.lo < w + 1 ? (wall.lo + wall.hi) / 2 : toward > 0 ? wall.hi - w / 2 - 0.6 : wall.lo + w / 2 + 0.6;
-    const ad = (b) => (tiles[i].on ? kit.poster(...b, ...PIXELS[kind]) : dark);
+    const base = kit.industrial(tiles[i].on), ad = (b) => (tiles[i].on ? kit.poster(...b, ...PIXELS[kind]) : base.dark);
     const draw = () => brands.splice(Math.floor(rand() * brands.length), 1)[0] ?? BRANDS[0]; // each brand once
     const first = draw(), second = kind === 'wide' ? draw() : first;
-    const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (tiles[i].on ? m : dark);
-    const g = kit.foldDetail(kit.model(`billboard_${kind}`, {
-      steel: kit.steel(palette.gunmetal, 0.6), graphite: kit.steel(palette.graphite, 0.6), olive: kit.steel(palette.oliveGrey, 0.6), dark,
-      ad: ad(first), ad2: ad(second),
-      lamp: off(kit.glow(palette.dirtyAmber, 1.2)), red: off(kit.glow(palette.signal, 3)),
-    }), [dark]);
-    g.rotation.y = axis === 'x' ? (dir * Math.PI) / 2 : dir > 0 ? 0 : Math.PI; // its face (+z) out to the street
+    const g = kit.foldDetail(kit.model(`billboard_${kind}`, { ...base, ad: ad(first), ad2: ad(second) }), [base.dark]);
+    g.rotation.y = outward(axis, dir); // its display out to the street
     g.position.set(axis === 'x' ? wall.front : across, y, axis === 'x' ? across : wall.front);
     g.userData.rigid = true;
     root.add(g);
@@ -333,13 +324,7 @@ function meet(towers, { a, b, axis, f }, along) {
 // (tools/blender/skybridge.py): an end portal at each tower's wall (meet), then 4 m bays, every third with a
 // small window, stretched to fit. Lit inside unless either tower is blacked out.
 function skybridge(kit, { tiles }, { a, b, axis, y, u0, u1, across }) {
-  const lit = tiles[a].on && tiles[b].on, dark = kit.steel(palette.charcoal, 0.6);
-  const roles = {
-    graphite: kit.steel(palette.graphite, 0.6), steel: kit.steel(palette.gunmetal, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
-    titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
-    sheet: kit.mat('box_profile_metal_sheet', palette.gunmetal), interior: lit ? kit.glow(palette.warmWindow, 0.5) : dark,
-    lamp: lit ? kit.glow(palette.dirtyAmber, 1.2) : dark, glow_amber: lit ? kit.glow(palette.agedAmber, 1) : dark,
-  };
+  const roles = kit.industrial(tiles[a].on && tiles[b].on), { dark } = roles;
   const g = new THREE.Group();
   const piece = (name, u, turn = 0, stretch = 1) => {
     const m = kit.foldDetail(kit.model(name, roles), [dark]);
@@ -401,15 +386,10 @@ function shopfronts(kit, root, t, rand, dx, dz) {
 
 // One Blender shop strip with its front (the model's +z) on the street side s of axis, `front` metres out.
 function strip(kit, kind, lit, rand, axis, s, front) {
-  const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark);
-  const g = kit.model(`shop_${kind}`, {
-    graphite: kit.steel(palette.graphite, 0.6), steel: kit.steel(palette.gunmetal, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
-    titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
-    sheet: kit.mat('box_profile_metal_sheet', palette.gunmetal), shopwall: kit.windows(pick(rand, [3, 3, 6]), lit, true, 'shop'),
-    lamp: off(kit.glow(palette.dirtyAmber, 1.2)), glow_amber: off(kit.glow(palette.agedAmber, 1)),
-    glow_cyan: off(kit.glow(palette.coldCyan, 0.8)), sign: off(kit.sign(pick(rand, WORDS), pick(rand, WARM))),
-  });
-  g.rotation.y = axis === 'x' ? (s * Math.PI) / 2 : s > 0 ? 0 : Math.PI;
+  const base = kit.industrial(lit), { dark } = base;
+  const shopwall = kit.windows(pick(rand, [3, 3, 6]), lit, true, 'shop'), word = pick(rand, WORDS), color = pick(rand, WARM);
+  const g = kit.model(`shop_${kind}`, { ...base, shopwall, sign: lit ? kit.sign(word, color) : dark });
+  g.rotation.y = outward(axis, s);
   g.position.set(axis === 'x' ? s * front : 0, 0.18, axis === 'x' ? 0 : s * front);
   if (axis === 'z') g.scale.y = 1.02; // as the plain strips: z-facing roofs a hair higher, so corners never fight
   return kit.foldDetail(g, [dark]);

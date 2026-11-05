@@ -72,24 +72,29 @@ export function spire(kit, g, h, w, lit) {
 // keep their size and place. clear(k): the height (m) above which face k (+x, +z, -x, -z) is open, 0 where it looks
 // onto a street; anything deeper than a plate stays above it, so it overhangs the neighbour's roof, never its wall.
 // The pod and the vents go on the most open faces. rand: the tower's own generator.
-export function retrofit(kit, g, clear, rand) {
-  // The shaft to dress: the tower's volumes come as stacks of boxes on one footprint (segments between mechanical
-  // floors, setbacks above, families.js); take the stack that stands the most clear of the neighbouring roofs.
-  const size = (o) => {
-    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-    return o.geometry.boundingBox.getSize(new THREE.Vector3());
-  };
-  const stacks = [];
+const FACES = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // outward direction [x, z] of face k: +x, +z, -x, -z
+
+// The tower's volumes as stacks of boxes on one footprint (segments between mechanical floors, setbacks above,
+// families.js): { x, z, W, D, y0, y1 } each, its centre, footprint and height range.
+function stacks(g) {
+  const out = [], v = new THREE.Vector3();
   for (const o of g.children) {
     if (!o.isMesh || o.rotation.y || o.geometry.attributes.position.count > 2000) continue;
-    const v = size(o), { x, y, z } = o.position;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    o.geometry.boundingBox.getSize(v);
+    const { x, y, z } = o.position;
     if (v.x < 6 || v.z < 6 || v.y < 2) continue;
-    const s = stacks.find((q) => Math.abs(q.x - x) < 0.1 && Math.abs(q.z - z) < 0.1 && Math.abs(q.W - v.x) < 0.7 && Math.abs(q.D - v.z) < 0.7);
+    const s = out.find((q) => Math.abs(q.x - x) < 0.1 && Math.abs(q.z - z) < 0.1 && Math.abs(q.W - v.x) < 0.7 && Math.abs(q.D - v.z) < 0.7);
     if (s) [s.y0, s.y1] = [Math.min(s.y0, y - v.y / 2), Math.max(s.y1, y + v.y / 2)];
-    else stacks.push({ x, z, W: v.x, D: v.z, y0: y - v.y / 2, y1: y + v.y / 2 });
+    else out.push({ x, z, W: v.x, D: v.z, y0: y - v.y / 2, y1: y + v.y / 2 });
   }
+  return out;
+}
+
+export function retrofit(kit, g, clear, rand) {
+  // The shaft to dress: the stack, over 15 m tall, that stands the most clear of the neighbouring roofs.
   const low = Math.min(...[0, 1, 2, 3].map(clear));
-  const shaft = stacks.filter((q) => q.y1 - q.y0 > 15).sort((p, q) => (q.y1 - Math.max(q.y0, low)) * q.W - (p.y1 - Math.max(p.y0, low)) * p.W)[0];
+  const shaft = stacks(g).filter((q) => q.y1 - q.y0 > 15).sort((p, q) => (q.y1 - Math.max(q.y0, low)) * q.W - (p.y1 - Math.max(p.y0, low)) * p.W)[0];
   if (!shaft) return;
   const { x: cx, z: cz, W, D, y0, y1 } = shaft;
   const Hs = y1 - y0, top = (k) => Math.max(clear(k) + 4, y0 + Hs * 0.3); // where deep parts may start on face k
@@ -98,12 +103,17 @@ export function retrofit(kit, g, clear, rand) {
     grate: kit.mat('metal_grate_rusty', palette.gunmetal), hazard: kit.steel(palette.hazardPaint, 0.7), lamp: kit.glow(palette.dirtyAmber, 1.2),
     small: kit.steel(palette.charcoal, 0.4) }; // small: the steel every building's near-camera detail already uses (families.js)
   const detail = g.getObjectByName('detail') ?? g;
-  // Face k (0..3: +x, +z, -x, -z) of the shaft: a box `w` along the face, `h` tall, `d` deep, `u` along the face
-  // from its middle, `out` metres off it (its back), centred at height y.
+  // The point `u` along face k (0..3: +x, +z, -x, -z) from its middle and `off` metres out from the shaft's centre,
+  // as [x, z].
+  const on = (k, u, off) => {
+    const [nx, nz] = FACES[k];
+    return [cx + nx * off - nz * u, cz + nz * off + nx * u];
+  };
+  // A box on face k: `w` along the face, `h` tall, `d` deep, `u` along it from its middle, `out` metres off it (its
+  // back), centred at height y.
   const face = (k, parent, w, h, d, m, u, y, out) => {
-    const [nx, nz] = [[1, 0], [0, 1], [-1, 0], [0, -1]][k], half = nx ? W / 2 : D / 2, off = half + out + d / 2;
-    const geo = nx ? box(d, h, w, 1) : box(w, h, d, 1);
-    return part(parent, geo, m, cx + nx * off - nz * u, y, cz + nz * off + nx * u);
+    const [x, z] = on(k, u, (FACES[k][0] ? W / 2 : D / 2) + out + d / 2);
+    return part(parent, FACES[k][0] ? box(d, h, w, 1) : box(w, h, d, 1), m, x, y, z);
   };
   const span = (k) => (k % 2 ? W : D); // width of face k
   // c: the most open face (ties by chance) for the pod; a, opposite, for the armour; b, the more open of the other two.
@@ -127,19 +137,18 @@ export function retrofit(kit, g, clear, rand) {
   if (s1 - s0 > 8) {
     face(b, g, 3.6, s1 - s0, 1.8, mat.steel, u, (s0 + s1) / 2, 0.4);
     for (let y = s0 + 3; y < s1; y += 6) face(b, g, 4.2, 0.5, 2.4, mat.dark, u, y, 0.2);
-  }
-  for (const t of s1 - s0 > 8 ? [0.42, 0.62, 0.84] : []) { // vents only on a spine
-    const y = s0 + (s1 - s0) * t;
-    if (y < top(b)) continue;
-    face(b, g, 3.4, 3, 2.2, mat.grate, u, y, 2.2); // louvred ventilation unit, further out than the spine
-    face(b, g, 3.6, 0.3, 2.4, mat.hazard, u, y + 1.65, 2.1); // a dull hazard band on its hood
-    face(b, detail, 1.6, 1.6, 0.4, mat.small, u, y, 4.4); // fan housing on its face
+    for (const t of [0.42, 0.62, 0.84]) { // vents, only on a spine and above the neighbour's roof
+      const y = s0 + (s1 - s0) * t;
+      if (y < top(b)) continue;
+      face(b, g, 3.4, 3, 2.2, mat.grate, u, y, 2.2); // louvred ventilation unit, further out than the spine
+      face(b, g, 3.6, 0.3, 2.4, mat.hazard, u, y + 1.65, 2.1); // a dull hazard band on its hood
+      face(b, detail, 1.6, 1.6, 0.4, mat.small, u, y, 4.4); // fan housing on its face
+    }
   }
   // Conduits: three pipes of different sizes up face b beside the spine, from street level to the vents.
   const side = Math.sign(u) || 1;
   [[0.3, -2.6], [0.45, -3.5], [0.22, -4.3]].forEach(([r, du], k) => {
-    const along = u + side * du, end = s0 + (s1 - s0) * (0.5 + k * 0.12), [nx, nz] = [[1, 0], [0, 1], [-1, 0], [0, -1]][b];
-    const off = (nx ? W / 2 : D / 2) + 0.3 + r, x = cx + nx * off - nz * along, z = cz + nz * off + nx * along;
+    const end = s0 + (s1 - s0) * (0.5 + k * 0.12), [x, z] = on(b, u + side * du, (FACES[b][0] ? W / 2 : D / 2) + 0.3 + r);
     pipe(kit, g, [[x, y0 + 0.5, z], [x, end, z]], r, mat.steel, 8);
     for (let y = y0 + 4; y < end; y += 6) part(detail, box(r * 3, 0.2, r * 3, 0), mat.small, x, y, z); // clamps
   });
@@ -151,8 +160,8 @@ export function retrofit(kit, g, clear, rand) {
     face(c, g, 7.6, 0.6, 3.5, mat.dark, pu, py + 5.3, 0); // its roof
     face(c, g, 4, 5, 1.6, mat.steel, pu + Math.sign(pu || 1) * 4.5, py + 2, 0.2); // a smaller block beside it
     for (const du of [-2.6, 2.6]) {
-      const strut = face(c, g, 0.45, 7, 0.45, mat.dark, pu + du, py - 7.5, 1.4);
-      if (c % 2) strut.rotation.x = (c === 1 ? 1 : -1) * 0.45; else strut.rotation.z = (c === 0 ? -1 : 1) * 0.45;
+      const strut = face(c, g, 0.45, 7, 0.45, mat.dark, pu + du, py - 7.5, 1.4), [nx, nz] = FACES[c];
+      strut.rotation.set(nz * 0.45, 0, -nx * 0.45); // raking out from the wall up to the pod
     }
   }
   for (const [y, du] of [[py - 5.8, pu], [Math.max(top(c), y0 + Hs * 0.4), -pu * 2]]) {

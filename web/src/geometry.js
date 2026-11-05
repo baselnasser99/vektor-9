@@ -85,6 +85,9 @@ function rounded(w, h, d, seg, radius) {
 export const cyl = (rt, rb, h, seg = 24, start = 0, len = Math.PI * 2) =>
   metric(new THREE.CylinderGeometry(rt, rb, h, seg, 1, false, start, len), () => [Math.max(rt, rb) * len, h]);
 
+// The turn about the vertical that points a model's front (+z) out along axis ('x' or 'z') toward side s (+1 or -1).
+export const outward = (axis, s) => (axis === 'x' ? (s * Math.PI) / 2 : s > 0 ? 0 : Math.PI);
+
 export function part(parent, geo, mat, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);

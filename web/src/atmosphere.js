@@ -6,19 +6,24 @@ import { box, part, rng } from './geometry.js';
 import { bandTexture, fadeTexture, noiseTexture, radialTexture, skylineTexture } from './textures.js';
 import { BRANDS } from './world.js';
 
+// A palette colour as a GLSL vec3 literal, in the renderer's linear working space.
+export const glslColor = (c) => `vec3(${new THREE.Color(c).toArray().map((x) => x.toFixed(4)).join(', ')})`;
+
 // The sky's colour toward world direction d (normalized), as GLSL `vec3 skyAt(vec3 d)`: the dome draws it, and the
 // fog (stage.js) fades distant things into it, so nothing far stands out against the sky behind it. stops:
 // [elevation 0..1, color] up to the zenith, below the horizon the first; glow: light pollution [color, strength],
 // a warm haze hugging the horizon over the city, patchy round it, fading out just below the horizon.
 export function skyGlsl(stops, [glow, strength]) {
-  const v = (c) => `vec3(${new THREE.Color(c).toArray().map((x) => x.toFixed(4)).join(', ')})`;
-  const mixes = stops.slice(1).map(([e, c], k) => `  c = mix(c, ${v(c)}, smoothstep(${stops[k][0].toFixed(3)}, ${e.toFixed(3)}, e));`);
+  const mixes = stops.slice(1).map(([e, c], k) => `  c = mix(c, ${glslColor(c)}, smoothstep(${stops[k][0].toFixed(3)}, ${e.toFixed(3)}, e));`);
+  // Below the horizon (looking down at the city, most of what the fog covers) it is the first stop and nothing
+  // else, so it returns that before the costly part; the result is exactly what the full sum gives there.
   return `vec3 skyAt(vec3 d) {
+  vec3 c = ${glslColor(stops[0][1])};
+  if (d.y < -0.03) return c;
   float e = clamp(d.y, 0.0, 1.0);
-  vec3 c = ${v(stops[0][1])};
 ${mixes.join('\n')}
   float a = atan(d.z, d.x), patchy = 0.75 + 0.25 * sin(a * 3.0 + 1.3) * sin(a * 7.0 + 0.4);
-  return c + ${v(glow)} * ${strength.toFixed(2)} * patchy * (exp(-e / 0.05) * 0.7 + exp(-e / 0.18) * 0.3) * smoothstep(-0.03, 0.0, d.y);
+  return c + ${glslColor(glow)} * ${strength.toFixed(2)} * patchy * (exp(-e / 0.05) * 0.7 + exp(-e / 0.18) * 0.3) * smoothstep(-0.03, 0.0, d.y);
 }`;
 }
 
@@ -39,8 +44,7 @@ export function skyDome(sky, radius = 450) {
       }`,
   }));
   dome.frustumCulled = false;
-  dome.onBeforeRender = (renderer, scene, camera) => dome.matrixWorld.setPosition(camera.matrixWorld.elements[12],
-    camera.matrixWorld.elements[13], camera.matrixWorld.elements[14]);
+  dome.onBeforeRender = (renderer, scene, camera) => dome.matrixWorld.copyPosition(camera.matrixWorld);
   return dome;
 }
 
