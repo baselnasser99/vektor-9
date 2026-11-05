@@ -8,9 +8,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { css, palette, ui } from './palette.js';
 import { MOON, skyDome } from './atmosphere.js';
 
-// The look, in one place: exposure, key (moon) and fill (sky) light, bloom [strength, radius, threshold], and the
-// haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
-export const LOOK = { exposure: 1.35, key: 1.7, fill: 1.3, bloom: [0.5, 0.45, 0.82] };
+// The look, in one place: exposure, key (moon), fill (sky) and bounce (city glow) light, bloom [strength, radius,
+// threshold], and the haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
+export const LOOK = { exposure: 1.35, key: 1.7, fill: 1.3, bounce: 1.5, bloom: [0.5, 0.45, 0.82] };
 const HAZE = { aloft: 0.3, low: 25, high: 220 };
 
 // Haze in every material's fog: thickest among the streets and thinning with height, so distant streets fade into
@@ -162,7 +162,9 @@ function createRenderer() {
 
 // Night: deep blue zenith, blue haze lit from below by the city. A cool moon is the key light, strong enough to
 // model every building's form and cast its shadows; the sky fill (cool above, a mauve bounce from the lit streets
-// below) is kept low so lit and unlit sides separate. Warm windows, lamps and neon do the rest.
+// below) is kept low so lit and unlit sides separate. A soft mauve glow from the lit haze, low and opposite the moon
+// with no shadows, keeps walls turned away from the moon from going black (only the shadow side gets it).
+// Warm windows, lamps and neon do the rest.
 function nightScene(span, fog, far) {
   const scene = new THREE.Scene();
   scene.add(skyDome([[0, palette.nightFog], [0.05, palette.nightHorizon], [0.25, palette.nightSky], [1, palette.nightZenith]], far * 0.8));
@@ -176,6 +178,9 @@ function nightScene(span, fog, far) {
   moon.shadow.radius = 6;
   Object.assign(moon.shadow.camera, { left: -span, right: span, top: span, bottom: -span, far: span * 6 });
   scene.add(moon);
+  const glow = new THREE.DirectionalLight(palette.cloudGlow, LOOK.bounce);
+  glow.position.set(-MOON.x, 0.3, -MOON.z);
+  scene.add(glow);
   return scene;
 }
 
