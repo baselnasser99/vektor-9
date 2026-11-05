@@ -21,7 +21,7 @@ export function buildStreets(kit, layout, root) {
   sectors(kit, root, layout, rand, hub);
   // Every main street, once per axis: centre c, width w, kind, and the axis it runs along.
   const streets = lines.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, kind: l.kind[axis], axis })));
-  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35) }; // road paint glows faintly
+  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [] }; // road paint glows faintly
   perimeter(ctx);
   for (const s of streets) {
     if (s.kind === 'walk') walk(ctx, s);
@@ -29,7 +29,7 @@ export function buildStreets(kit, layout, root) {
     lamps(ctx, s);
   }
   plaza(ctx, hub.c, hub.w);
-  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi,
+  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt,
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2 } }; // life.js traffic: the roundabout
 }
 
@@ -226,6 +226,7 @@ function lamps(ctx, s) {
       const [x, z] = spot(s, v, side * kerb);
       const facing = s.axis === 'z' ? (side > 0 ? Math.PI : 0) : side > 0 ? Math.PI / 2 : -Math.PI / 2;
       const p = streetLamp(kit, root, x, z, facing);
+      ctx.lampsAt.push([x, z]); // so street props (city.js) keep clear
       part(root, new THREE.CircleGeometry(6, 20), pools, p.x, 0.25, p.z).rotation.x = -Math.PI / 2;
     }
   }

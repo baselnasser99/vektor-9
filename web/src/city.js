@@ -9,7 +9,7 @@ import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
 import { retrofit, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
-import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, pick } from './world.js';
+import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, MESSAGES, SIDEWALK, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
 // every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
@@ -131,6 +131,7 @@ export function buildCity(kit, snap) {
   });
   for (const bridge of bridgePairs(snap, layout, signature, towers)) root.add(skybridge(kit, snap, bridge));
   billboards(kit, root, snap, towers);
+  streetProps(kit, root, snap, layout, streets.lamps);
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
   const city = mergeByMaterial(root, warp);
@@ -184,9 +185,44 @@ function crossing({ size: n, tiles }) {
   for (const k of [mid + 2, mid - 2]) {
     const corners = [mid * BLOCK - 1, mid * BLOCK].flatMap((col) => [k * BLOCK - 1, k * BLOCK].map((row) => row * n + col));
     const houses = corners.filter((i) => tiles[i]?.k === 'house');
-    if (houses.length >= 3) return houses;
+    if (houses.length >= 3) return Object.assign(houses, { corners }); // and all four corners, for the street props
   }
-  return [];
+  return Object.assign([], { corners: [] });
+}
+
+// The street-prop kit (tools/blender/street_props.py) on the busiest crossing's four corner sidewalks, three a
+// corner. Each corner has a traffic sign or a camera pole by its kerb, set back from the crosswalk, and two of a
+// vending machine, a delivery locker, an electrical cabinet and a utility pedestal along its sidewalks. They stand
+// in a strip along the kerb, the walkway clear behind them, each one sliding along its sidewalk to clear a lamp.
+// Machines face the walkway; signs face the traffic coming to the crossing; cameras look across it.
+const PROPS = { vending: 0.8, sign: 0.3, cabinet: 0.5, camera: 0.3, locker: 0.7, utility: 0.6 }; // depth (m)
+const CORNERS = [[['a', 3.8, 'sign'], ['a', 9, 'vending'], ['b', 10, 'cabinet']], [['b', 3.8, 'camera'], ['a', 10, 'locker'], ['b', 16, 'utility']],
+  [['a', 3.8, 'sign'], ['b', 9, 'vending'], ['a', 15, 'cabinet']], [['b', 3.8, 'camera'], ['b', 10, 'locker'], ['a', 9, 'utility']]];
+function streetProps(kit, root, snap, { pos, n }, lamps) {
+  const { tiles } = snap, kerb = TILE / 2 + SIDEWALK, rand = rng(snap.seed * 43 + 1);
+  crossing(snap).corners.forEach((i, k) => {
+    const [col, row] = [i % n, Math.floor(i / n)], [dx, dz] = [frontage(col), frontage(row)], [cx, cz] = [pos(col), pos(row)];
+    const lit = tiles[i].on !== false, dark = kit.steel(palette.charcoal, 0.6), off = (m) => (lit ? m : dark);
+    for (const [side, from, kind] of CORNERS[k]) {
+      // Side a runs along the boulevard (along z), b along the cross street (along x); `from` the corner's kerb.
+      const back = kerb - 0.5 - PROPS[kind] / 2; // its centre, in from the kerb
+      const at = (d) => (side === 'a' ? [cx + dx * back, cz + dz * (kerb - d)] : [cx + dx * (kerb - d), cz + dz * back]);
+      let d = from;
+      while (lamps.some(([x, z]) => Math.hypot(x - at(d)[0], z - at(d)[1]) < 2.2)) d += 1.5;
+      const [x, z] = at(d), out = side === 'a' ? [dx, 0] : [0, dz]; // toward the street
+      const face = kind === 'sign' ? (side === 'a' ? [0, -dz] : [-dx, 0]) // the traffic coming in
+        : kind === 'camera' ? [dx, dz] : [-out[0], -out[1]]; // across the crossing; else the walkway
+      const g = kit.foldDetail(kit.model(`prop_${kind}`, {
+        steel: kit.steel(palette.gunmetal, 0.6), graphite: kit.steel(palette.graphite, 0.6), olive: kit.steel(palette.oliveGrey, 0.6),
+        titanium: kit.steel(palette.weatheredTitanium, 0.6), hazard: kit.steel(palette.hazardPaint, 0.7), dark,
+        interior: off(kit.glow(palette.warmWindow, 0.5)), glow_amber: off(kit.glow(palette.agedAmber, 1)),
+        glow_cyan: off(kit.glow(palette.coldCyan, 0.8)), red: off(kit.glow(palette.signal, 3)), panel: off(kit.message(pick(rand, MESSAGES))),
+      }), [dark]);
+      g.rotation.y = Math.atan2(face[0], face[1]); // its front (+z) toward face
+      g.position.set(x, 0.18, z); // on the raised sidewalk
+      root.add(g);
+    }
+  });
 }
 
 // Tower g's wall toward dir (+1 or -1) along axis between heights y0 and y1, measured from its parts: the

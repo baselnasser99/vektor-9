@@ -289,6 +289,21 @@ const PRODUCTS = {
   },
 };
 
+// An electronic traffic sign's message, w x h pixels: up to two short lines in amber on black, broken into
+// LED dots by a dark grid, the way a dot-matrix panel reads.
+export const messageTexture = (lines, w = 272, h = 160) => painted(w, h, (g) => {
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = css(palette.agedAmber);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `bold ${Math.round(h * (lines.length > 1 ? 0.36 : 0.5))}px monospace`;
+  lines.forEach((text, k) => g.fillText(text, w / 2, (h * (k + 0.5)) / lines.length + 4, w - 16));
+  g.fillStyle = '#000';
+  for (let x = 0; x < w; x += 6) g.fillRect(x, 0, 2, h);
+  for (let y = 0; y < h; y += 6) g.fillRect(0, y, w, 2);
+});
+
 // Sign text in a frame; on a background panel, or with scanlines and no panel for holograms.
 export const textTexture = (text, color, vertical, background) => painted(...(vertical ? [128, 512] : [512, 128]), (g, w, h) => {
   if (background) {
