@@ -87,6 +87,10 @@ const hologram = (map, tint, kind, phase, strength) => new THREE.ShaderMaterial(
   vertexShader: HOLO_VERT, fragmentShader: HOLO_FRAG, transparent: true, depthWrite: false,
   blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
 
+// A display lit from within by its texture (signs, ads, screens): black where the texture is, glowing as drawn.
+const lit = (map, intensity = NEON) => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: map,
+  emissiveIntensity: intensity });
+
 // An animation phase (seconds) from a material's key, so no two signs run in step.
 const phaseOf = (key) => ([...key].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 9973, 7) % 997) * 0.37;
 
@@ -145,31 +149,26 @@ export async function loadKit(renderer, models = [], base = './assets') {
         lit, seed, color: kind === 'old' ? (seed % 2 ? palette.brick : palette.roseGrey) : palette.slate,
         map: STYLES[kind].glass ? null : once('concreteMap', concreteTexture) })),
     // Lit sign with an invented word: glowing text and frame on a dark panel.
-    sign: (text, color, vertical = false) => once(`sign:${text}:${color}:${vertical}`, () => {
-      const map = textTexture(text, color, vertical, palette.deepNavy);
-      return new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 1.3 * NEON });
-    }),
+    sign: (text, color, vertical = false) => once(`sign:${text}:${color}:${vertical}`, () =>
+      lit(textTexture(text, color, vertical, palette.deepNavy), 1.3 * NEON)),
     // Billboard ad: an invented word over bands of color, lit from within.
-    billboard: (text, a, b) => once(`ad:${text}:${a}:${b}`, () => new THREE.MeshStandardMaterial({
-      color: 0x000000, emissive: 0xffffff, emissiveMap: adTexture(text, a, b), emissiveIntensity: 1.1 * NEON })),
+    billboard: (text, a, b) => once(`ad:${text}:${a}:${b}`, () => lit(adTexture(text, a, b), 1.1 * NEON)),
     // Advertisement on a billboard display (textures.js posterTexture), lit from within; size in pixels.
-    poster: (brand, line, product, ink, accent, w, h) => once(`poster:${brand}:${w}x${h}`, () => new THREE.MeshStandardMaterial({
-      color: 0x000000, emissive: 0xffffff, emissiveMap: posterTexture(brand, line, product, ink, accent, w, h), emissiveIntensity: NEON })),
+    poster: (brand, line, product, ink, accent, w, h) => once(`poster:${brand}:${w}x${h}`, () =>
+      lit(posterTexture(brand, line, product, ink, accent, w, h))),
     // A traffic sign's dot-matrix message (textures.js messageTexture): lines of text.
-    message: (lines, w, h) => once(`message:${lines.join('/')}:${w}x${h}`, () => new THREE.MeshStandardMaterial({
-      color: 0x000000, emissive: 0xffffff, emissiveMap: messageTexture(lines, w, h), emissiveIntensity: NEON })),
+    message: (lines, w, h) => once(`message:${lines.join('/')}:${w}x${h}`, () => lit(messageTexture(lines, w, h))),
     // A large corporate sign's face (textures.js corpTexture), lit from within; size in pixels.
-    corp: (name, line, mark, w, h, ink, markColor) => once(`corp:${name}:${w}x${h}`, () => liveSign(new THREE.MeshStandardMaterial({
-      color: 0x000000, emissive: 0xffffff, emissiveMap: corpTexture(name, line, mark, w, h, ink, markColor), emissiveIntensity: NEON }),
-    0, phaseOf(`${name}${w}`))),
+    corp: (name, line, mark, w, h, ink, markColor) => once(`corp:${name}:${w}x${h}`, () =>
+      liveSign(lit(corpTexture(name, line, mark, w, h, ink, markColor)), 0, phaseOf(`${name}${w}`))),
     // A projected ad (hologram above): the ad in the corporate-sign style, cast in its ink as the projector's tint.
     projection: (name, line, mark, ink, markColor, w, h) => once(`projection:${name}:${w}x${h}`, () =>
       hologram(corpTexture(name, line, mark, w, h, ink, markColor, true), ink, 0, phaseOf(`${name}${w}`), 1.5)),
     // The fans of light from a projector's lens, one per tint.
     beam: (tint) => once(`beam:${tint}`, () => hologram(null, tint, 1, 0, 1)),
     // A corporate sign's amber info display: a traffic sign's dot-matrix message, redrawn now and then (liveSign).
-    display: (lines, w, h) => once(`display:${lines.join('/')}:${w}x${h}`, () => liveSign(new THREE.MeshStandardMaterial({
-      color: 0x000000, emissive: 0xffffff, emissiveMap: messageTexture(lines, w, h), emissiveIntensity: NEON }), 1, phaseOf(lines.join()))),
+    display: (lines, w, h) => once(`display:${lines.join('/')}:${w}x${h}`, () =>
+      liveSign(lit(messageTexture(lines, w, h)), 1, phaseOf(lines.join()))),
     // Hologram: see-through, additive, with scanlines.
     holo: (text, color) => once(`holo:${text}:${color}`, () => new THREE.MeshBasicMaterial({
       map: textTexture(text, color, false, null), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
