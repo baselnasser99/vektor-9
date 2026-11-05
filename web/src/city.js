@@ -141,6 +141,15 @@ export function buildCity(kit, snap) {
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
   const city = mergeByMaterial(root, warp);
+  // Depth first: the facades are drawn once more, before everything, writing only depth (nudged back a hair so
+  // the real pass still meets it), so the facade shader and every part behind a wall only run where they show.
+  // Merged batches cannot be sorted front to back, and walls hid each other after paying for the shader.
+  const depth = new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  for (const m of [...city.children]) if (m.material.userData.facade) {
+    const first = new THREE.Mesh(m.geometry, depth);
+    first.renderOrder = -1;
+    city.add(first);
+  }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
   return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi };
 }
