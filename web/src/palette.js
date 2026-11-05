@@ -38,6 +38,22 @@ export const palette = {
   gunmetal: 0x2f3648,
   slate: 0x4b5569,
   weatheredConcrete: 0x7e8992, // the telecom tower's old frame
+  // The power plant (SECTOR 07): grimy industrial materials and small, dim working lights.
+  blackenedConcrete: 0x34373b,
+  weatheredTitanium: 0x666d73,
+  scorched: 0x24201d,
+  hazardPaint: 0x7a5230,
+  warningYellow: 0x8e7a3a,
+  stencilPaint: 0x8f9498,
+  coldWhite: 0xc8dce8,
+  dirtyAmber: 0xd08a3a,
+  // The market tiles (cybernetics shops): armour panels, cladding, and restrained sign light.
+  armorWhite: 0xb9b4a8,
+  oliveGrey: 0x5d6157,
+  graphite: 0x26282b,
+  deepRed: 0x6e2723,
+  agedAmber: 0xe09a45,
+  coldCyan: 0x8ccad2,
   neonMagenta: 0xff2fb4,
   neonPink: 0xff5c8a,
   neonOrange: 0xff8a2a,

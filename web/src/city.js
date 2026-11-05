@@ -92,7 +92,7 @@ export function buildCity(kit, snap) {
     const concrete = ((sector * 7 + snap.seed) % 2 === 0) !== (rand() < 0.25);
     const family = t.k === 'house' && familyOf(t, near[i], !concrete);
     const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row), build: () => construction(kit, t.f, rand, t.on, fw),
-      market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit, { close: false }), lot: () => plaza(kit, rand, t.on),
+      market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit), lot: () => plaza(kit, rand, t.on),
       rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on) }[t.k]();
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
     // and each quarter-block keeps a courtyard behind; inner lots sit anywhere on theirs.
@@ -107,7 +107,7 @@ export function buildCity(kit, snap) {
     }
     g.position.set((dx ? dx / 2 : rand() - 0.5) * slack, 0.18, (dz ? dz / 2 : rand() - 0.5) * slack);
     g.rotation.y = Math.floor(rand() * 4) * (Math.PI / 2) + (inTown(col, row) ? (rand() - 0.5) * 0.2 : 0); // old town: a little askew
-    if (t.k !== 'plant' && t.k !== 'lot') shopfronts(kit, lot, t, rand, dx, dz);
+    if (!['plant', 'lot', 'market'].includes(t.k)) shopfronts(kit, lot, t, rand, dx, dz); // a market is its own shop
     if (signature.has(i)) spire(kit, g, t.f * F, fw, t.on);
     const small = g.getObjectByName('detail'); // drawn only near the camera, merged per sector
     if (small) {
