@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { palette } from './palette.js';
-import { adTexture, concreteTexture, textTexture } from './textures.js';
+import { adTexture, concreteTexture, posterTexture, textTexture } from './textures.js';
 import { STYLES, facadeMaterial } from './facade.js';
 
 const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_metal_sheet', 'metal_grate_rusty', 'aerial_asphalt_01'];
@@ -68,6 +68,9 @@ export async function loadKit(renderer, models = [], base = './assets') {
     // Billboard ad: an invented word over bands of color, lit from within.
     billboard: (text, a, b) => once(`ad:${text}:${a}:${b}`, () => new THREE.MeshStandardMaterial({
       color: 0x000000, emissive: 0xffffff, emissiveMap: adTexture(text, a, b), emissiveIntensity: 1.1 * NEON })),
+    // Advertisement on a billboard display (textures.js posterTexture), lit from within; size in pixels.
+    poster: (brand, line, product, ink, accent, w, h) => once(`poster:${brand}:${w}x${h}`, () => new THREE.MeshStandardMaterial({
+      color: 0x000000, emissive: 0xffffff, emissiveMap: posterTexture(brand, line, product, ink, accent, w, h), emissiveIntensity: NEON })),
     // Hologram: see-through, additive, with scanlines.
     holo: (text, color) => once(`holo:${text}:${color}`, () => new THREE.MeshBasicMaterial({
       map: textTexture(text, color, false, null), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,

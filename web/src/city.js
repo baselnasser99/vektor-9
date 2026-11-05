@@ -9,7 +9,7 @@ import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
 import { retrofit, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
-import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, pick } from './world.js';
+import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
 // every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
@@ -130,6 +130,7 @@ export function buildCity(kit, snap) {
     }
   });
   for (const bridge of bridgePairs(snap, layout, signature, towers)) root.add(skybridge(kit, snap, bridge));
+  billboards(kit, root, snap, towers);
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
   const city = mergeByMaterial(root, warp);
@@ -171,14 +172,83 @@ function signatureTowers({ size: n, tiles }) {
 
 // Storefront tiles: the buildings on the corners where the boulevard (through the centre) meets the next full
 // street toward the opening view, or the one the other way if that crossing has fewer than three. Up to three.
-function storefrontTiles({ size: n, tiles }) {
+function storefrontTiles(snap) {
+  return new Set(crossing(snap).slice(0, 3));
+}
+
+// The busiest crossing's corner buildings (tile indices, row order): where the boulevard meets the next full
+// street toward the opening view, or the one the other way if that has fewer than three. Its storefronts and
+// billboards are here.
+function crossing({ size: n, tiles }) {
   const mid = n / BLOCK / 2;
   for (const k of [mid + 2, mid - 2]) {
     const corners = [mid * BLOCK - 1, mid * BLOCK].flatMap((col) => [k * BLOCK - 1, k * BLOCK].map((row) => row * n + col));
     const houses = corners.filter((i) => tiles[i]?.k === 'house');
-    if (houses.length >= 3) return new Set(houses.slice(0, 3));
+    if (houses.length >= 3) return houses;
   }
-  return new Set();
+  return [];
+}
+
+// Tower g's wall toward dir (+1 or -1) along axis between heights y0 and y1, measured from its parts: the
+// frontmost one at least `wide` m across and 2 m deep that covers those heights (so signs and balconies don't
+// count), as { front, lo, hi }: where its face is along axis, and its extent across. null if none.
+const bounds = new THREE.Box3();
+function wallOf(g, axis, dir, y0, y1, wide) {
+  const side = axis === 'x' ? 'z' : 'x';
+  let best = null;
+  g.updateWorldMatrix(true, true);
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    bounds.setFromObject(o);
+    if (bounds.min.y > y0 + 0.2 || bounds.max.y < y1 || bounds.max[side] - bounds.min[side] < wide || bounds.max[axis] - bounds.min[axis] < 2) return;
+    const front = dir > 0 ? bounds.max[axis] : bounds.min[axis];
+    if (!best || (front - best.front) * dir > 0) best = { front, lo: bounds.min[side], hi: bounds.max[side] };
+  });
+  return best;
+}
+
+// Billboards (tools/blender/billboards.py) on the corner towers of the busiest crossing, facing its streets: the
+// tallest gets a tower sign on its boulevard side and a blade on the other, the next a wide board, the next a
+// tower sign, the last a blade, each near the corner and only where the wall there is big enough. Each carries an
+// ad for an invented brand (BRANDS): its product drawn on the display. Dark in a blackout.
+// w and h: each one's size over its frame; need: the wall it needs across (its display and brackets); y: where it
+// hangs (its model's origin), low: how far below that it reaches (the tower sign's service platform).
+const BOARDS = { tower: { w: 5.2, h: 12.7, need: 4, y: 9, low: 1.6 }, wide: { w: 7.4, h: 5.8, need: 6.6, y: 9, low: 0.1 },
+  blade: { w: 1.2, h: 7.3, need: 1.5, y: 10, low: 0.15 } };
+const PIXELS = { tower: [256, 1024], wide: [384, 448], blade: [256, 1280] }; // each display's shape, for its poster
+function billboards(kit, root, snap, towers) {
+  const { size: n, tiles } = snap, rand = rng(snap.seed * 41 + 3), brands = [...BRANDS];
+  const corners = crossing(snap).filter((i) => towers.has(i)).sort((a, b) => tiles[b].f - tiles[a].f || a - b);
+  const used = new Set(); // tile and face, so a board that moves to a tower's other face never lands on another
+  for (const [k, planned, kind] of [[0, 'x', 'tower'], [0, 'z', 'blade'], [1, 'z', 'wide'], [2, 'z', 'tower'], [3, 'x', 'blade']]) {
+    const { w, h, need, y, low } = BOARDS[kind];
+    // Its planned tower and face, else that tower's other street face, else the other corner towers' free faces:
+    // the first wall there big enough for it.
+    const tries = [...new Set([corners[k], ...corners])].filter((i) => i !== undefined)
+      .flatMap((i) => [planned, planned === 'x' ? 'z' : 'x'].map((axis) => [i, axis]));
+    const [i, axis, dir, wall] = tries.map(([i, axis]) => {
+      const dir = frontage(axis === 'x' ? i % n : Math.floor(i / n));
+      const wall = dir && !used.has(i + axis) && wallOf(towers.get(i), axis, dir, y - low, y + h, need);
+      return [i, axis, dir, wall];
+    }).find(([, , , wall]) => wall) ?? [];
+    if (!wall) continue;
+    used.add(i + axis);
+    const [col, row] = [i % n, Math.floor(i / n)], toward = frontage(axis === 'x' ? row : col); // which end of the wall is at the corner
+    const across = wall.hi - wall.lo < w + 1 ? (wall.lo + wall.hi) / 2 : toward > 0 ? wall.hi - w / 2 - 0.6 : wall.lo + w / 2 + 0.6;
+    const ad = (b) => (tiles[i].on ? kit.poster(...b, ...PIXELS[kind]) : dark);
+    const draw = () => brands.splice(Math.floor(rand() * brands.length), 1)[0] ?? BRANDS[0]; // each brand once
+    const first = draw(), second = kind === 'wide' ? draw() : first;
+    const dark = kit.steel(palette.charcoal, 0.6), off = (m) => (tiles[i].on ? m : dark);
+    const g = kit.foldDetail(kit.model(`billboard_${kind}`, {
+      steel: kit.steel(palette.gunmetal, 0.6), graphite: kit.steel(palette.graphite, 0.6), olive: kit.steel(palette.oliveGrey, 0.6), dark,
+      ad: ad(first), ad2: ad(second),
+      lamp: off(kit.glow(palette.dirtyAmber, 1.2)), red: off(kit.glow(palette.signal, 3)),
+    }), [dark]);
+    g.rotation.y = axis === 'x' ? (dir * Math.PI) / 2 : dir > 0 ? 0 : Math.PI; // its face (+z) out to the street
+    g.position.set(axis === 'x' ? wall.front : across, y, axis === 'x' ? across : wall.front);
+    g.userData.rigid = true;
+    root.add(g);
+  }
 }
 
 // Two skybridges over main streets (skybridge below): the pairs of towers facing each other across one with the
@@ -212,19 +282,9 @@ function bridgePairs({ size: n, tiles }, { inTown, pos }, signature, towers) {
 // covers the corridor's height, so signs and balconies don't count), set back at most 4 m from its lot's street
 // edge, and the two walls overlapping by the corridor's width or more. null if they don't.
 function meet(towers, { a, b, axis, f }, along) {
-  const y = 0.18 + Math.round(f * 0.4) * F, side = axis === 'x' ? 'z' : 'x', box = new THREE.Box3();
+  const y = 0.18 + Math.round(f * 0.4) * F;
   const wall = (i, dir) => {
-    const g = towers.get(i);
-    let best = null;
-    g.updateWorldMatrix(true, true);
-    g.traverse((o) => {
-      if (!o.isMesh) return;
-      box.setFromObject(o);
-      const wide = box.max[side] - box.min[side], deep = box.max[axis] - box.min[axis];
-      if (box.min.y > y + 0.2 || box.max.y < y + 3.2 || wide < 4.6 || deep < 2) return;
-      const front = dir > 0 ? box.max[axis] : box.min[axis];
-      if (!best || (front - best.front) * dir > 0) best = { front, lo: box.min[side], hi: box.max[side] };
-    });
+    const best = wallOf(towers.get(i), axis, dir, y, y + 3.2, 4.6);
     return best && (along(i) + dir * (TILE - 1) / 2 - best.front) * dir <= 4 ? best : null;
   };
   const [wa, wb] = [wall(a, 1), wall(b, -1)];
