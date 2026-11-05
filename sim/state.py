@@ -108,16 +108,26 @@ def apply_power(tiles, dark=None):
     }
 
 
-def lay_terrain(seed):
-    """Tile index -> terrain kind: a railway in from one edge, a few parks, an old industrial site.
+def hub_plaza():
+    """Tile indices of the plaza round the central crossing, where the renderer stands the city's
+    tower: HUB_PLAZA tiles each way from the crossing, which runs between tiles c - 1 and c."""
+    c, h = R.SIZE // 2, R.HUB_PLAZA
+    return [y * R.SIZE + x for y in range(c - h, c + h) for x in range(c - h, c + h)]
 
-    Everything stays clear of the starting core, so the city grows around it. Integer math only.
+
+def lay_terrain(seed):
+    """Tile index -> terrain kind: the hub plaza, a railway in from one edge, a few parks, an old
+    industrial site.
+
+    Everything but the plaza stays clear of the starting core, so the city grows around it.
+    Integer math only.
     """
     rng = random.Random(f"{seed}:terrain")
     c = R.SIZE // 2
     clear = [chebyshev(*xy(i), c, c) <= R.START_RADIUS + 1 for i in range(R.SIZE * R.SIZE)]
     terrain = lay_rail(rng, clear)
-    rails = [xy(i) for i in terrain]
+    terrain.update(dict.fromkeys(hub_plaza(), "park"))
+    rails = [xy(i) for i, k in terrain.items() if k == "rail"]
     lay_parks(rng, clear, terrain, rails)
     lay_works(rng, clear, terrain, rails)
     return terrain
@@ -217,12 +227,18 @@ def lay_works(rng, clear, terrain, rails):
 
 
 def new_city(seed):
-    """A small core around the center: one plant, a couple of markets, a few low houses, and the
-    terrain (railway, parks, industrial site) the city will grow around."""
+    """A small core around the center: one plant just off the hub plaza, a couple of markets, a
+    few low houses, and the terrain (hub plaza, railway, parks, industrial site) the city will
+    grow around."""
     rng = random.Random(seed)
     terrain = lay_terrain(seed)
     c = R.SIZE // 2
-    core = [i for i in range(R.SIZE * R.SIZE) if 0 < chebyshev(*xy(i), c, c) <= R.START_RADIUS]
+    plant = (c + R.HUB_PLAZA, c + R.HUB_PLAZA)
+    core = [
+        i
+        for i in range(R.SIZE * R.SIZE)
+        if chebyshev(*xy(i), c, c) <= R.START_RADIUS and i not in terrain and xy(i) != plant
+    ]
     markets = set(rng.sample(core, R.START_MARKETS))
     market_xy = [xy(i) for i in markets]
     tiles = []
@@ -230,7 +246,7 @@ def new_city(seed):
         x, y = xy(i)
         if i in terrain:
             tiles.append(new_tile(terrain[i], rng))
-        elif (x, y) == (c, c):
+        elif (x, y) == plant:
             tiles.append(new_tile("plant", rng))
         elif i in markets:
             tiles.append(new_tile("market", rng))

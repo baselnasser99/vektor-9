@@ -41,6 +41,7 @@ RAIL_SLOPES = (
     (3, 2),
 )  # rail direction (dx, dy), before a random flip
 RAIL_OFFSET = (8, 12)  # the line passes this many tiles from the center
+HUB_PLAZA = 2  # tiles each side of the central crossing kept as the tower's plaza (park terrain)
 PARKS = 2
 PARK_RADIUS = (2, 3)  # half-axes of each park's two overlapping ellipses
 PARK_DISTANCE = (9, 17)  # Chebyshev distance of a park's center from the city center

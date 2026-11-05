@@ -12,6 +12,7 @@ from sim.state import (
     apply_power,
     chebyshev,
     counter,
+    hub_plaza,
     load,
     new_city,
     new_tile,
@@ -218,16 +219,16 @@ def test_overloaded_plant_keeps_power_but_stops_growth(monkeypatch):
 def test_strained_plant_gets_a_new_plant_at_the_edge(monkeypatch):
     monkeypatch.setattr(R, "PLANT_BUILD_CHANCE", 1.0)
     state, _ = overloaded_city()
-    c = R.SIZE // 2
     tiles = state["tiles"]
-    edge = (c + R.PLANT_SPACING) * R.SIZE + c  # a house past the spacing, so there's a spot by it
+    px, py = xy(next(i for i, t in enumerate(tiles) if t["k"] == "plant"))
+    edge = (py + R.PLANT_SPACING) * R.SIZE + px  # a house past the spacing, so there's a spot by it
     tiles[edge] = new_tile("house", random.Random(0), 3, 3, 0)
     new, events = step(state, [], tick_rng(state))
     opened = [e for e in events if e["kind"] == "plant_opened"]
     assert len(opened) == 1
     x, y = opened[0]["x"], opened[0]["y"]
     assert new["tiles"][y * R.SIZE + x]["k"] == "plant"
-    assert R.PLANT_SPACING <= chebyshev(x, y, c, c) <= R.PLANT_REACH
+    assert R.PLANT_SPACING <= chebyshev(x, y, px, py) <= R.PLANT_REACH
 
 
 def test_new_city_starts_small_in_the_center():
@@ -268,7 +269,10 @@ def test_grid_lookups_match_a_full_scan(seed, radius):
 def test_new_city_lays_out_terrain_around_the_core(seed):
     tiles = new_city(seed)["tiles"]
     c = R.SIZE // 2
-    where = {k: [xy(i) for i, t in enumerate(tiles) if t["k"] == k] for k in R.TERRAIN}
+    plaza = set(hub_plaza())
+    where = {
+        k: [xy(i) for i, t in enumerate(tiles) if t["k"] == k and i not in plaza] for k in R.TERRAIN
+    }
     assert all(where[k] for k in R.TERRAIN)
     for k in R.TERRAIN:
         assert all(chebyshev(x, y, c, c) > R.START_RADIUS + 1 for x, y in where[k])
@@ -306,3 +310,20 @@ def test_terrain_never_changes_and_age_tracks_change(seed):
         for a, b in zip(old, state["tiles"], strict=True):
             changed = (a["k"], a["s"]) != (b["k"], b["s"])  # a new building, or one topped out
             assert b["b"] == (state["tick"] if changed else a["b"])
+
+
+@settings(max_examples=10, deadline=None)
+@given(seeds)
+def test_hub_plaza_stays_open_round_the_central_crossing(seed):
+    # The tower stands here (renderer); the plaza is park terrain, so nothing is ever built on it.
+    state = new_city(seed)
+    c, h = R.SIZE // 2, R.HUB_PLAZA
+    plaza = hub_plaza()
+    assert len(plaza) == (2 * h) ** 2
+    assert all(c - h <= x < c + h and c - h <= y < c + h for x, y in map(xy, plaza))
+    assert all(state["tiles"][i]["k"] == "park" for i in plaza)
+    plants = [xy(i) for i, t in enumerate(state["tiles"]) if t["k"] == "plant"]
+    assert plants == [(c + h, c + h)]
+    for _ in range(100):
+        state, _ = step(state, [], tick_rng(state))
+    assert all(state["tiles"][i]["k"] == "park" for i in plaza)

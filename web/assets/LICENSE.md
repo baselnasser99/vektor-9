@@ -1,6 +1,6 @@
 # Third-party assets
 
-Everything in this folder comes from [Poly Haven](https://polyhaven.com) and is released under **CC0** (public domain). Downloaded 2026-11-03 at 1k resolution, unmodified.
+Everything in this folder except `models/telecom_tower/` comes from [Poly Haven](https://polyhaven.com) and is released under **CC0** (public domain). Downloaded 2026-11-03 at 1k resolution, unmodified.
 
 ## Textures (`textures/<name>/`: `diff` color, `nor` OpenGL normal, `arm` AO/roughness/metalness)
 
@@ -16,3 +16,7 @@ Everything in this folder comes from [Poly Haven](https://polyhaven.com) and is 
 - `modular_airduct_circular_01`
 - `modular_fire_escape`
 - `utility_box_01`
+
+## Our own
+
+- `models/telecom_tower`: the city's telecom tower, an original design built by `tools/blender/telecom_tower.py`.

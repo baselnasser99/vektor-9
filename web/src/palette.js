@@ -37,6 +37,7 @@ export const palette = {
   charcoal: 0x1e2333,
   gunmetal: 0x2f3648,
   slate: 0x4b5569,
+  weatheredConcrete: 0x7e8992, // the telecom tower's old frame
   neonMagenta: 0xff2fb4,
   neonPink: 0xff5c8a,
   neonOrange: 0xff8a2a,

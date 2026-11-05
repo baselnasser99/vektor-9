@@ -9,7 +9,7 @@ const TEXTURES = ['rusty_corrugated_iron', 'rusty_painted_metal', 'box_profile_m
 // Glowing parts are dimmed by this factor everywhere, so neon accents without blowing out the frame.
 const NEON = 0.65;
 
-// models: the CC0 models (web/assets/models) this page uses; the city needs none, and they are most of the download.
+// models: the glTF models (web/assets/models) this page uses; the city needs only telecom_tower (its own, ADR-0005).
 export async function loadKit(renderer, models = [], base = './assets') {
   const tl = new THREE.TextureLoader();
   const aniso = renderer.capabilities.getMaxAnisotropy();
