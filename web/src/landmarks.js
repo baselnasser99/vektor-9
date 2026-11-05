@@ -20,7 +20,7 @@ export function telecomTower(kit, root, x, y, z) {
     glass: kit.windows(1, true, false, 'panorama'), orange: kit.steel(palette.amber, 0.6),
     interior: kit.glow(palette.warmWindow, 1.2), amber: kit.glow(palette.sodium, 2.5), white: kit.glow(palette.glare, 1.5),
     cyan: kit.glow(palette.neonCyan, 1.5), ad: kit.billboard('NEON NOODLES', palette.neonMagenta, palette.neonCyan),
-    red: kit.glow(palette.signal, 4),
+    red: kit.warning(),
   };
   const g = kit.model('telecom_tower', roles);
   g.getObjectByName('detail').userData.lod = 'tower';
@@ -47,7 +47,7 @@ export function station(kit) {
   part(g, box(0.4, 7, 15, 0), steel, len / 2 + 0.8, 3.5, 0);
   for (const off of [-1.85, 1.85]) {
     part(g, box(1, 1.4, 2.6, 0), steel, len / 2 - 0.5, 1.3, off);
-    part(g, box(0.1, 0.3, 0.6, 0), kit.glow(palette.signal, 3), len / 2 - 1.05, 1.7, off);
+    part(g, box(0.1, 0.3, 0.6, 0), kit.warning(), len / 2 - 1.05, 1.7, off);
   }
   const tower = part(g, box(3, 22, 3, 1), steel, len / 2 + 2, 2, 8.5);
   part(tower, box(0.3, 16, 2.4, 0), kit.glow(palette.neonPink, 2.5), 1.6, 2, 0);
@@ -61,7 +61,7 @@ export function spire(kit, g, h, w, lit) {
   part(g, box(w * 0.45, 2 * F, w * 0.45, 1), kit.windows(2, lit), 0, h + F, 0);
   part(g, cyl(0.25, w * 0.18, needle, 6), steel, 0, h + 2 * F + needle / 2, 0);
   if (lit) for (let k = 0; k < 3; k++) ring(g, w * (0.3 - k * 0.07), 0.12, halo, 0, h + 2 * F + 4 + k * needle * 0.22, 0, 28, 4);
-  part(g, new THREE.SphereGeometry(0.4, 8, 6), kit.glow(palette.signal, 3), 0, h + 2 * F + needle + 0.3, 0);
+  part(g, new THREE.SphereGeometry(0.4, 8, 6), kit.warning(), 0, h + 2 * F + needle + 0.3, 0);
 }
 
 // Retrofit for a signature tower (the city's three tallest, city.js): heavy industrial add-ons hung on its main

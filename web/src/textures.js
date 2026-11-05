@@ -304,6 +304,125 @@ export const messageTexture = (lines, w = 272, h = 160) => painted(w, h, (g) => 
   for (let y = 0; y < h; y += 6) g.fillRect(0, y, w, 2);
 });
 
+// A corporation's mark, drawn in a 200 x 200 box round the origin in the current fill and stroke.
+const MARKS = {
+  hex: (g) => {
+    g.lineWidth = 22;
+    g.beginPath();
+    for (let k = 0; k < 6; k++) g.lineTo(90 * Math.cos((k * Math.PI) / 3 + Math.PI / 6), 90 * Math.sin((k * Math.PI) / 3 + Math.PI / 6));
+    g.closePath();
+    g.stroke();
+    g.fillRect(-14, -50, 28, 100);
+  },
+  bars: (g) => { for (let k = 0; k < 4; k++) g.fillRect(-90 + k * 48, 60 - k * 40, 34, 30 + k * 40); },
+  ring: (g) => {
+    g.lineWidth = 26;
+    g.beginPath();
+    g.arc(0, 0, 76, 0.5, Math.PI * 2 - 0.5);
+    g.stroke();
+    g.fillRect(30, -13, 70, 26);
+  },
+  eye: (g) => {
+    g.lineWidth = 18;
+    g.beginPath();
+    g.moveTo(-95, 0); g.quadraticCurveTo(0, -85, 95, 0); g.quadraticCurveTo(0, 85, -95, 0);
+    g.stroke();
+    g.beginPath();
+    g.arc(0, 0, 30, 0, Math.PI * 2);
+    g.fill();
+  },
+  tri: (g) => {
+    g.lineWidth = 20;
+    g.beginPath();
+    g.moveTo(0, -90); g.lineTo(90, 70); g.lineTo(-90, 70); g.closePath();
+    g.stroke();
+    g.fillRect(-10, -20, 20, 60);
+  },
+  grid: (g) => {
+    for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) if ((x + y) % 2 === 0 || (x === 1 && y === 1)) g.fillRect(-90 + x * 62, -90 + y * 62, 54, 54);
+  },
+  wave: (g) => {
+    g.lineWidth = 16;
+    for (const dy of [-45, 0, 45]) {
+      g.beginPath();
+      for (let x = -95; x <= 95; x += 5) g.lineTo(x, dy + 22 * Math.sin(x / 19));
+      g.stroke();
+    }
+  },
+  chevron: (g) => {
+    for (const y of [-55, 15]) {
+      g.beginPath();
+      g.moveTo(-95, y); g.lineTo(0, y + 50); g.lineTo(95, y); g.lineTo(95, y + 32); g.lineTo(0, y + 82); g.lineTo(-95, y + 32);
+      g.fill();
+    }
+  },
+};
+
+// A large corporate sign's face (or an ad in the same style): weathered dark panels, a mark (deep red unless
+// markColor says otherwise) and the name and its line in ink (cold white unless given). Tall (a pylon or a blade):
+// the mark on top and the name stacked below; portrait (a wall projection): the mark on top, the name across and
+// its line under it; wide: mark left, name right. bare: black with no panel, for a
+// projection (black adds no light), and no frame.
+export const corpTexture = (name, line, mark, w, h, ink = palette.windowWhite, markColor = palette.crimson, bare = false) => painted(w, h, (g) => {
+  const tall = h > w * 1.6, portrait = !tall && h > w * 1.15, rand = rng([...name].reduce((a, c) => a * 31 + c.charCodeAt(0), 11) % 9973);
+  g.fillStyle = bare ? '#000' : css(palette.graphite);
+  g.fillRect(0, 0, w, h);
+  if (!bare) { // panel seams, rain streaks and faint scanlines: a weathered electronic panel
+    const seams = tall ? [w, h / 6] : [w / 6, h];
+    g.fillStyle = rgba(palette.charcoal, 0.9);
+    for (let x = seams[0]; x < w; x += seams[0]) g.fillRect(x - 1, 0, 3, h);
+    for (let y = seams[1]; y < h; y += seams[1]) g.fillRect(0, y - 1, w, 3);
+    for (let k = 0; k < 40; k++) {
+      g.fillStyle = rgba(palette.deepNavy, 0.25 + rand() * 0.35);
+      g.fillRect(rand() * w, rand() * h, 3 + rand() * 6, 10 + rand() * h * 0.15);
+    }
+    g.fillStyle = rgba(palette.charcoal, 0.45);
+    for (let y = 0; y < h; y += 5) g.fillRect(0, y, w, 1);
+  }
+  const s = tall || portrait ? w * 0.34 : h * 0.34, [mx, my] = tall || portrait ? [w / 2, w * 0.48] : [h * 0.55, h / 2];
+  g.save();
+  g.translate(mx, my);
+  g.scale(s / 100, s / 100);
+  g.fillStyle = g.strokeStyle = css(markColor);
+  MARKS[mark](g);
+  g.restore();
+  g.fillStyle = css(ink);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  if (tall && name.length > 9) { // too long to stack: turned on its side
+    g.save();
+    g.translate(w / 2, w * 1.05 + (h - w * 1.05) / 2);
+    g.rotate(-Math.PI / 2);
+    const room = h - w * 1.3;
+    g.font = `bold ${Math.round(Math.min(w * 0.42, (room * 1.6) / name.length))}px monospace`;
+    g.fillText(name, 0, -w * 0.08, room);
+    g.font = `bold ${Math.round(w * 0.14)}px monospace`;
+    g.fillText(line, 0, w * 0.26, room);
+    g.restore();
+  } else if (portrait) {
+    g.font = `bold ${Math.round(Math.min(w * 0.2, (w * 1.5) / name.length))}px monospace`;
+    g.fillText(name, w / 2, w * 1.05, w - 16);
+    g.font = `bold ${Math.round(w * 0.065)}px monospace`;
+    g.fillText(line, w / 2, w * 1.05 + w * 0.2, w - 16);
+  } else if (tall) {
+    const top = w * 1.05, step = (h - top - w * 0.4) / name.length;
+    g.font = `bold ${Math.round(Math.min(w * 0.5, step * 0.8))}px monospace`;
+    [...name].forEach((ch, k) => g.fillText(ch, w / 2, top + (k + 0.5) * step));
+    g.font = `bold ${Math.round(w * 0.075)}px monospace`;
+    g.fillText(line, w / 2, h - w * 0.2, w - 16);
+  } else {
+    const x0 = h * 1.1, room = w - x0 - h * 0.25;
+    g.textAlign = 'left';
+    g.font = `bold ${Math.round(Math.min(h * 0.42, (room * 1.6) / name.length))}px monospace`;
+    g.fillText(name, x0, h * 0.42, room);
+    g.font = `bold ${Math.round(h * 0.13)}px monospace`;
+    g.fillText(line, x0 + 4, h * 0.76, room);
+  }
+  if (bare) return;
+  g.fillStyle = css(markColor); // a thin rule framing the panel
+  for (const [x, y, rw, rh] of [[0, 0, w, 4], [0, h - 4, w, 4], [0, 0, 4, h], [w - 4, 0, 4, h]]) g.fillRect(x, y, rw, rh);
+});
+
 // Sign text in a frame; on a background panel, or with scanlines and no panel for holograms.
 export const textTexture = (text, color, vertical, background) => painted(...(vertical ? [128, 512] : [512, 128]), (g, w, h) => {
   if (background) {

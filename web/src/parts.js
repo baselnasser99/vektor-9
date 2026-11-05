@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, ring } from './geometry.js';
 
+// A small steady crimson warning lamp (kit.warning), s metres across, on machinery, masts, frames and corners.
+export const warningLamp = (kit, parent, x, y, z, s = 0.6) => part(parent, box(s, s, s, 0), kit.warning(), x, y, z);
+
 // Steel lattice girder along x: four chords, verticals and X bracing in each bay.
 // seg: box detail (see geometry.js box); the city passes 1.
 export function truss(kit, length, height, width, seg = 3) {
@@ -97,7 +100,7 @@ export function antennaArray(kit, parent, x, y, z) {
   for (const [h, w] of [[3, 2.2], [4.6, 1.6], [6, 1]]) part(parent, box(w, 0.08, 0.08), steel, x, y + h, z);
   const dish = part(parent, new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 4), kit.steel(palette.slate, 0.35), x + 1.4, y + 1.2, z);
   dish.rotation.z = -0.9;
-  part(parent, new THREE.SphereGeometry(0.15, 8, 6), kit.glow(palette.signal, 2), x, y + 7.1, z);
+  part(parent, new THREE.SphereGeometry(0.15, 8, 6), kit.warning(), x, y + 7.1, z);
 }
 
 export function waterTank(kit) {

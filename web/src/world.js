@@ -28,11 +28,26 @@ export const BRANDS = [['HALDEN', 'CYBER ARMS', 'arm', palette.cream, palette.si
   ['OKTAV', 'SEE FURTHER', 'eye', palette.cream, palette.coldCyan], ['ZEPHA', 'ICE COLD COLA', 'drink', palette.signal, palette.cream],
   ['MOGU', 'HOT NOODLES 24H', 'noodles', palette.cream, palette.agedAmber],
   ['ORVEX', 'DRONE FREIGHT', 'drone', palette.agedAmber, palette.coldCyan], ['KAZEMURA', 'GRID POWER', 'cell', palette.agedAmber, palette.cream]];
+// Invented corporations on the large corporate signs (city.js corpSigns): name, division, its mark (textures.js
+// MARKS) and the two lines of its amber info display.
+export const CORPS = [['TARKO', 'SECURE NETWORKS', 'hex', ['NETWORK', 'NOMINAL']],
+  ['OBELIN', 'GRID AUTHORITY', 'bars', ['GRID LOAD', '91%']], ['VESTRA', 'BIOSYSTEMS', 'ring', ['AIR INDEX', 'POOR']],
+  ['MAREK', 'HEAVY INDUSTRY', 'chevron', ['SHIFT 3', 'ON TIME']], ['SOLMEN', 'ORBITAL FREIGHT', 'tri', ['LAUNCH', 'T-04:12']],
+  ['IKARO', 'OBSERVATION', 'eye', ['YOU ARE', 'SEEN']], ['HELIX-9', 'GENOME BANK', 'wave', ['DEPOSITS', 'OPEN']],
+  ['KAISEN', 'DATA ARBITRAGE', 'grid', ['INDEX', '+0.4%']]];
+// Odd ads on the ordinary rooftop billboards and blade signs (tiles.js dress): a product, its slogan, a mark
+// (textures.js MARKS), and its ink and mark colours, kept to the city's restrained palette.
+export const ADS = [['MEMORY BACKUP', 'NEVER LOSE A DAY AGAIN', 'ring', palette.windowWhite, palette.crimson],
+  ['RENT-A-LUNG', 'BREATHE NOW, PAY LATER', 'bars', palette.agedAmber, palette.crimson],
+  ['DREAMSAFE', 'INSURED SLEEP 24/7', 'eye', palette.windowWhite, palette.agedAmber],
+  ['SYNTH SUN', 'DAYLIGHT BY SUBSCRIPTION', 'ring', palette.agedAmber, palette.agedAmber],
+  ['CLONE-LEGAL', 'YOUR SECOND YOU, CERTIFIED', 'tri', palette.windowWhite, palette.crimson],
+  ['OXY+', 'AIR, NOW 12% CLEANER', 'wave', palette.coldCyan, palette.windowWhite],
+  ['MINDLEASE', 'RENT OUT YOUR SPARE THOUGHTS', 'grid', palette.coldCyan, palette.crimson],
+  ['QUIET PILL', 'SILENCE THE CITY', 'hex', palette.windowWhite, palette.crimson]];
 // Messages on the electronic traffic signs (city.js streetProps), invented: one or two short lines each.
 export const MESSAGES = [['SPEED', '40'], ['DRONE', 'ZONE'], ['KEEP', 'LEFT'], ['TOLL', 'ACTIVE']];
 export const WARM = [palette.neonRed, palette.neonPink, palette.sodium, palette.neonOrange];
-export const AD_COLORS = [[palette.neonPink, palette.neonViolet], [palette.neonOrange, palette.neonRed],
-  [palette.neonCyan, palette.neonViolet], [palette.sodium, palette.neonPink]];
 export const CAR_COLORS = [palette.charcoal, palette.slate, palette.sodium, palette.gunmetal, palette.cream];
 
 export const pick = (rand, list) => list[Math.floor(rand() * list.length)];

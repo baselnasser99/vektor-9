@@ -9,7 +9,8 @@ import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
 import { retrofit, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
-import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, MESSAGES, SIDEWALK, pick } from './world.js';
+import { warningLamp } from './parts.js';
+import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, SIDEWALK, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
 // every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
@@ -99,6 +100,7 @@ export function buildCity(kit, snap) {
     const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;
     const [dx, dz] = [frontage(col), frontage(row)], lot = new THREE.Group();
     lot.position.set(cx, 0, cz);
+    lot.userData.building = i + 1; // its windows' light tones (facade.js); 0 is anything outside a lot
     lot.add(g);
     root.add(lot);
     if (t.k === 'house') towers.set(i, g); // for the skybridges over streets, which meet their walls
@@ -127,10 +129,14 @@ export function buildCity(kit, snap) {
       const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [cx, pos(col + 1)];
       part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, cz);
       if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
+      if (t.on) for (const x of [a + 6.5, b - 6.5]) warningLamp(kit, root, x, y - 1.7, cz - 1.85); // clearance lamps
     }
   });
-  for (const bridge of bridgePairs(snap, layout, signature, towers)) root.add(skybridge(kit, snap, bridge));
+  const bridges = bridgePairs(snap, layout, signature, towers);
+  for (const bridge of bridges) root.add(skybridge(kit, snap, bridge));
   billboards(kit, root, snap, towers);
+  const askew = [...towers.keys()].filter((i) => inTown(i % n, Math.floor(i / n))); // turned a little: signs would not sit flush
+  corpSigns(kit, root, snap, towers, new Set([...signature, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
   streetProps(kit, root, snap, layout, streets.lamps);
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
@@ -275,6 +281,54 @@ function billboards(kit, root, snap, towers) {
     g.position.set(axis === 'x' ? wall.front : across, y, axis === 'x' ? across : wall.front);
     g.userData.rigid = true;
     root.add(g);
+  }
+}
+
+// Large corporate signs (tools/blender/corp_signs.py) on prominent towers: the tallest of 14+ floors, at least
+// SPREAD tiles apart, never on a tower in `skip` (the billboard crossing, signature towers, skybridge ends, the old
+// town), and in place of the tower's own banner or wall projection (tiles.js dress). Each
+// gets a crown on the roof line, a pylon high on a street wall or a band across one lower down (stepped by tower,
+// so they sit at different heights and neighbours differ), else the next kind that fits its measured wall. Each carries an invented corporation (CORPS): its
+// deep red mark and cold-white name, and a muted amber info display. Dark in a blackout.
+// w: the wall it needs across; low and high: how far below and above its origin it reaches; face and info: each
+// display's pixels.
+const SIGNS = {
+  crown: { w: 8.6, low: 4, high: 0, face: [512, 256], info: [448, 80] },
+  pylon: { w: 5.4, low: 0, high: 18, face: [256, 1024], info: [272, 120] },
+  band: { w: 9.4, low: 2, high: 4.6, face: [768, 224], info: [432, 64] },
+};
+const SPREAD = 6, COUNT = 16, ORDER = ['crown', 'pylon', 'band'];
+function corpSigns(kit, root, { size: n, tiles }, towers, skip) {
+  const picked = [];
+  const ids = [...towers.keys()].filter((i) => tiles[i].f >= 14 && !skip.has(i)).sort((a, b) => tiles[b].f - tiles[a].f || a - b);
+  for (const i of ids) {
+    if (picked.length >= COUNT) break;
+    const [col, row] = [i % n, Math.floor(i / n)];
+    if (picked.some((j) => Math.max(Math.abs((j % n) - col), Math.abs(Math.floor(j / n) - row)) < SPREAD)) continue;
+    const H = tiles[i].f * F + 0.18; // its roof line
+    let hit = null;
+    for (let k = 0; k < ORDER.length && !hit; k++) {
+      const kind = ORDER[(col + 2 * row + k) % ORDER.length], s = SIGNS[kind];
+      const y = kind === 'crown' ? H : kind === 'pylon' ? Math.max(8, H * 0.55 - 9) : Math.max(10, H * 0.3);
+      for (const axis of ['x', 'z']) {
+        const dir = frontage(axis === 'x' ? col : row);
+        const wall = dir && wallOf(towers.get(i), axis, dir, y - s.low, kind === 'crown' ? H - 0.6 : y + s.high, s.w);
+        if (wall) { hit = [kind, s, y, axis, dir, wall]; break; }
+      }
+    }
+    if (!hit) continue;
+    const banners = [];
+    towers.get(i).traverse((o) => { if (o.name === 'banner') banners.push(o); });
+    for (const o of banners) o.removeFromParent();
+    const [kind, s, y, axis, dir, wall] = hit, on = tiles[i].on, [name, line, mark, lines] = CORPS[picked.length % CORPS.length];
+    const base = kit.industrial(on), across = (wall.lo + wall.hi) / 2;
+    const g = kit.foldDetail(kit.model(`corp_${kind}`, { ...base, panel: kit.mat('rusty_painted_metal', palette.gunmetal),
+      face: on ? kit.corp(name, line, mark, ...s.face) : base.dark, info: on ? kit.display(lines, ...s.info) : base.dark }), [base.dark]);
+    g.rotation.y = outward(axis, dir); // its displays out to the street
+    g.position.set(axis === 'x' ? wall.front : across, y, axis === 'x' ? across : wall.front);
+    g.userData.rigid = true;
+    root.add(g);
+    picked.push(i);
   }
 }
 

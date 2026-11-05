@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part } from './geometry.js';
 import { F } from './world.js';
+import { warningLamp } from './parts.js';
+
+const AVIATION = 24; // floors from which a tower carries red aviation lamps on two roof corners
 
 // Roof types per family; tall buildings (16+ floors) use the second list.
 const CHOICES = {
@@ -38,10 +41,16 @@ export function roof(c, type, w, d, y, wall, glass, x = 0, z = 0) {
   c.g.add(g);
   c.d.add(small);
   const r = { ...c, g, d: small, w, d2: d, wall, glass, edge: glass ? c.kit.steel(palette.charcoal, 0.5) : c.kit.concrete(palette.gunmetal) };
+  if (c.f >= AVIATION) for (const s of [-1, 1]) lamp(r, s * (w / 2 - 0.3), 1.2, s * (d / 2 - 0.3));
   return ROOFS[type](r);
 }
 
 // ---- parts -------------------------------------------------------------------------------------------------------
+
+// A warning lamp on lit buildings only, on machinery, masts and tall corners.
+function lamp(r, x, y, z) {
+  if (r.lit) warningLamp(r.kit, r.g, x, y, z, 0.7);
+}
 
 // A parapet: a low wall round the roof edge, in the facade's edge material.
 function parapet(r, h = 1, w = r.w, d = r.d2) {
@@ -91,6 +100,7 @@ const ROOFS = {
     parapet(r, 0.8);
     const pw = r.w * 0.55, pd = r.d2 * 0.5, side = r.seed % 2 ? 1 : -1, h = 1.6 * F;
     plantRoom(r, pw, pd, h, side * (r.w - pw) * 0.25, -side * (r.d2 - pd) * 0.2);
+    if (r.seed % 2 === 0) lamp(r, side * (r.w - pw) * 0.25 + pw / 2, h + 0.45, -side * (r.d2 - pd) * 0.2 + pd / 2); // fan plant
     for (const k of [-1, 1]) part(r.d, cyl(0.6, 0.6, 0.8, 6), r.m.steel, side * (r.w - pw) * 0.25 + k * pw * 0.25, h + 0.7, 0);
     return false;
   },
@@ -113,6 +123,7 @@ const ROOFS = {
     parapet(r, 0.7);
     const rows = Math.max(1, Math.floor((r.d2 - 2) / 2.6)), per = Math.max(1, Math.floor((r.w - 2) / 2.4));
     for (let k = 0; k < rows; k++) coolers(r, per, -(per - 1) * 1.2, -(rows - 1) * 1.3 + k * 2.6);
+    if (r.seed % 3 === 0) lamp(r, -(per - 1) * 1.2 - 0.8, 1.35, -(rows - 1) * 1.3 - 0.6); // a unit's fault light
     return false;
   },
   // A communications mast on an equipment shelter, dishes, steady red lamps.
@@ -125,7 +136,7 @@ const ROOFS = {
       const dish = part(r.d, new THREE.SphereGeometry(0.9, 8, 3, 0, Math.PI * 2, 0, Math.PI / 4), r.m.steel, mx + 0.6, h * k, r.d2 * 0.2);
       dish.rotation.z = -1.1;
     }
-    for (const k of [0.5, 1]) part(r.g, new THREE.SphereGeometry(0.22, 8, 6), kit.glow(palette.signal, 3), mx, h * k + 0.2, r.d2 * 0.2);
+    for (const k of [0.5, 1]) part(r.g, new THREE.SphereGeometry(0.22, 8, 6), kit.warning(), mx, h * k + 0.2, r.d2 * 0.2);
     return false;
   },
   // A planted terrace: glass rail, planters along two sides, a glazed pavilion and a pergola.
@@ -152,6 +163,7 @@ const ROOFS = {
     }
     for (const k of [-1, 1]) part(r.g, cyl(1.2, 1.2, 2.2, 8), r.kit.concrete(palette.gunmetal), side * r.w * 0.22, 2.7, k * r.d2 * 0.22);
     part(r.g, cyl(1.5, 2.1, 3.4, 10), r.kit.concrete(palette.slate), -side * r.w * 0.22, 1.7, 0); // cooling tower
+    if (r.seed % 2) lamp(r, -side * r.w * 0.22 + 1.45, 3.5, 0);
     part(r.d, box(r.w * 0.4, 0.7, 0.7, 0), slab, 0, 0.35, r.d2 * 0.35); // duct
     return false;
   },

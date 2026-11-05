@@ -8,12 +8,20 @@ import * as THREE from 'three';
 // (city.js), except under groups marked userData.rigid.
 // Groups marked userData.lod (a key, e.g. a sector) are merged apart, one group of meshes per key, returned in
 // out.userData.lods with userData.lod set, so they can be shown only near the camera.
+// Groups marked userData.building (a number) give it to every facade vertex inside as aBuilding (facade.js), so a
+// building's windows share their light tones.
 export function mergeByMaterial(root, warp) {
   root.updateMatrixWorld(true);
   const sets = new Map(); // lod key (undefined: always drawn) -> material -> meshes
   root.traverse((o) => {
-    if (o.userData.rigid) o.traverse((m) => { m.userData.rigid = true; }); // moved whole by its builder: no warp
-    if (o.userData.lod !== undefined) o.traverse((m) => { m.userData.lod = o.userData.lod; });
+    // Flags pass down: traverse visits a parent before its children, so copying the parent's is enough (the
+    // outermost lod or building wins, as before; rigid: moved whole by its builder, no warp).
+    const up = o !== root && o.parent.userData;
+    if (up) {
+      if (up.rigid) o.userData.rigid = true;
+      if (up.lod !== undefined) o.userData.lod = up.lod;
+      if (up.building !== undefined) o.userData.building = up.building;
+    }
     if (!o.isMesh) return;
     const key = o.userData.lod;
     if (!sets.has(key)) sets.set(key, new Map());
@@ -43,6 +51,7 @@ function bake(buckets, warp) {
     // material uses them (the desert ground).
     const pos = new Float32Array(verts * 3), nor = new Float32Array(verts * 3), uvs = new Float32Array(verts * 2);
     const colors = material.vertexColors && new Float32Array(verts * 3);
+    const building = material.userData.facade && new Float32Array(verts);
     const index = new (verts > 65535 ? Uint32Array : Uint16Array)(count);
     let base = 0, at = 0;
     for (const { geometry: g, matrixWorld, userData } of meshes) {
@@ -72,6 +81,7 @@ function bake(buckets, warp) {
       }
       uvs.set(t, base * 2);
       if (colors) colors.set(g.attributes.color.array, base * 3);
+      if (building) building.fill(userData.building ?? 0, base, base + count);
       if (g.index) {
         const ix = g.index.array;
         for (let i = 0; i < ix.length; i++) index[at++] = base + ix[i];
@@ -83,6 +93,7 @@ function bake(buckets, warp) {
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     if (colors) geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    if (building) geo.setAttribute('aBuilding', new THREE.BufferAttribute(building, 1));
     geo.setIndex(new THREE.BufferAttribute(index, 1));
     const mesh = new THREE.Mesh(geo, material);
     mesh.castShadow = !material.transparent;

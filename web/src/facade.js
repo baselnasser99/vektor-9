@@ -20,26 +20,28 @@ export const FACADE = {
 // sill]. glass: a curtain wall (dark spandrels, metal bands) rather than windows in a wall. recess: glass set back
 // this far (m). room: depth of the fake room (m). mullions: panes per opening. column: a structural column every
 // n bays (0: none). frame and slab: frame and floor-band thickness (m). lit: chance a room (homes, shops) or a
-// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops).
+// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops). tones: the
+// chance a building (or a band of its floors) is lit warm amber, cold white, ice blue or muted red.
 export const STYLES = {
   office: { kind: 1, glass: true, bay: 1.5, floor: F, win: [0.96, 0.7, 0.2], recess: 0.12, room: 5, mullions: 1,
-    column: 4, frame: 0.05, slab: 0.35, lit: 0.6 },
+    column: 4, frame: 0.05, slab: 0.35, lit: 0.6, tones: [0.08, 0.55, 0.37, 0] },
   residential: { kind: 0, bay: 2.8, floor: F, win: [0.56, 0.54, 0.24], recess: 0.3, room: 3.6, mullions: 2, column: 0,
-    frame: 0.06, slab: 0.22, lit: 0.7 },
+    frame: 0.06, slab: 0.22, lit: 0.7, tones: [0.6, 0.26, 0.14, 0] },
   shop: { kind: 2, bay: 3.5, floor: 4.6, win: [0.86, 0.66, 0.1], recess: 0.2, room: 4, mullions: 2, column: 1,
-    frame: 0.07, slab: 0, lit: 0.85 },
+    frame: 0.07, slab: 0, lit: 0.85, tones: [0.62, 0.33, 0.05, 0] },
   old: { kind: 0, bay: 2.4, floor: F, win: [0.42, 0.46, 0.28], recess: 0.3, room: 3.2, mullions: 2, column: 0,
-    frame: 0.07, slab: 0.18, lit: 0.6 },
+    frame: 0.07, slab: 0.18, lit: 0.6, tones: [0.82, 0.12, 0.06, 0] },
   luxury: { kind: 0, glass: true, bay: 3, floor: F, win: [0.92, 0.82, 0.08], recess: 0.15, room: 5.5, mullions: 3,
-    column: 3, frame: 0.05, slab: 0.3, lit: 0.55 },
+    column: 3, frame: 0.05, slab: 0.3, lit: 0.55, tones: [0.4, 0.44, 0.16, 0] },
   panorama: { kind: 0, glass: true, bay: 2.2, floor: 5.5, win: [0.97, 0.9, 0.05], recess: 0.06, room: 9, mullions: 1,
-    column: 0, frame: 0.04, slab: 0, lit: 0.45 }, // the tower's observation glass: one tall continuous band
+    column: 0, frame: 0.04, slab: 0, lit: 0.45, tones: [0.15, 0.85, 0, 0] }, // the tower's observation glass: one tall continuous band
   industrial: { kind: 1, bay: 4, floor: F, win: [0.86, 0.28, 0.6], recess: 0.1, room: 8, mullions: 4, column: 1,
-    frame: 0.06, slab: 0, lit: 0.5 },
+    frame: 0.06, slab: 0, lit: 0.5, tones: [0, 0.1, 0.35, 0.55] },
 };
 
 // Shared by every facade: seconds for slow light changes, and how lit homes and offices are at this hour.
 const clock = { time: { value: 0 }, homes: { value: 1 }, offices: { value: 1 } };
+export const facadeTime = clock.time; // also drives the animated corporate signs (materials.js liveSign)
 export function facadeClock(hour, onFrame) {
   // Evening is the busiest for homes; offices empty out after seven. Smooth through the day.
   const homes = [0.55, 0.4, 0.3, 0.25, 0.25, 0.35, 0.6, 0.7, 0.45, 0.35, 0.35, 0.4, 0.45, 0.45, 0.45, 0.5, 0.6, 0.8,
@@ -56,6 +58,7 @@ export function facadeClock(hour, onFrame) {
 export function facadeMaterial(style, { lit = true, seed = 1, color = palette.slate, map = null } = {}) {
   const s = STYLES[style], c = (v) => new THREE.Color(v);
   const m = new THREE.MeshStandardMaterial({ color, map, roughness: 0.85, metalness: 0.1 });
+  m.userData.facade = style; // merge.js gives its vertices their building's id (aBuilding)
   const uniforms = {
     fGrid: { value: new THREE.Vector4(s.bay, s.floor, 0.18, s.room * FACADE.depth) },
     fWin: { value: new THREE.Vector4(...s.win, s.recess * FACADE.depth) },
@@ -64,17 +67,20 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
     fInterior: { value: FACADE.interior }, fSkin: { value: s.glass ? 1 : 0 },
     fFrame: { value: c(palette.charcoal) }, fGlass: { value: c(palette.deepNavy) },
     fWarm: { value: c(palette.warmWindow) }, fWarm2: { value: c(palette.sodium) }, fCool: { value: c(palette.glare) },
+    fWhite: { value: c(palette.windowWhite) }, fIce: { value: c(palette.windowIce) }, fRed: { value: c(palette.windowRed) },
+    fTones: { value: new THREE.Vector4(...s.tones) },
     fTime: clock.time, fHomes: clock.homes, fOffices: clock.offices,
   };
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${VARYINGS}`)
+      .replace('#include <common>', `#include <common>\n${VARYINGS}\nattribute float aBuilding;`)
       .replace('#include <project_vertex>', `#include <project_vertex>
         vec4 fWorld = modelMatrix * vec4(transformed, 1.0);
         vFPos = fWorld.xyz;
         vFN = normalize(mat3(modelMatrix) * objectNormal);
         vFU = uv.x * ${REPEAT.toFixed(1)};
+        vFB = aBuilding;
         vFId = floor(dot(vFPos.xz, normalize(vFN.xz + 1e-4)) * 0.5);`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${VARYINGS}\n${FRAGMENT}`)
@@ -89,12 +95,12 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
   return m;
 }
 
-const VARYINGS = `varying vec3 vFPos; varying vec3 vFN; varying float vFU; flat varying float vFId;`;
+const VARYINGS = `varying vec3 vFPos; varying vec3 vFN; varying float vFU; flat varying float vFId; flat varying float vFB;`;
 
 const FRAGMENT = /* glsl */ `
-uniform vec4 fGrid, fWin, fBars, fLight;
+uniform vec4 fGrid, fWin, fBars, fLight, fTones;
 uniform float fInterior, fTime, fHomes, fOffices, fSkin;
-uniform vec3 fFrame, fGlass, fWarm, fWarm2, fCool;
+uniform vec3 fFrame, fGlass, fWarm, fWarm2, fCool, fWhite, fIce, fRed;
 vec3 fGlow = vec3(0.0), fBend = vec3(0.0);
 float fShine = 0.0, fRough = 0.1;
 
@@ -108,17 +114,30 @@ uvec3 fHash(uvec3 v) {
 }
 vec3 fRand(ivec3 k, uint salt) { return vec3(fHash(uvec3(k) + uvec3(salt, salt * 7u, salt * 13u)) >> 8u) / 16777216.0; }
 
-// How lit a room is (0 dark .. ~1.4 bright) and its light color. kind 0 homes, 1 offices, 2 shops.
-float fRoom(ivec3 k, float kind, float chance, out vec3 color) {
+// The light color of a floor: each building has a main tone (fTones: amber, white, ice, red), and a band of two to
+// five floors sometimes runs on another (a plant floor, a lab, a workshop). The tone mapping and grade pull dim
+// light towards one pale cream, so amber leans to sodium and white and blue are lifted to stay apart from it.
+vec3 fTone(float floorIndex) {
+  ivec3 b = ivec3(int(vFB), int(fLight.w), 0);
+  vec3 hb = fRand(b, 5u);
+  float band = floor(floorIndex / (2.0 + floor(hb.y * 4.0)));
+  vec3 hf = fRand(b + ivec3(0, 0, int(band) + 1), 6u);
+  float r = (hf.x < 0.25 ? hf.y : hb.x) * dot(fTones, vec4(1.0));
+  if (r < fTones.x) return mix(fWarm, fWarm2, 0.55 + 0.4 * hf.z);
+  if (r < fTones.x + fTones.y) return fWhite;
+  if (r < fTones.x + fTones.y + fTones.z) return fIce * 1.5;
+  return fRed * 0.9;
+}
+
+// How lit a room is (0 dark .. ~1.4 bright). kind 0 homes, 1 offices, 2 shops. color: its floor's tone; the odd home screen.
+float fRoom(ivec3 k, float kind, float chance, inout vec3 color) {
   vec3 h = fRand(k, 1u), g = fRand(ivec3(0, k.y, k.z), 2u);
   // About one room in ten changes its light now and then: a slow fade, never a flash.
   float slot = fTime / 97.0 + h.y * 50.0, swap = smoothstep(0.0, 0.03, fract(slot));
   float now = h.x;
   if (h.z < 0.1) now = mix(fRand(k + ivec3(0, 0, int(floor(slot)) - 1), 3u).x, fRand(k + ivec3(0, 0, int(floor(slot))), 3u).x, swap);
-  color = mix(fWarm, fWarm2, h.z);
   if (kind > 1.5) return now < chance ? 1.0 + 0.3 * h.y : 0.0;
-  if (kind > 0.5) { // offices: whole floors on or off, cool light, the odd late worker on a dark floor
-    color = mix(fCool, fWarm, 0.35);
+  if (kind > 0.5) { // offices: whole floors on or off, the odd late worker on a dark floor
     if (g.x < chance * fOffices) return now < 0.88 ? 0.42 + 0.12 * h.y : 0.0;
     return now < 0.04 ? 0.25 : 0.0;
   }
@@ -165,10 +184,11 @@ void facade(inout vec3 albedo) {
   vec3 wall = glassy ? mix(fGlass * 1.4, fFrame, 0.35) : albedo; // curtain walls: dark spandrel glass between bands
   vec3 outAlbedo = wall, glow = vec3(0.0);
   float shine = glassy ? 0.6 : 0.0;
+  vec3 tone = fTone(floor(c.y));
   if (far < 1.0) { // near enough to see single windows; far away only the average below is drawn
     vec2 cell = floor(c), m = (c - cell) * vec2(bay, fl);
     ivec3 k = ivec3(int(cell.x), int(cell.y), int(vFId) * 3 + int(fLight.w) * 7919);
-    vec3 light;
+    vec3 light = tone;
     float level = fRoom(k, kind, fLight.x, light) * fLight.y;
     // Facade divisions: a floor slab at the bottom of every storey, a column every few bays.
     bool column = fBars.y > 0.5 && mod(cell.x, fBars.y) < 0.5 && m.x < 0.28;
@@ -201,8 +221,7 @@ void facade(inout vec3 albedo) {
   }
   // Far away: one cell per pixel or less, so draw its average instead of picking one room (no shimmer).
   float cover = fWin.x * fWin.y, avg = fLight.x * (office ? fOffices * 0.6 : shop ? 1.1 : fHomes * 0.5);
-  vec3 hue = office ? mix(fCool, fWarm, 0.35) : mix(fWarm, fWarm2, 0.5);
-  glow = mix(glow, hue * min(avg, 1.0) * fLight.y * 0.6 * cover, far);
+  glow = mix(glow, tone * min(avg, 1.0) * fLight.y * 0.6 * cover, far);
   outAlbedo = mix(outAlbedo, mix(wall, fGlass, cover), far);
   shine = mix(shine, cover * 0.6, far);
   // Street canyon: lower storeys see less sky, so walls darken towards the street (window light is unaffected).
