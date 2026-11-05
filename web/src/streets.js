@@ -16,19 +16,20 @@ const MEDIAN = 6; // boulevard median width
 export function buildStreets(kit, layout, root) {
   const { lines, lo, hi } = layout, rand = rng(31);
   const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // wet, but not a mirror
-  part(root, slab(hi - lo + 80, 0.1, hi - lo + 80, 8), asphalt, 0, -0.05, 0);
+  part(root, slab(hi - lo, 0.1, hi - lo, 8), asphalt, 0, -0.05, 0); // ends at the ring road's outer kerb line
   const hub = lines[lines.length >> 1];
   sectors(kit, root, layout, rand, hub);
   // Every main street, once per axis: centre c, width w, kind, and the axis it runs along.
   const streets = lines.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, kind: l.kind[axis], axis })));
   const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35) }; // road paint glows faintly
+  perimeter(ctx);
   for (const s of streets) {
     if (s.kind === 'walk') walk(ctx, s);
     else road(ctx, s);
     lamps(ctx, s);
   }
   plaza(ctx, hub.c, hub.w);
-  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi)), lines: lines.map((l) => l.c), lo, hi,
+  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi,
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2 } }; // life.js traffic: the roundabout
 }
 
@@ -71,7 +72,7 @@ function road(ctx, s) {
   for (const l of lines) {
     for (const side of [-1, 1]) {
       const at = l.c + side * (l.w / 2 + 1.8);
-      if (inRing(ctx, s, at)) continue;
+      if (inRing(ctx, s, at) || at < lo || at > hi) continue; // none on the outside of the city: no one walks there
       for (let off = -roadway / 2 + 0.6; off < roadway / 2; off += 1.2) {
         if (s.kind === 'boulevard' && Math.abs(off) < MEDIAN / 2) continue; // the median is a refuge, not paint
         lay(ctx, s, 3, 0.02, 0.6, paint, at, off, 0.01);
@@ -194,6 +195,25 @@ function sectors(kit, root, { n, pos, inTown }, rand, hub) {
   }
 }
 
+// The city's outer edge: the ring road's outer sidewalk, raised and kerbed like the sectors', open only where a
+// street carries on out of town (as a dirt track or a highway). The outer lamps of the ring road stand on it.
+function perimeter(ctx) {
+  const { kit, lo, hi } = ctx, paving = kit.concrete(palette.slate), curb = kit.concrete(palette.roseGrey);
+  for (const axis of ['x', 'z']) {
+    const runs = stretches(ctx, -SIDEWALK), last = runs.length - 1; // gaps the width of each crossing roadway
+    runs[0][0] = lo + SIDEWALK; // out to the corners, where the kerbs meet
+    runs[last][1] = hi - SIDEWALK;
+    const corner = axis === 'x' ? SIDEWALK : 0; // the x runs also pave the corner squares
+    for (const [c, side] of [[lo, 1], [hi, -1]]) {
+      runs.forEach(([a, b], k) => {
+        lay(ctx, { axis, c }, b - a, 0.22, 0.35, curb, (a + b) / 2, side * (SIDEWALK - 0.175), 0.11);
+        const [a0, b0] = [k === 0 ? a - corner : a, k === last ? b + corner : b];
+        lay(ctx, { axis, c }, b0 - a0, 0.18, SIDEWALK, paving, (a0 + b0) / 2, side * (SIDEWALK / 2), 0.09);
+      });
+    }
+  }
+}
+
 // Sodium lamps on both curbs, arms over the street, with a soft pool of light under each.
 function lamps(ctx, s) {
   const { kit, root, lo, hi } = ctx;
@@ -212,11 +232,13 @@ function lamps(ctx, s) {
 }
 
 // Traffic lanes of street s, each way, driving on the right (seen from above, +x traffic keeps to +z and +z
-// traffic to -x). A lane runs along `axis` at offset `at`, from `from` to `to`.
-function trafficLanes(s, lo, hi) {
-  const { lanes, cars } = STREETS[s.kind], right = s.axis === 'x' ? 1 : -1;
+// traffic to -x). A lane runs along `axis` at offset `at`, from `from` to `to`, on the street centred at `c`;
+// stops: the crossings along it as [centre, half width], where life.js traffic lights hold it.
+function trafficLanes(s, lo, hi, lines) {
+  const { lanes, cars } = STREETS[s.kind], right = s.axis === 'x' ? 1 : -1, across = s.axis === 'x' ? 'z' : 'x';
+  const stops = lines.filter((l) => l.kind[across] !== 'walk').map((l) => [l.c, l.w / 2]); // walks carry no cars
   return lanes.flatMap((off) => [
-    { axis: s.axis, at: s.c + right * off, from: lo, to: hi, y: 0.65, cars },
-    { axis: s.axis, at: s.c - right * off, from: hi, to: lo, y: 0.65, cars },
+    { axis: s.axis, c: s.c, at: s.c + right * off, from: lo, to: hi, y: 0.65, cars, stops },
+    { axis: s.axis, c: s.c, at: s.c - right * off, from: hi, to: lo, y: 0.65, cars, stops },
   ]);
 }

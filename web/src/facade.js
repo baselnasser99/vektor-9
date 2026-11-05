@@ -80,7 +80,8 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
       .replace('#include <common>', `#include <common>\n${VARYINGS}\n${FRAGMENT}`)
       .replace('#include <color_fragment>', '#include <color_fragment>\nfacade(diffuseColor.rgb);')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, fRough, fShine);')
-      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.55, fShine);')
+      // Glass is not metal: part-metal panes lost their diffuse and reflected less head-on, so they went black.
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.0, fShine);')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(normal + (viewMatrix * vec4(fBend, 0.0)).xyz);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = fGlow;');
   };

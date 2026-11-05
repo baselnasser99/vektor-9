@@ -8,9 +8,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { css, palette, ui } from './palette.js';
 import { MOON, skyDome } from './atmosphere.js';
 
-// The look, in one place: exposure, key (moon) and fill (sky) light, bloom [strength, radius, threshold], and the
-// haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
-export const LOOK = { exposure: 1.35, key: 1.7, fill: 1.3, bloom: [0.5, 0.45, 0.82] };
+// The look, in one place: exposure, key (moon), fill (sky) and bounce (city glow) light, bloom [strength, radius,
+// threshold], and the haze's thinning with height (density at `aloft` times the street's, from `low` to `high` metres).
+export const LOOK = { exposure: 1.35, key: 1.7, fill: 1.3, bounce: 1.5, bloom: [0.5, 0.45, 0.82] };
 const HAZE = { aloft: 0.3, low: 25, high: 220 };
 
 // Haze in every material's fog: thickest among the streets and thinning with height, so distant streets fade into
@@ -73,9 +73,10 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
     start() {
       renderer.shadowMap.needsUpdate = true;
       if (still) return render();
-      const clock = new THREE.Clock();
+      const clock = new THREE.Clock(), govern = governor(renderer, composer);
       renderer.setAnimationLoop(() => {
-        const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+        const raw = clock.getDelta(), dt = Math.min(raw, 0.1), t = clock.elapsedTime;
+        govern(raw, t);
         for (const fn of updates) fn(dt, t);
         render();
       });
@@ -162,7 +163,9 @@ function createRenderer() {
 
 // Night: deep blue zenith, blue haze lit from below by the city. A cool moon is the key light, strong enough to
 // model every building's form and cast its shadows; the sky fill (cool above, a mauve bounce from the lit streets
-// below) is kept low so lit and unlit sides separate. Warm windows, lamps and neon do the rest.
+// below) is kept low so lit and unlit sides separate. A soft mauve glow from the lit haze, low and opposite the moon
+// with no shadows, keeps walls turned away from the moon from going black (only the shadow side gets it).
+// Warm windows, lamps and neon do the rest.
 function nightScene(span, fog, far) {
   const scene = new THREE.Scene();
   scene.add(skyDome([[0, palette.nightFog], [0.05, palette.nightHorizon], [0.25, palette.nightSky], [1, palette.nightZenith]], far * 0.8));
@@ -176,7 +179,33 @@ function nightScene(span, fog, far) {
   moon.shadow.radius = 6;
   Object.assign(moon.shadow.camera, { left: -span, right: span, top: span, bottom: -span, far: span * 6 });
   scene.add(moon);
+  const glow = new THREE.DirectionalLight(palette.cloudGlow, LOOK.bounce);
+  glow.position.set(-MOON.x, 0.3, -MOON.z);
+  scene.add(glow);
   return scene;
+}
+
+// Frame rate first on slow GPUs: when frames average over 22 ms (under about 45 fps) for two seconds, draw fewer
+// pixels, a step at a time down to 0.7 per CSS pixel. It never steps back up (no see-sawing), and a GPU that keeps
+// up is never touched, so the look only changes where it was stuttering. A stalled or hidden tab says nothing about
+// the GPU, and the first seconds are shader compiles, so neither counts.
+export function governor(renderer, composer, step = 0.15, floor = 0.7) {
+  let sum = 0, n = 0;
+  return (dt, t) => {
+    if (t < 4 || dt >= 0.25) return;
+    sum += dt;
+    n++;
+    if (sum < 2) return;
+    const slow = sum / n > 0.022, now = renderer.getPixelRatio();
+    sum = n = 0;
+    if (!slow || now <= floor) return;
+    const next = Math.max(floor, now - step);
+    renderer.setPixelRatio(next);
+    composer.setPixelRatio(next);
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+    console.info(`resolution: ${next.toFixed(2)} pixels per CSS pixel (frames were slow)`);
+  };
 }
 
 // Bloom gives lamps and neon soft halos; only the brightest light blooms (threshold), so facades keep their detail.
