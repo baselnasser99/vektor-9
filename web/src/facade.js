@@ -5,7 +5,7 @@
 // batches all still work; no extra meshes, lights or textures. Far away, detail fades to the cell's average.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { REPEAT } from './geometry.js';
+import { REPEAT, rng } from './geometry.js';
 import { F } from './world.js';
 
 // Tuning for every facade at once.
@@ -20,32 +20,64 @@ export const FACADE = {
 // sill]. glass: a curtain wall (dark spandrels, metal bands) rather than windows in a wall. recess: glass set back
 // this far (m). room: depth of the fake room (m). mullions: panes per opening. column: a structural column every
 // n bays (0: none). frame and slab: frame and floor-band thickness (m). lit: chance a room (homes, shops) or a
-// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops). looks: the
-// weight of each building lighting identity for this type: crimson-dominant, ice-blue office, mixed residential,
-// mostly dark industrial, bright commercial landmark (see fLook in the shader).
+// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops). look: the
+// lighting identity of windows outside any lot (trains, the tower's glass), which have no building to take one from.
 export const STYLES = {
   office: { kind: 1, glass: true, bay: 1.5, floor: F, win: [0.96, 0.7, 0.2], recess: 0.12, room: 5, mullions: 1,
-    column: 4, frame: 0.05, slab: 0.35, lit: 0.6, looks: [0.14, 0.62, 0.04, 0.14, 0.06] },
+    column: 4, frame: 0.05, slab: 0.35, lit: 0.6, look: 1 },
   residential: { kind: 0, bay: 2.8, floor: F, win: [0.56, 0.54, 0.24], recess: 0.3, room: 3.6, mullions: 2, column: 0,
-    frame: 0.06, slab: 0.22, lit: 0.7, looks: [0.28, 0.06, 0.52, 0.1, 0.04] },
+    frame: 0.06, slab: 0.22, lit: 0.7, look: 0 },
   shop: { kind: 2, bay: 3.5, floor: 4.6, win: [0.86, 0.66, 0.1], recess: 0.2, room: 4, mullions: 2, column: 1,
-    frame: 0.07, slab: 0, lit: 0.85, looks: [0.3, 0.05, 0.35, 0.05, 0.25] },
+    frame: 0.07, slab: 0, lit: 0.85, look: 2 },
   old: { kind: 0, bay: 2.4, floor: F, win: [0.42, 0.46, 0.28], recess: 0.3, room: 3.2, mullions: 2, column: 0,
-    frame: 0.07, slab: 0.18, lit: 0.6, looks: [0.14, 0.02, 0.68, 0.14, 0.02] },
+    frame: 0.07, slab: 0.18, lit: 0.6, look: 2 },
   luxury: { kind: 0, glass: true, bay: 3, floor: F, win: [0.92, 0.82, 0.08], recess: 0.15, room: 5.5, mullions: 3,
-    column: 3, frame: 0.05, slab: 0.3, lit: 0.55, looks: [0.36, 0.38, 0.06, 0.05, 0.15] },
+    column: 3, frame: 0.05, slab: 0.3, lit: 0.55, look: 0 },
   panorama: { kind: 0, glass: true, bay: 2.2, floor: 5.5, win: [0.97, 0.9, 0.05], recess: 0.06, room: 9, mullions: 1,
-    column: 0, frame: 0.04, slab: 0, lit: 0.45, looks: [0, 1, 0, 0, 0] }, // the tower's observation glass: one tall continuous band
+    column: 0, frame: 0.04, slab: 0, lit: 0.45, look: 1 }, // the tower's observation glass: one tall continuous band
   industrial: { kind: 1, bay: 4, floor: F, win: [0.86, 0.28, 0.6], recess: 0.1, room: 8, mullions: 4, column: 1,
-    frame: 0.06, slab: 0, lit: 0.5, looks: [0.2, 0.12, 0, 0.66, 0.02] },
+    frame: 0.06, slab: 0, lit: 0.5, look: 3 },
 };
 
-// Shared by every facade: seconds for slow light changes, how lit homes and offices are at this hour, and the
-// city grid's size (building ids are tile index + 1, so the shader can find a building's place for its district).
-const clock = { time: { value: 0 }, homes: { value: 1 }, offices: { value: 1 }, size: { value: 48 } };
+// Lighting identities (fPick in the shader). A lot's identity rides in its building id (city.js), id + LOOK_STEP x look.
+export const LOOKS = { crimson: 0, blue: 1, warm: 2, dark: 3, landmark: 4 };
+export const LOOK_STEP = 65536; // above any tile index; ids stay whole numbers in a float (exact up to 2^24)
+
+// Smooth value noise over the tile grid, about one bump every `cell` tiles: districts, not salt and pepper.
+function field(col, row, cell, salt) {
+  const x = col / cell, y = row / cell, ix = Math.floor(x), iy = Math.floor(y);
+  const at = (i, j) => rng(Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(salt, 83492791))();
+  const s = (t) => t * t * (3 - 2 * t), fx = s(x - ix), fy = s(y - iy);
+  const a = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * fx, b = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * fx;
+  return a + (b - a) * fy;
+}
+const ramp = (a, b, x) => Math.min(Math.max((x - a) / (b - a), 0), 1);
+
+// A lot's lighting identity, picked once so every facade of the building (tower, podium, sections) shares it.
+// Crimson is the city's colour; blue is a few corporate pockets of tall glass (a coarse field plus a finer one, so
+// the pockets have ragged edges), dark gathers round industry, warm in the old town and among shops. Each building
+// still draws its own, so a district leans one way without being uniform.
+// t: the snapshot tile; family: its building family (families.js) or false; mapSeed: the snapshot's seed.
+export function lightingIdentity(t, family, col, row, mapSeed, landmark = false) {
+  if (landmark) return LOOKS.landmark;
+  const corp = 0.75 * field(col, row, 11, mapSeed * 3 + 1) + 0.25 * field(col, row, 4, mapSeed * 3 + 2);
+  const grime = field(col, row, 9, mapSeed * 3 + 3), r = rng(t.s * 31 + 7)();
+  const glass = { office: 1, mega: 1, luxury: 0.7 }[family] ?? 0.08;
+  const w = [
+    1, // crimson
+    7 * ramp(0.56, 0.72, corp) * glass * (0.25 + 0.75 * ramp(8, 18, t.f)), // blue: corporate pockets, tall glass
+    family === 'old' ? 1.5 : t.k === 'market' || t.k === 'lot' ? 0.7 : 0.13, // warm
+    family === 'industrial' ? 3 : 0.2 + 0.9 * ramp(0.55, 0.8, grime) * (1 - ramp(10, 20, t.f)), // dark
+  ];
+  let x = r * (w[0] + w[1] + w[2] + w[3]);
+  for (let i = 0; i < 3; i++) { if (x < w[i]) return i; x -= w[i]; }
+  return 3;
+}
+
+// Shared by every facade: seconds for slow light changes, how lit homes and offices are at this hour.
+const clock = { time: { value: 0 }, homes: { value: 1 }, offices: { value: 1 } };
 export const facadeTime = clock.time; // also drives the animated corporate signs (materials.js liveSign)
-export function facadeClock(hour, onFrame, size = 48) {
-  clock.size.value = size;
+export function facadeClock(hour, onFrame) {
   // Evening is the busiest for homes; offices empty out after seven. Smooth through the day.
   const homes = [0.55, 0.4, 0.3, 0.25, 0.25, 0.35, 0.6, 0.7, 0.45, 0.35, 0.35, 0.4, 0.45, 0.45, 0.45, 0.5, 0.6, 0.8,
     1, 1.1, 1.15, 1.05, 0.9, 0.7];
@@ -72,8 +104,7 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
     fBlood: { value: c(palette.winBlood) }, fCrimson: { value: c(palette.winCrimson) }, fScarlet: { value: c(palette.winScarlet) },
     fHigh: { value: c(palette.winHighlight) }, fIce: { value: c(palette.winIce) }, fWhite: { value: c(palette.windowWhite) },
     fAmber: { value: c(palette.winAmber) }, fCool: { value: c(palette.glare) },
-    fLooks: { value: new THREE.Vector4(...s.looks.slice(0, 4)) }, fLookL: { value: s.looks[4] },
-    fTime: clock.time, fHomes: clock.homes, fOffices: clock.offices, fSize: clock.size,
+    fLookDef: { value: s.look }, fTime: clock.time, fHomes: clock.homes, fOffices: clock.offices,
   };
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -102,8 +133,8 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
 const VARYINGS = `varying vec3 vFPos; varying vec3 vFN; varying float vFU; flat varying float vFId; flat varying float vFB;`;
 
 const FRAGMENT = /* glsl */ `
-uniform vec4 fGrid, fWin, fBars, fLight, fLooks;
-uniform float fInterior, fTime, fHomes, fOffices, fSkin, fLookL, fSize;
+uniform vec4 fGrid, fWin, fBars, fLight;
+uniform float fInterior, fTime, fHomes, fOffices, fSkin, fLookDef;
 uniform vec3 fFrame, fGlass, fBlood, fCrimson, fScarlet, fHigh, fIce, fWhite, fAmber, fCool;
 vec3 fGlow = vec3(0.0), fBend = vec3(0.0);
 float fShine = 0.0, fRough = 0.1;
@@ -118,26 +149,10 @@ uvec3 fHash(uvec3 v) {
 }
 vec3 fRand(ivec3 k, uint salt) { return vec3(fHash(uvec3(k) + uvec3(salt, salt * 7u, salt * 13u)) >> 8u) / 16777216.0; }
 
-// Window light comes from the building's lighting identity (fLook), picked per building from its type's weights
-// (fLooks: crimson-dominant, ice-blue office, mixed residential, mostly dark industrial; fLookL: bright landmark) and
-// leaned by place: a smooth field over the city grid (the building's tile, from its id) favours red in some
-// neighbourhoods and blue in others, and each 8x8 block draws its own lean on top, so neighbouring blocks differ and
-// colour comes in clusters, not salt and pepper. The whole building shares one identity (its id, not the facade).
-float fLook() {
-  ivec3 b = ivec3(int(vFB), vFB > 0.5 ? 0 : int(fLight.w), 0);
-  float id = max(vFB - 1.0, 0.0);
-  vec2 t = vec2(mod(id, fSize), floor(id / fSize));
-  float d = sin(t.x * 0.33 + 1.3) * cos(t.y * 0.27 + 0.4) + 0.5 * sin((t.x + t.y) * 0.16 + 2.0);
-  float blk = fRand(ivec3(int(t.x / 8.0), int(t.y / 8.0), 91), 7u).x;
-  vec4 w = fLooks * vec4((1.0 + 1.2 * smoothstep(0.15, 0.9, d)) * (0.5 + blk), (1.0 + 1.2 * smoothstep(-0.15, -0.9, d)) * (1.5 - blk), 1.0, 1.0);
-  float r = fRand(b, 5u).x * (dot(w, vec4(1.0)) + fLookL);
-  if (r < w.x) return 0.0;
-  r -= w.x;
-  if (r < w.y) return 1.0;
-  r -= w.y;
-  if (r < w.z) return 2.0;
-  return r < w.w ? 3.0 : 4.0;
-}
+// Window light comes from the building's lighting identity, picked once per lot in JS (facade.js lightingIdentity:
+// 0 crimson-dominant, 1 cool-blue corporate, 2 warm or mixed, 3 mostly dark, 4 bright landmark) and carried in its
+// building id (id + 65536 x identity), so the whole building shares it; windows outside a lot use their type's own.
+float fLook() { return vFB > 0.5 ? floor(vFB / 65536.0) : fLookDef; }
 // AgX tone mapping (with its colour-space change) first mixes about a quarter of red into green and a sixth into
 // blue, which turns saturated red salmon pink; taking out part of that beforehand (the mix is clamped at zero) keeps
 // red light rich. The palette hexes are targets on screen, so each red gets the amount and brightness that lands it
@@ -145,26 +160,32 @@ float fLook() {
 // highlight only half corrected and bright enough that the brightest rooms pass the bloom threshold and glow.
 vec3 fDeep(vec3 c, float k) { return c - vec3(0.0, 0.13, 0.07) * c.r * k; }
 // The light of one room (r: its hash; offices pass a whole floor's) for an identity. band: the floor band's hash, so
-// a mixed building now and then has a whole section of red windows and a crimson one a band of dim floors.
+// a warm building now and then has a whole section of red windows and a crimson one a band of dim floors.
+// Crimson is the signature: mostly reds and muted rose, a little amber and warm white, no blue. Blue buildings are
+// cold technology, not neon: cool white and muted ice, true ice-blue only now and then. Saturated cyan is kept for
+// accents (roof strips, holograms), never windows.
 vec3 fPick(float look, float r, float band) {
-  if (look < 0.5 || (look > 1.5 && look < 2.5 && band < 0.18)) { // crimson, or a red section of a mixed building
+  if (look < 0.5 || (look > 1.5 && look < 2.5 && band < 0.18)) { // crimson, or a red section of a warm building
     float dim = look < 0.5 && band > 0.82 ? 0.55 : 1.0;
-    if (r < 0.34) return fDeep(fBlood * 0.55, 1.0) * dim;
-    if (r < 0.74) return fDeep(fCrimson * 0.8, 0.8) * dim;
-    if (r < 0.9) return fDeep(fScarlet * 1.15, 0.5) * dim;
-    if (r < 0.95) return fDeep(fHigh * 1.5, 0.4);
-    return r < 0.98 ? fWhite * 0.8 : fIce * 1.3; // the odd cold room keeps it from reading as one red slab
+    if (r < 0.3) return fDeep(fBlood * 0.55, 1.0) * dim;
+    if (r < 0.64) return fDeep(fCrimson * 0.8, 0.8) * dim;
+    if (r < 0.77) return fDeep(fScarlet * 1.15, 0.5) * dim;
+    if (r < 0.84) return fDeep(fHigh * 0.75, 0.7) * dim; // muted rose
+    if (r < 0.88) return fDeep(fHigh * 1.5, 0.4);
+    return r < 0.95 ? fAmber * 0.8 : mix(fWhite, fAmber, 0.35) * 0.75; // the odd warm room keeps it from one red slab
   }
-  if (look < 1.5) return r < 0.5 ? fIce * 1.3 : r < 0.94 ? fWhite * 0.85 : fDeep(fCrimson * 0.8, 0.8);
-  if (look < 2.5) return r < 0.42 ? fAmber : r < 0.64 ? fWhite * 0.75 : r < 0.82 ? fDeep(fCrimson * 0.75, 0.8) : r < 0.92 ? fDeep(fBlood * 0.55, 1.0) : fIce * 1.2;
-  if (look < 3.5) return r < 0.5 ? fDeep(fBlood * 0.5, 1.0) : r < 0.8 ? fIce * 0.9 : fAmber * 0.7;
-  return r < 0.4 ? fDeep(fScarlet * 1.2, 0.5) : r < 0.7 ? fDeep(fCrimson, 0.8) : r < 0.88 ? fDeep(fHigh * 1.3, 0.4) : fIce * 1.5;
+  vec3 iceMuted = mix(fIce, fWhite, 0.5);
+  if (look < 1.5) return r < 0.4 ? fWhite * 0.8 : r < 0.86 ? iceMuted * 1.15 : r < 0.95 ? fIce * 1.2 : fDeep(fCrimson * 0.8, 0.8);
+  if (look < 2.5) return r < 0.45 ? fAmber : r < 0.72 ? mix(fWhite, fAmber, 0.4) * 0.8 : r < 0.88 ? fDeep(fCrimson * 0.75, 0.8) : fDeep(fBlood * 0.55, 1.0);
+  if (look < 3.5) return r < 0.55 ? fDeep(fBlood * 0.5, 1.0) : r < 0.85 ? fAmber * 0.7 : fWhite * 0.6;
+  return r < 0.4 ? fDeep(fScarlet * 1.2, 0.5) : r < 0.72 ? fDeep(fCrimson, 0.8) : r < 0.92 ? fDeep(fHigh * 1.3, 0.4) : fWhite;
 }
 // How many rooms an identity lights and how bright: industry mostly dark, landmarks full and bright.
 vec2 fLookLight(float look) { return look > 3.5 ? vec2(1.4, 1.3) : look > 2.5 ? vec2(0.25, 0.8) : vec2(1.0); }
 
-// How lit a room is (0 dark .. ~1.4 bright). kind 0 homes, 1 offices, 2 shops. color: its floor's tone; the odd home screen.
-float fRoom(ivec3 k, float kind, float chance, inout vec3 color) {
+// How lit a room is (0 dark .. ~1.4 bright). kind 0 homes, 1 offices, 2 shops. color: its floor's tone; the odd home
+// screen (cool) where its hash passes screens: often in blue buildings, rarely in warm or dark ones, never in crimson.
+float fRoom(ivec3 k, float kind, float chance, float screens, inout vec3 color) {
   vec3 h = fRand(k, 1u), g = fRand(ivec3(0, k.y, k.z), 2u);
   // About one room in ten changes its light now and then: a slow fade, never a flash.
   float slot = fTime / 97.0 + h.y * 50.0, swap = smoothstep(0.0, 0.03, fract(slot));
@@ -176,7 +197,7 @@ float fRoom(ivec3 k, float kind, float chance, inout vec3 color) {
     return now < 0.04 ? 0.25 : 0.0;
   }
   if (now >= chance * fHomes) return 0.0; // homes: warm and irregular, mostly dim, a few bright, the odd screen
-  if (h.y > 0.94) color = fCool * vec3(0.55, 0.65, 0.85);
+  if (h.y > screens) color = fCool * vec3(0.55, 0.65, 0.85);
   float tier = fract(h.y * 7.31);
   return tier < 0.45 ? 0.3 + 0.4 * tier : tier < 0.87 ? 0.6 + 0.7 * (tier - 0.45) : 1.2 + tier * 0.4;
 }
@@ -229,7 +250,7 @@ void facade(inout vec3 albedo) {
     vec2 cell = floor(c), m = (c - cell) * vec2(bay, fl);
     ivec3 k = ivec3(int(cell.x), int(cell.y), int(vFId) * 3 + int(fLight.w) * 7919);
     vec3 light = office ? tone : fPick(look, fRand(k, 12u).x, bandH);
-    float level = fRoom(k, kind, fLight.x * lookLight.x, light) * fLight.y * lookLight.y;
+    float level = fRoom(k, kind, fLight.x * lookLight.x, look > 0.5 && look < 1.5 ? 0.94 : look > 1.5 && look < 3.5 ? 0.985 : 2.0, light) * fLight.y * lookLight.y;
     // Facade divisions: a floor slab at the bottom of every storey, a column every few bays.
     bool column = fBars.y > 0.5 && mod(cell.x, fBars.y) < 0.5 && m.x < 0.28;
     bool slab = m.y < fBars.w;

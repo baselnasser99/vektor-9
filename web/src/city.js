@@ -6,6 +6,7 @@ import { powerPlant } from './plant.js';
 import { construction, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
+import { LOOK_STEP, lightingIdentity } from './facade.js';
 import { buildStreets } from './streets.js';
 import { exoframe, flagship, retrofit, roofworks, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
@@ -101,7 +102,8 @@ export function buildCity(kit, snap) {
     const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;
     const [dx, dz] = [frontage(col), frontage(row)], lot = new THREE.Group();
     lot.position.set(cx, 0, cz);
-    lot.userData.building = i + 1; // its windows' light tones (facade.js); 0 is anything outside a lot
+    // Its windows' light tones (facade.js): the tile, plus the building's lighting identity; 0 is anything outside a lot.
+    lot.userData.building = i + 1 + LOOK_STEP * lightingIdentity(t, family, col, row, snap.seed, signature.has(i));
     lot.add(g);
     root.add(lot);
     if (t.k === 'house') towers.set(i, g); // for the skybridges over streets, which meet their walls
