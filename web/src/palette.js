@@ -87,7 +87,15 @@ export const palette = {
   neonRed: 0xff3b3b,
   sodium: 0xffa733,
   warmWindow: 0xffc46b,
-  // Window light tones besides warm amber (facade.js): offices, technical floors, industrial lighting.
+  // Window light (facade.js), as targets on screen: dim crimson, the main red, bright scarlet, rare warm red
+  // highlights; icy blue and soft white for offices; amber now and then.
+  winBlood: 0xa62135,
+  winCrimson: 0xd94a60,
+  winScarlet: 0xff7380,
+  winHighlight: 0xffa09a,
+  winIce: 0x77b9d4,
+  winAmber: 0xe5a66e,
+  // Older window light tones, still used by the far sprawl and some models.
   windowWhite: 0xe6f0fa,
   windowIce: 0x5a9ed6,
   windowRed: 0xb0503a,
