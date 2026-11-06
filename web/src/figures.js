@@ -17,7 +17,7 @@ import { palette } from './palette.js';
 const HX = 0.095, HY = 0.92, KY = 0.5, SX = 0.215, SY = 1.41, EY = 1.12, NY = 1.5, WY = 1.0;
 const B = { pelvis: 0, torso: 1, head: 2, uarmL: 3, farmL: 4, uarmR: 5, farmR: 6, thighL: 7, shinL: 8, thighR: 9, shinR: 10, skirtL: 11, skirtR: 12 };
 const S = { skin: 0, top: 1, bottom: 2, shoe: 3, accent: 4, hair: 5, gear: 6, glow: 7, screen: 8, strip: 9 };
-export const TEXELS = 5; // per person in the data texture (people.js writes them)
+export const TEXELS = 6; // per person in the data texture (people.js writes them)
 
 // Colours a person can wear, by name; people.js packs indices into this list.
 export const COLOURS = ['clothBlack', 'clothCharcoal', 'clothGraphite', 'clothSlate', 'clothNavy', 'clothOlive', 'clothBrown',
@@ -219,19 +219,31 @@ const POSE = /* glsl */ `
   int row = int(aPerson);
   vec4 p0 = texelFetch(uPeople, ivec2(0, row), 0), p1 = texelFetch(uPeople, ivec2(1, row), 0);
   vec4 p2 = texelFetch(uPeople, ivec2(2, row), 0), p3 = texelFetch(uPeople, ivec2(3, row), 0);
-  vec4 p4 = texelFetch(uPeople, ivec2(4, row), 0);
+  vec4 p4 = texelFetch(uPeople, ivec2(4, row), 0), p5 = texelFetch(uPeople, ivec2(5, row), 0);
   float ph = p1.x, walk = p1.y, dev = p2.y, talk = p2.z, sit = p2.w, seed = p4.x;
+  // Seated postures, blended: forward (elbows on knees), back (leaning on the hands), the left leg crossed over
+  // the right, and a bouncing right leg; none of them is upright with the hands on the thighs.
+  float fwd = p5.x, back = p5.y, cross = p5.z, tap = p5.w;
   int b = int(aBone + 0.5), sl = int(aSlot + 0.5);
   float side = (b == 3 || b == 4 || b == 7 || b == 8 || b == 11) ? 1.0 : -1.0;
   float t = uTime + seed * 61.0, sn = sin(ph);
   // Gait: thighs swing opposite, knees bend in the swing, arms counter-swing; each person's amplitudes differ.
   float th = (0.4 + 0.12 * fract(seed * 7.31)) * walk * sn * side;
   float kn = walk * (0.1 + 0.7 * max(0.0, cos(ph) * side));
-  th = mix(th, 1.5, sit); kn = mix(kn, 1.5, sit);
+  // Seated: thighs level, shins down, knees a little apart; a crossed left leg rides up over the right knee and
+  // swings in front of it; a tapping right leg bounces at the knee.
+  float lift = side > 0.0 ? cross * 0.28 : 0.0, spread = side * (0.09 + 0.08 * fract(seed * 9.1));
+  spread = mix(spread, -0.32, side > 0.0 ? cross : 0.0) * sit;
+  th = mix(th, 1.5 + lift, sit);
+  kn = mix(kn, 1.5 - lift * 0.9 + (side < 0.0 ? tap * 0.08 * sin(t * 8.5) : 0.0), sit);
   float ua = -th * (0.55 + 0.35 * fract(seed * 3.7)) * (1.0 - sit), eb = 0.16 + 0.28 * walk + 0.15 * fract(seed * 5.3);
   float ab = 0.07 + 0.02 * walk;
-  // Idle hands drift a little; sitting rests them on the thighs.
-  ua += (1.0 - walk) * 0.04 * sin(t * 0.7 + side); ua = mix(ua, 0.55, sit); eb = mix(eb, 0.9, sit);
+  // Idle hands drift a little. Seated, the hands rest on the thighs, or the forearms on the knees with the hands
+  // loosely together, or on the bench behind.
+  ua += (1.0 - walk) * 0.04 * sin(t * 0.7 + side);
+  float sua = mix(mix(0.18, 0.02, fwd), -0.32, back), seb = mix(mix(1.05, 1.05, fwd), 0.3, back);
+  float sab = mix(mix(-0.13, -0.24, fwd), 0.36, back);
+  ua = mix(ua, sua + 0.03 * sin(t * 0.5 + side), sit); eb = mix(eb, seb, sit); ab = mix(ab, sab, sit);
   if (side < 0.0) { // the right arm holds the phone, and talks
     float g = 0.5 + 0.5 * sin(t * 0.83);
     ua = mix(ua, 0.32 + 0.18 * sin(t * 1.9), talk * g); eb = mix(eb, 1.0 + 0.45 * sin(t * 2.6), talk * g);
@@ -241,19 +253,20 @@ const POSE = /* glsl */ `
     eb = mix(eb, 0.7 + 0.3 * sin(t * 2.1), talk * g * 0.6);
     ua = mix(ua, 0.2, dev * 0.6); eb = mix(eb, 0.9, dev * 0.6);
   }
-  float twist = 0.07 * walk * sn, lean = 0.05 * walk + p4.y + 0.012 * sin(t * 1.4) + 0.05 * dev - 0.06 * sit;
-  float hy = p2.x + talk * 0.12 * sin(t * 0.9), hp = p4.z + 0.4 * dev + talk * 0.05 * sin(t * 1.7);
+  float twist = 0.07 * walk * sn, lean = 0.05 * walk + p4.y + 0.012 * sin(t * 1.4) + 0.05 * dev + sit * (0.02 + 0.42 * fwd - 0.16 * back);
+  float hy = p2.x + talk * 0.12 * sin(t * 0.9), hp = p4.z + 0.4 * dev + talk * 0.05 * sin(t * 1.7) - sit * (0.32 * fwd - 0.12 * back) * (1.0 - dev);
   vec3 P = position, N = normal;
   if (sl == 8) P = mix(vec3(-${SX}, ${EY - 0.32}, 0.03), P, dev); // the phone, folded into the hand when not in use
   if (b == 4 || b == 6) { vec3 e = vec3(side * ${SX}, ${EY}, 0.0); P = e + rx(P - e, -eb); N = rx(N, -eb); }
   if (b >= 3 && b <= 6) { vec3 s = vec3(side * ${SX}, ${SY}, 0.0); P = s + rz(rx(P - s, -ua), side * ab); N = rz(rx(N, -ua), side * ab); }
   if (b == 8 || b == 10) { vec3 k = vec3(side * ${HX}, ${KY}, 0.0); P = k + rx(P - k, kn); N = rx(N, kn); }
-  if (b >= 7 && b <= 10) { vec3 h = vec3(side * ${HX}, ${HY}, 0.0); P = h + rx(P - h, -th); N = rx(N, -th); }
-  if (b >= 11) { vec3 h = vec3(side * 0.08, ${HY + 0.04}, 0.0); float a = -th * 0.6 - 0.04; P = h + rx(P - h, a); N = rx(N, a); }
+  if (b >= 7 && b <= 10) { vec3 h = vec3(side * ${HX}, ${HY}, 0.0); P = h + ry(rx(P - h, -th), spread); N = ry(rx(N, -th), spread); }
+  // Coat tails swing about half as far as the thighs, and lie along the lap when seated.
+  if (b >= 11) { vec3 h = vec3(side * 0.08, ${HY + 0.04}, 0.0); float a = -th * mix(0.6, 0.97, sit) - 0.04; P = h + rx(P - h, a); N = rx(N, a); }
   if (b == 2) { vec3 n = vec3(0.0, ${NY}, 0.0); P = n + ry(rx(P - n, hp), hy); N = ry(rx(N, hp), hy); }
   if (b >= 1 && b <= 6) { vec3 w = vec3(0.0, ${WY}, 0.0); P = w + ry(rx(P - w, lean), twist); N = ry(rx(N, lean), twist); }
   // The body bobs twice a stride and shifts its weight; sitting lowers the hips onto the seat.
-  P += vec3((0.012 * walk * sn + (1.0 - walk) * 0.015 * sin(t * 0.31)), walk * 0.03 * (cos(2.0 * ph) * 0.5 + 0.5) - sit * 0.43, -sit * 0.05);
+  P += vec3((0.012 * walk * sn + (1.0 - walk) * (1.0 - sit) * 0.015 * sin(t * 0.31)), walk * 0.03 * (cos(2.0 * ph) * 0.5 + 0.5) - sit * 0.43, -sit * 0.05);
   // Fading in and out (spawning, and beyond the crowd's distance), by shrinking to the feet: far off it is a pixel.
   float fade = p3.w * (1.0 - smoothstep(uFar * 0.82, uFar, distance(p0.xyz, cameraPosition)));
   vec3 size = vec3(p1.w, p1.z, p1.w);
