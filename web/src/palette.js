@@ -48,6 +48,7 @@ export const palette = {
   // The power plant (SECTOR 07): grimy industrial materials and small, dim working lights.
   blackenedConcrete: 0x34373b,
   weatheredTitanium: 0x666d73,
+  wornGunmetal: 0x464a51, // the TARKO tower's cooling assembly: between gunmetal and titanium, desaturated
   scorched: 0x24201d,
   hazardPaint: 0x7a5230,
   warningYellow: 0x8e7a3a,

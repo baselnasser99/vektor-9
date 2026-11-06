@@ -113,7 +113,7 @@ function shaftOf(kit, g, clear) {
     const [x, z] = on(k, u, (FACES[k][0] ? W / 2 : D / 2) + out + d / 2);
     return part(parent, FACES[k][0] ? box(d, h, w, 1) : box(w, h, d, 1), m, x, y, z);
   };
-  return { W, D, y0, y1, Hs, mat, on, face, span: (k) => (k % 2 ? W : D), top: (k) => Math.max(clear(k) + 4, y0 + Hs * 0.3),
+  return { cx, cz, W, D, y0, y1, Hs, mat, on, face, span: (k) => (k % 2 ? W : D), top: (k) => Math.max(clear(k) + 4, y0 + Hs * 0.3),
     detail: g.getObjectByName('detail') ?? g };
 }
 
@@ -217,6 +217,17 @@ export function exoframe(g, clear, rand, { a, b, c, s }) {
 // (louvred grate sides under a steel lid) and two squat cooling stacks, and a pair of lattice masts of different
 // heights rising from one corner. Sized to read from the air; no lights (the roof keeps its own).
 const roofGear = new THREE.Box3();
+// Take the roof's own unlit gear off tower g: what stands on the top `box` (in g's frame, `into` taking world to it),
+// clear of its edges. The parapet and the corner lamps' posts stay, and so does every light.
+function clearRoof(g, into, top) {
+  const old = [];
+  g.traverse((o) => {
+    if (!o.isMesh || o.material.emissive?.getHex()) return;
+    const q = roofGear.setFromObject(o).applyMatrix4(into);
+    if (q.min.y >= top.max.y - 0.3 && q.min.x > top.min.x + 0.6 && q.max.x < top.max.x - 0.6 && q.min.z > top.min.z + 0.6 && q.max.z < top.max.z - 0.6) old.push(o);
+  });
+  for (const o of old) o.removeFromParent();
+}
 export function roofworks(kit, g, rand) {
   const mat = { steel: kit.steel(palette.gunmetal, 0.6), dark: kit.steel(palette.charcoal, 0.6),
     titanium: kit.steel(palette.weatheredTitanium, 0.6), grate: kit.mat('metal_grate_rusty', palette.gunmetal) };
@@ -230,15 +241,7 @@ export function roofworks(kit, g, rand) {
   });
   if (!top) return;
   const w = top.max.x - top.min.x, d = top.max.z - top.min.z, y = top.max.y, [px, pz] = [(top.min.x + top.max.x) / 2, (top.min.z + top.max.z) / 2];
-  // The new plant replaces the roof's own: unlit gear standing on this top, clear of its edges (the parapet and the
-  // corner lamps' posts stay, and so does every light).
-  const old = [];
-  g.traverse((o) => {
-    if (!o.isMesh || o.material.emissive?.getHex()) return;
-    const q = roofGear.setFromObject(o).applyMatrix4(into);
-    if (q.min.y >= y - 0.3 && q.min.x > top.min.x + 0.6 && q.max.x < top.max.x - 0.6 && q.min.z > top.min.z + 0.6 && q.max.z < top.max.z - 0.6) old.push(o);
-  });
-  for (const o of old) o.removeFromParent();
+  clearRoof(g, into, top); // the new plant replaces the roof's own
   const sx = rand() < 0.5 ? -1 : 1, sz = rand() < 0.5 ? -1 : 1; // the masts' corner; the exchanger sits away from it
   part(g, box(w * 0.92, 0.9, d * 0.92, 1), mat.dark, px, y + 0.45, pz); // the deck
   const hh = 3 + rand() * 2, [hx, hz] = [px - sx * w * 0.18, pz - sz * d * 0.12];
@@ -255,4 +258,76 @@ export function roofworks(kit, g, rand) {
     for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) part(g, box(0.16, h, 0.16, 0), mat.steel, ax + ox, y + 0.9 + h / 2, az + oz);
     for (let t = 2; t < h; t += 2.5) part(g, box(1.05, 0.14, 1.05, 0), mat.dark, ax, y + 0.9 + t, az);
   }
+}
+
+// The flagship (city.js): one tower by the central plaza rebuilt as a corporate headquarters from the Blender
+// modules (tools/blender/flagship.py), so its silhouette changes from the air and it reads as cyberpunk with every
+// light off. On its shaft, in gunmetal, slate, charcoal and dark crimson: on the face that looks most toward the
+// city centre (`toward(k)`: how much face k does), an asymmetric four-storey mechanical extension set toward one
+// corner on heavy knee brackets, fed by a conduit riser, and the tall corporate display above it; up the other
+// street face, a lift shaft set in between structural fins, with a machine room above the roof and a conduit
+// riser beside it; on the two faces left, above the neighbours' roofs, armoured columns and big cooling units;
+// and on the roof a machinery crown with a gantry arm out over the showcase face and an angular communications
+// assembly, in place of the roof's own gear. Its banner goes (the display takes its place). Corporation `corp`
+// (a CORPS entry): its crimson mark and white name, dark in a blackout.
+export function flagship(kit, g, clear, toward, rand, lit, [name, line, mark, lines]) {
+  const s = shaftOf(kit, g, clear);
+  if (!s) return false;
+  const { W, D, y0, y1, Hs, on, span } = s, base = kit.industrial(lit), dark = base.dark;
+  // The tower's own blue-grey, charcoal and dark crimson: gunmetal bodies, slate machinery, weathered-titanium
+  // armour (light enough to read against the gunmetal at night), charcoal structure.
+  const roles = { ...base, panel: kit.steel(palette.gunmetal, 0.5), mech: kit.steel(palette.slate, 0.6),
+    armor: kit.steel(palette.weatheredTitanium, 0.6), deepred: kit.steel(palette.deepRed, 0.6), glass: kit.glass(palette.charcoal),
+    face: lit ? kit.corp(name, line, mark, 256, 1152) : dark, info: lit ? kit.display(lines, 448, 128) : dark,
+    grate: kit.mat('metal_grate_rusty', palette.gunmetal) };
+  // Module `kind` on face k, `u` along it, its foot at height y, standing on the wall (its +z out of the face).
+  const mount = (kind, k, u, y, extra = {}) => {
+    const m = kit.foldDetail(kit.model(`flagship_${kind}`, { ...roles, ...extra }), [dark]), wall = (FACES[k][0] ? W : D) / 2;
+    const [x, z] = on(k, u, wall);
+    m.position.set(x, y, z);
+    m.rotation.y = Math.atan2(FACES[k][0], FACES[k][1]);
+    g.add(m);
+    return m;
+  };
+  const banners = [];
+  g.traverse((o) => { if (o.name === 'banner') banners.push(o); });
+  for (const o of banners) o.removeFromParent();
+  const open = [0, 1, 2, 3].sort((p, q) => clear(p) - clear(q) || toward(q) - toward(p));
+  const show = open.slice(0, 2).sort((p, q) => toward(q) - toward(p))[0], lift = open.slice(0, 2).find((k) => k !== show);
+  // A riser of `kind` (12 m segments stretched a little to fit) on face k at u, from y to `to`.
+  const riser = (kind, k, u, y, to) => {
+    const n = Math.max(1, Math.round((to - y) / 12)), seg = (to - y) / n;
+    for (let i = 0; i < n; i++) mount(kind, k, u, y + i * seg).scale.y = seg / 12;
+  };
+  // Showcase face: the extension a third of the way up, set toward one corner on its three knee brackets
+  // (they reach 8 m below it), a conduit riser feeding its underside from the podium; the display over it.
+  const ext = Math.max(y0 + 9, clear(show) + 9, Math.min(y0 + Hs * 0.3, y1 - 42)), eu = 5.1 - span(show) / 2;
+  // Its cooling and power assembly in weathered gunmetal, armoured in a medium-dark worn gunmetal close to the
+  // tower's own (its slate struts and coils and charcoal louvre recesses keep the parts apart).
+  mount('extension', show, eu, ext, { panel: kit.mat('rusty_painted_metal', palette.gunmetal, 0.7), armor: kit.steel(palette.wornGunmetal, 0.6) });
+  riser('conduit', show, eu + 1.95, y0, ext - 9);
+  if (ext + 17 + 22 <= y1 + 6) mount('ad', show, 0, ext + 17);
+  // Lift face: the shaft set in between its fins, from the podium (or the neighbour's roof) to a machine room
+  // over the roof; a second conduit riser up the rest of the face where there is room.
+  const from = Math.max(y0, clear(lift)), side = rand() < 0.5 ? -1 : 1, lu = side * (span(lift) / 2 - 2.6);
+  riser('lift', lift, lu, from, y1);
+  mount('lift_top', lift, lu, y1);
+  const cu = -side * (span(lift) / 2 - 1.7);
+  if (Math.abs(cu - lu) > 5.4) riser('conduit', lift, cu - side * 0.25, from, y1);
+  // The two faces left, above their neighbours' roofs: armoured columns on one; on the other, big cooling units
+  // stacked under an armoured column. Columns are 12 m segments of staggered plates.
+  const [a, b] = open.slice(2), above = (k) => Math.max(clear(k) + 1, y0 + 4);
+  for (const u of [-span(a) * 0.24, span(a) * 0.24]) if (y1 - above(a) > 12) riser('armor', a, u, above(a) + (u > 0 ? 3 : 0), y1);
+  let y = above(b);
+  for (let k = 0; k < 2 && y + 8 < y1 - 6; k++, y += 10) mount('vent', b, 0, y);
+  if (y1 - y > 12) riser('armor', b, -span(b) * 0.2, y, y1);
+  // Crown: on the roof, scaled to it, its gantry arm (+x) out over the showcase face.
+  g.updateWorldMatrix(true, true);
+  clearRoof(g, g.matrixWorld.clone().invert(), new THREE.Box3(new THREE.Vector3(s.cx - W / 2, y1 - 1, s.cz - D / 2), new THREE.Vector3(s.cx + W / 2, y1, s.cz + D / 2)));
+  const crown = kit.foldDetail(kit.model('flagship_crown', roles), [dark]), along = FACES[show][0] !== 0;
+  crown.position.set(s.cx, y1, s.cz);
+  crown.rotation.y = Math.atan2(-FACES[show][1], FACES[show][0]);
+  crown.scale.set((along ? W : D) / 9, 1, (along ? D : W) / 7);
+  g.add(crown);
+  return true;
 }

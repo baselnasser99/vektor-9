@@ -7,7 +7,7 @@ import { construction, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { buildStreets } from './streets.js';
-import { exoframe, retrofit, roofworks, spire } from './landmarks.js';
+import { exoframe, flagship, retrofit, roofworks, spire } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { warningLamp } from './parts.js';
 import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, SIDEWALK, pick } from './world.js';
@@ -83,6 +83,7 @@ export function buildCity(kit, snap) {
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
+  let flag = flagshipTower(snap, layout, signature, heavy); // -1 if none, or if it has no shaft to dress
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
     const atHub = Math.abs(col + 0.5 - n / 2) < HUB && Math.abs(row + 0.5 - n / 2) < HUB;
@@ -125,6 +126,14 @@ export function buildCity(kit, snap) {
         roofworks(kit, g, own);
       } else heavy.delete(i); // no shaft to dress: it stays as it was, sign and all
     }
+    if (i === flag) { // the flagship: its showcase face is the one that looks most toward the centre
+      const turn = g.rotation.y, clear = (k) => openAbove(snap, col, row, turn, k);
+      const toward = (k) => { // face k's outward direction in the world, against the way to the centre
+        const [x, z] = [[1, 0], [0, 1], [-1, 0], [0, -1]][k];
+        return -(x * Math.cos(turn) + z * Math.sin(turn)) * cx - (z * Math.cos(turn) - x * Math.sin(turn)) * cz;
+      };
+      if (!flagship(kit, g, clear, toward, rng(t.s * 13 + 7), t.on, CORPS[0])) flag = -1;
+    }
     let small = false; // small parts are drawn only near the camera, merged per sector (a storefront has its own)
     lot.traverse((o) => { if (o.name === 'detail') small = o.userData.lod = sector; });
     if (small !== false && !detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
@@ -139,11 +148,11 @@ export function buildCity(kit, snap) {
       if (t.on) for (const x of [a + 6.5, b - 6.5]) warningLamp(kit, root, x, y - 1.7, cz - 1.85); // clearance lamps
     }
   });
-  const bridges = bridgePairs(snap, layout, new Set([...signature, ...heavy]), towers); // their machinery faces the streets
+  const bridges = bridgePairs(snap, layout, new Set([...signature, ...heavy, flag]), towers); // their machinery faces the streets
   for (const bridge of bridges) root.add(skybridge(kit, snap, bridge));
   billboards(kit, root, snap, towers);
   const askew = [...towers.keys()].filter((i) => inTown(i % n, Math.floor(i / n))); // turned a little: signs would not sit flush
-  corpSigns(kit, root, snap, towers, new Set([...signature, ...heavy, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
+  corpSigns(kit, root, snap, towers, new Set([...signature, ...heavy, flag, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
   streetProps(kit, root, snap, layout, streets.lamps);
   const rail = railway(kit, root, rails, streets.hi);
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
@@ -211,6 +220,21 @@ function heavyTowers(snap, { inTown }, signature) {
     if ([...picked, ...signature].every((j) => far(i, j))) picked.add(i);
   }
   return picked;
+}
+
+// The flagship tower (landmarks.js flagship): the tallest building of 16 floors or more on a main street within 3
+// tiles of the centre (where the boulevards meet at the plaza), ties to the first in row order, that is no
+// signature or heavy tower, not on the busiest crossing and outside the old town. Its tile index, or -1.
+function flagshipTower(snap, { inTown }, signature, heavy) {
+  const { size: n, tiles } = snap, c = n / 2, corner = new Set(crossing(snap).houses);
+  let best = -1;
+  tiles.forEach((t, i) => {
+    const [col, row] = [i % n, Math.floor(i / n)];
+    if (t.k !== 'house' || t.f < 16 || signature.has(i) || heavy.has(i) || corner.has(i) || inTown(col, row)) return;
+    if (Math.max(Math.abs(col + 0.5 - c), Math.abs(row + 0.5 - c)) > 3 || ![col, row].some((v) => v % BLOCK === 0 || v % BLOCK === BLOCK - 1)) return;
+    if (best < 0 || t.f > tiles[best].f) best = i;
+  });
+  return best;
 }
 
 // Storefront tiles: the buildings on the corners where the boulevard (through the centre) meets the next full
