@@ -20,29 +20,32 @@ export const FACADE = {
 // sill]. glass: a curtain wall (dark spandrels, metal bands) rather than windows in a wall. recess: glass set back
 // this far (m). room: depth of the fake room (m). mullions: panes per opening. column: a structural column every
 // n bays (0: none). frame and slab: frame and floor-band thickness (m). lit: chance a room (homes, shops) or a
-// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops). tones: the
-// chance a building (or a band of its floors) is lit warm amber, cold white, ice blue or muted red.
+// floor (offices) is lit in the evening. kind picks the lighting pattern (0 homes, 1 offices, 2 shops). looks: the
+// weight of each building lighting identity for this type: crimson-dominant, ice-blue office, mixed residential,
+// mostly dark industrial, bright commercial landmark (see fLook in the shader).
 export const STYLES = {
   office: { kind: 1, glass: true, bay: 1.5, floor: F, win: [0.96, 0.7, 0.2], recess: 0.12, room: 5, mullions: 1,
-    column: 4, frame: 0.05, slab: 0.35, lit: 0.6, tones: [0.08, 0.55, 0.37, 0] },
+    column: 4, frame: 0.05, slab: 0.35, lit: 0.6, looks: [0.14, 0.62, 0.04, 0.14, 0.06] },
   residential: { kind: 0, bay: 2.8, floor: F, win: [0.56, 0.54, 0.24], recess: 0.3, room: 3.6, mullions: 2, column: 0,
-    frame: 0.06, slab: 0.22, lit: 0.7, tones: [0.6, 0.26, 0.14, 0] },
+    frame: 0.06, slab: 0.22, lit: 0.7, looks: [0.28, 0.06, 0.52, 0.1, 0.04] },
   shop: { kind: 2, bay: 3.5, floor: 4.6, win: [0.86, 0.66, 0.1], recess: 0.2, room: 4, mullions: 2, column: 1,
-    frame: 0.07, slab: 0, lit: 0.85, tones: [0.62, 0.33, 0.05, 0] },
+    frame: 0.07, slab: 0, lit: 0.85, looks: [0.3, 0.05, 0.35, 0.05, 0.25] },
   old: { kind: 0, bay: 2.4, floor: F, win: [0.42, 0.46, 0.28], recess: 0.3, room: 3.2, mullions: 2, column: 0,
-    frame: 0.07, slab: 0.18, lit: 0.6, tones: [0.82, 0.12, 0.06, 0] },
+    frame: 0.07, slab: 0.18, lit: 0.6, looks: [0.14, 0.02, 0.68, 0.14, 0.02] },
   luxury: { kind: 0, glass: true, bay: 3, floor: F, win: [0.92, 0.82, 0.08], recess: 0.15, room: 5.5, mullions: 3,
-    column: 3, frame: 0.05, slab: 0.3, lit: 0.55, tones: [0.4, 0.44, 0.16, 0] },
+    column: 3, frame: 0.05, slab: 0.3, lit: 0.55, looks: [0.36, 0.38, 0.06, 0.05, 0.15] },
   panorama: { kind: 0, glass: true, bay: 2.2, floor: 5.5, win: [0.97, 0.9, 0.05], recess: 0.06, room: 9, mullions: 1,
-    column: 0, frame: 0.04, slab: 0, lit: 0.45, tones: [0.15, 0.85, 0, 0] }, // the tower's observation glass: one tall continuous band
+    column: 0, frame: 0.04, slab: 0, lit: 0.45, looks: [0, 1, 0, 0, 0] }, // the tower's observation glass: one tall continuous band
   industrial: { kind: 1, bay: 4, floor: F, win: [0.86, 0.28, 0.6], recess: 0.1, room: 8, mullions: 4, column: 1,
-    frame: 0.06, slab: 0, lit: 0.5, tones: [0, 0.1, 0.35, 0.55] },
+    frame: 0.06, slab: 0, lit: 0.5, looks: [0.2, 0.12, 0, 0.66, 0.02] },
 };
 
-// Shared by every facade: seconds for slow light changes, and how lit homes and offices are at this hour.
-const clock = { time: { value: 0 }, homes: { value: 1 }, offices: { value: 1 } };
+// Shared by every facade: seconds for slow light changes, how lit homes and offices are at this hour, and the
+// city grid's size (building ids are tile index + 1, so the shader can find a building's place for its district).
+const clock = { time: { value: 0 }, homes: { value: 1 }, offices: { value: 1 }, size: { value: 48 } };
 export const facadeTime = clock.time; // also drives the animated corporate signs (materials.js liveSign)
-export function facadeClock(hour, onFrame) {
+export function facadeClock(hour, onFrame, size = 48) {
+  clock.size.value = size;
   // Evening is the busiest for homes; offices empty out after seven. Smooth through the day.
   const homes = [0.55, 0.4, 0.3, 0.25, 0.25, 0.35, 0.6, 0.7, 0.45, 0.35, 0.35, 0.4, 0.45, 0.45, 0.45, 0.5, 0.6, 0.8,
     1, 1.1, 1.15, 1.05, 0.9, 0.7];
@@ -66,10 +69,11 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
     fLight: { value: new THREE.Vector4(s.lit * FACADE.lit, lit ? FACADE.brightness : 0, s.kind, seed) },
     fInterior: { value: FACADE.interior }, fSkin: { value: s.glass ? 1 : 0 },
     fFrame: { value: c(palette.charcoal) }, fGlass: { value: c(palette.deepNavy) },
-    fWarm: { value: c(palette.warmWindow) }, fWarm2: { value: c(palette.sodium) }, fCool: { value: c(palette.glare) },
-    fWhite: { value: c(palette.windowWhite) }, fIce: { value: c(palette.windowIce) }, fRed: { value: c(palette.windowRed) },
-    fTones: { value: new THREE.Vector4(...s.tones) },
-    fTime: clock.time, fHomes: clock.homes, fOffices: clock.offices,
+    fBlood: { value: c(palette.winBlood) }, fCrimson: { value: c(palette.winCrimson) }, fScarlet: { value: c(palette.winScarlet) },
+    fHigh: { value: c(palette.winHighlight) }, fIce: { value: c(palette.winIce) }, fWhite: { value: c(palette.windowWhite) },
+    fAmber: { value: c(palette.winAmber) }, fCool: { value: c(palette.glare) },
+    fLooks: { value: new THREE.Vector4(...s.looks.slice(0, 4)) }, fLookL: { value: s.looks[4] },
+    fTime: clock.time, fHomes: clock.homes, fOffices: clock.offices, fSize: clock.size,
   };
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -98,9 +102,9 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
 const VARYINGS = `varying vec3 vFPos; varying vec3 vFN; varying float vFU; flat varying float vFId; flat varying float vFB;`;
 
 const FRAGMENT = /* glsl */ `
-uniform vec4 fGrid, fWin, fBars, fLight, fTones;
-uniform float fInterior, fTime, fHomes, fOffices, fSkin;
-uniform vec3 fFrame, fGlass, fWarm, fWarm2, fCool, fWhite, fIce, fRed;
+uniform vec4 fGrid, fWin, fBars, fLight, fLooks;
+uniform float fInterior, fTime, fHomes, fOffices, fSkin, fLookL, fSize;
+uniform vec3 fFrame, fGlass, fBlood, fCrimson, fScarlet, fHigh, fIce, fWhite, fAmber, fCool;
 vec3 fGlow = vec3(0.0), fBend = vec3(0.0);
 float fShine = 0.0, fRough = 0.1;
 
@@ -114,20 +118,50 @@ uvec3 fHash(uvec3 v) {
 }
 vec3 fRand(ivec3 k, uint salt) { return vec3(fHash(uvec3(k) + uvec3(salt, salt * 7u, salt * 13u)) >> 8u) / 16777216.0; }
 
-// The light color of a floor: each building has a main tone (fTones: amber, white, ice, red), and a band of two to
-// five floors sometimes runs on another (a plant floor, a lab, a workshop). The tone mapping and grade pull dim
-// light towards one pale cream, so amber leans to sodium and white and blue are lifted to stay apart from it.
-vec3 fTone(float floorIndex) {
-  ivec3 b = ivec3(int(vFB), int(fLight.w), 0);
-  vec3 hb = fRand(b, 5u);
-  float band = floor(floorIndex / (2.0 + floor(hb.y * 4.0)));
-  vec3 hf = fRand(b + ivec3(0, 0, int(band) + 1), 6u);
-  float r = (hf.x < 0.25 ? hf.y : hb.x) * dot(fTones, vec4(1.0));
-  if (r < fTones.x) return mix(fWarm, fWarm2, 0.55 + 0.4 * hf.z);
-  if (r < fTones.x + fTones.y) return fWhite;
-  if (r < fTones.x + fTones.y + fTones.z) return fIce * 1.5;
-  return fRed * 0.9;
+// Window light comes from the building's lighting identity (fLook), picked per building from its type's weights
+// (fLooks: crimson-dominant, ice-blue office, mixed residential, mostly dark industrial; fLookL: bright landmark) and
+// leaned by place: a smooth field over the city grid (the building's tile, from its id) favours red in some
+// neighbourhoods and blue in others, and each 8x8 block draws its own lean on top, so neighbouring blocks differ and
+// colour comes in clusters, not salt and pepper. The whole building shares one identity (its id, not the facade).
+float fLook() {
+  ivec3 b = ivec3(int(vFB), vFB > 0.5 ? 0 : int(fLight.w), 0);
+  float id = max(vFB - 1.0, 0.0);
+  vec2 t = vec2(mod(id, fSize), floor(id / fSize));
+  float d = sin(t.x * 0.33 + 1.3) * cos(t.y * 0.27 + 0.4) + 0.5 * sin((t.x + t.y) * 0.16 + 2.0);
+  float blk = fRand(ivec3(int(t.x / 8.0), int(t.y / 8.0), 91), 7u).x;
+  vec4 w = fLooks * vec4((1.0 + 1.2 * smoothstep(0.15, 0.9, d)) * (0.5 + blk), (1.0 + 1.2 * smoothstep(-0.15, -0.9, d)) * (1.5 - blk), 1.0, 1.0);
+  float r = fRand(b, 5u).x * (dot(w, vec4(1.0)) + fLookL);
+  if (r < w.x) return 0.0;
+  r -= w.x;
+  if (r < w.y) return 1.0;
+  r -= w.y;
+  if (r < w.z) return 2.0;
+  return r < w.w ? 3.0 : 4.0;
 }
+// AgX tone mapping (with its colour-space change) first mixes about a quarter of red into green and a sixth into
+// blue, which turns saturated red salmon pink; taking out part of that beforehand (the mix is clamped at zero) keeps
+// red light rich. The palette hexes are targets on screen, so each red gets the amount and brightness that lands it
+// there: dim crimson fully corrected and low, the main red a little brighter, bright scarlet and the rare warm
+// highlight only half corrected and bright enough that the brightest rooms pass the bloom threshold and glow.
+vec3 fDeep(vec3 c, float k) { return c - vec3(0.0, 0.13, 0.07) * c.r * k; }
+// The light of one room (r: its hash; offices pass a whole floor's) for an identity. band: the floor band's hash, so
+// a mixed building now and then has a whole section of red windows and a crimson one a band of dim floors.
+vec3 fPick(float look, float r, float band) {
+  if (look < 0.5 || (look > 1.5 && look < 2.5 && band < 0.18)) { // crimson, or a red section of a mixed building
+    float dim = look < 0.5 && band > 0.82 ? 0.55 : 1.0;
+    if (r < 0.34) return fDeep(fBlood * 0.55, 1.0) * dim;
+    if (r < 0.74) return fDeep(fCrimson * 0.8, 0.8) * dim;
+    if (r < 0.9) return fDeep(fScarlet * 1.15, 0.5) * dim;
+    if (r < 0.95) return fDeep(fHigh * 1.5, 0.4);
+    return r < 0.98 ? fWhite * 0.8 : fIce * 1.3; // the odd cold room keeps it from reading as one red slab
+  }
+  if (look < 1.5) return r < 0.5 ? fIce * 1.3 : r < 0.94 ? fWhite * 0.85 : fDeep(fCrimson * 0.8, 0.8);
+  if (look < 2.5) return r < 0.42 ? fAmber : r < 0.64 ? fWhite * 0.75 : r < 0.82 ? fDeep(fCrimson * 0.75, 0.8) : r < 0.92 ? fDeep(fBlood * 0.55, 1.0) : fIce * 1.2;
+  if (look < 3.5) return r < 0.5 ? fDeep(fBlood * 0.5, 1.0) : r < 0.8 ? fIce * 0.9 : fAmber * 0.7;
+  return r < 0.4 ? fDeep(fScarlet * 1.2, 0.5) : r < 0.7 ? fDeep(fCrimson, 0.8) : r < 0.88 ? fDeep(fHigh * 1.3, 0.4) : fIce * 1.5;
+}
+// How many rooms an identity lights and how bright: industry mostly dark, landmarks full and bright.
+vec2 fLookLight(float look) { return look > 3.5 ? vec2(1.4, 1.3) : look > 2.5 ? vec2(0.25, 0.8) : vec2(1.0); }
 
 // How lit a room is (0 dark .. ~1.4 bright). kind 0 homes, 1 offices, 2 shops. color: its floor's tone; the odd home screen.
 float fRoom(ivec3 k, float kind, float chance, inout vec3 color) {
@@ -184,12 +218,18 @@ void facade(inout vec3 albedo) {
   vec3 wall = glassy ? mix(fGlass * 1.4, fFrame, 0.35) : albedo; // curtain walls: dark spandrel glass between bands
   vec3 outAlbedo = wall, glow = vec3(0.0);
   float shine = glassy ? 0.6 : 0.0;
-  vec3 tone = fTone(floor(c.y));
+  // The building's identity, how many rooms it lights and how bright; the floor band's hash; one floor's light
+  // (offices light whole floors, and far away a floor is all that can be seen).
+  float look = fLook(), fi = floor(c.y);
+  vec2 lookLight = fLookLight(look);
+  ivec3 bb = ivec3(int(vFB), int(fLight.w), 0);
+  float bandH = fRand(bb + ivec3(0, 0, int(floor(fi / (2.0 + floor(fRand(bb, 5u).y * 4.0)))) + 1), 6u).x;
+  vec3 tone = fPick(look, fRand(bb + ivec3(0, int(fi), 0), 11u).x, bandH);
   if (far < 1.0) { // near enough to see single windows; far away only the average below is drawn
     vec2 cell = floor(c), m = (c - cell) * vec2(bay, fl);
     ivec3 k = ivec3(int(cell.x), int(cell.y), int(vFId) * 3 + int(fLight.w) * 7919);
-    vec3 light = tone;
-    float level = fRoom(k, kind, fLight.x, light) * fLight.y;
+    vec3 light = office ? tone : fPick(look, fRand(k, 12u).x, bandH);
+    float level = fRoom(k, kind, fLight.x * lookLight.x, light) * fLight.y * lookLight.y;
     // Facade divisions: a floor slab at the bottom of every storey, a column every few bays.
     bool column = fBars.y > 0.5 && mod(cell.x, fBars.y) < 0.5 && m.x < 0.28;
     bool slab = m.y < fBars.w;
@@ -212,6 +252,8 @@ void facade(inout vec3 albedo) {
       // Blinds: in some lit rooms a pale blind covers the top of the pane, lit from behind.
       if (level > 0.0 && h.x < 0.28 * fInterior && g.y > o1.y - (o1.y - o0.y) * (0.25 + 0.5 * h.y)) shade = 0.5;
       float fresnel = 0.04 + 0.96 * pow(1.0 - vn, 5.0);
+      // Rooms differ a little in brightness and hue (bulbs, blinds, screens), so a lit floor is not one flat colour.
+      light *= (0.8 + 0.4 * h.y) * vec3(1.0, 0.88 + 0.24 * h.z, 0.92 + 0.16 * h.x);
       glow = light * level * shade * (1.0 - 0.7 * fresnel);
       outAlbedo = fGlass * (0.7 + 0.5 * h.z);
       shine = 1.0;
@@ -221,7 +263,7 @@ void facade(inout vec3 albedo) {
   }
   // Far away: one cell per pixel or less, so draw its average instead of picking one room (no shimmer).
   float cover = fWin.x * fWin.y, avg = fLight.x * (office ? fOffices * 0.6 : shop ? 1.1 : fHomes * 0.5);
-  glow = mix(glow, tone * min(avg, 1.0) * fLight.y * 0.6 * cover, far);
+  glow = mix(glow, tone * min(avg * lookLight.x, 1.0) * fLight.y * lookLight.y * 0.6 * cover, far);
   outAlbedo = mix(outAlbedo, mix(wall, fGlass, cover), far);
   shine = mix(shine, cover * 0.6, far);
   // Street canyon: lower storeys see less sky, so walls darken towards the street (window light is unaffected).

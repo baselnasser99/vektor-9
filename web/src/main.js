@@ -36,7 +36,7 @@ const kit = await loadKit(renderer, ['telecom_tower', 'power_plant', 'market_hal
   'corp_pylon', 'corp_band', 'corp_crown', 'holo_roof', 'holo_wall', 'flagship_extension', 'flagship_lift', 'flagship_lift_top',
   'flagship_armor', 'flagship_crown', 'flagship_ad', 'flagship_conduit', 'flagship_vent',
   'prop_vending', 'prop_sign', 'prop_cabinet', 'prop_camera', 'prop_locker', 'prop_utility']);
-facadeClock(((snap.tick * 5) / 60) % 24, onFrame); // ticks are 5 minutes; room lights follow the hour
+facadeClock(((snap.tick * 5) / 60) % 24, onFrame, snap.size); // ticks are 5 minutes; room lights follow the hour
 const { city, details, warp, hub, rail, lanes, edge, lines } = buildCity(kit, snap);
 // Small building parts (balconies, rooftop plant, pipes) only near the camera: one group per sector.
 const DETAIL = 400; // metres from a sector's centre
