@@ -22,6 +22,9 @@ export const TERRAIN = ['rail', 'park', 'works']; // laid out by the sim, never 
 export const SHOPS = [['KUROTECH', 'KURO'], ['ZENKO TECH', 'ZENKO'], ['NEXA PARTS', 'NEXA'], ['TOKU WORKS', 'TOKU'],
   ['SEIRA CYBER', 'SEIRA'], ['VX9 REPAIR', 'VX9']];
 export const WORDS = ['ODEN 24', 'NOVA', 'VX9', 'KORU', 'SEIRA', 'ZENKO', 'NEXA', 'TOKU']; // invented sign text
+// Street food on the pedestrian walks (streets.js food): stall names and cafe names, all invented.
+export const FOOD = ['NEO RAMEN', 'ODEN 24', 'KORU DUMPLING', 'VAT BBQ', 'NOODLE 9', 'SOY GRILL', 'HOT BUNS', 'ALGAE TEA'];
+export const CAFES = ['NIGHT KISSA', 'STATIC TEA', 'KOFI 9', 'BLACK SALT', 'CAFE NULL', 'LOW ORBIT'];
 // Invented corporations on the billboards (city.js billboards): brand, slogan, the product its ad shows
 // (textures.js PRODUCTS), and the ad's two colours, off-white or muted amber with an occasional red or cyan.
 export const BRANDS = [['HALDEN', 'CYBER ARMS', 'arm', palette.cream, palette.signal],

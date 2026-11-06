@@ -17,7 +17,7 @@ import { palette } from './palette.js';
 const HX = 0.095, HY = 0.92, KY = 0.5, SX = 0.215, SY = 1.41, EY = 1.12, NY = 1.5, WY = 1.0;
 const B = { pelvis: 0, torso: 1, head: 2, uarmL: 3, farmL: 4, uarmR: 5, farmR: 6, thighL: 7, shinL: 8, thighR: 9, shinR: 10, skirtL: 11, skirtR: 12 };
 const S = { skin: 0, top: 1, bottom: 2, shoe: 3, accent: 4, hair: 5, gear: 6, glow: 7, screen: 8, strip: 9 };
-export const TEXELS = 6; // per person in the data texture (people.js writes them)
+export const TEXELS = 7; // per person in the data texture (people.js writes them)
 
 // Colours a person can wear, by name; people.js packs indices into this list.
 export const COLOURS = ['clothBlack', 'clothCharcoal', 'clothGraphite', 'clothSlate', 'clothNavy', 'clothOlive', 'clothBrown',
@@ -219,11 +219,14 @@ const POSE = /* glsl */ `
   int row = int(aPerson);
   vec4 p0 = texelFetch(uPeople, ivec2(0, row), 0), p1 = texelFetch(uPeople, ivec2(1, row), 0);
   vec4 p2 = texelFetch(uPeople, ivec2(2, row), 0), p3 = texelFetch(uPeople, ivec2(3, row), 0);
-  vec4 p4 = texelFetch(uPeople, ivec2(4, row), 0), p5 = texelFetch(uPeople, ivec2(5, row), 0);
+  vec4 p4 = texelFetch(uPeople, ivec2(4, row), 0), p5 = texelFetch(uPeople, ivec2(5, row), 0), p6 = texelFetch(uPeople, ivec2(6, row), 0);
   float ph = p1.x, walk = p1.y, dev = p2.y, talk = p2.z, sit = p2.w, seed = p4.x;
   // Seated postures, blended: forward (elbows on knees), back (leaning on the hands), the left leg crossed over
   // the right, and a bouncing right leg; none of them is upright with the hands on the thighs.
   float fwd = p5.x, back = p5.y, cross = p5.z, tap = p5.w;
+  // Eating (a hand to the mouth every few seconds, the other holding the bowl near) and working at a counter (both
+  // hands busy in front, never quite in step).
+  float eat = p6.x, work = p6.y;
   int b = int(aBone + 0.5), sl = int(aSlot + 0.5);
   float side = (b == 3 || b == 4 || b == 7 || b == 8 || b == 11) ? 1.0 : -1.0;
   float t = uTime + seed * 61.0, sn = sin(ph);
@@ -253,8 +256,12 @@ const POSE = /* glsl */ `
     eb = mix(eb, 0.7 + 0.3 * sin(t * 2.1), talk * g * 0.6);
     ua = mix(ua, 0.2, dev * 0.6); eb = mix(eb, 0.9, dev * 0.6);
   }
+  float bite = fract(t * 0.19 + seed), mouth = smoothstep(0.0, 0.07, bite) * (1.0 - smoothstep(0.2, 0.28, bite));
+  if (side < 0.0) { ua = mix(ua, mix(0.4, 0.55, mouth), eat); eb = mix(eb, mix(1.3, 2.3, mouth), eat); ab = mix(ab, -0.3, eat * mouth); }
+  else { ua = mix(ua, 0.32, eat); eb = mix(eb, 1.35, eat); }
+  ua = mix(ua, 0.34 + 0.08 * sin(t * 2.3 + side * 1.7), work); eb = mix(eb, 1.2 + 0.18 * sin(t * 3.1 + side * 2.4), work);
   float twist = 0.07 * walk * sn, lean = 0.05 * walk + p4.y + 0.012 * sin(t * 1.4) + 0.05 * dev + sit * (0.02 + 0.42 * fwd - 0.16 * back);
-  float hy = p2.x + talk * 0.12 * sin(t * 0.9), hp = p4.z + 0.4 * dev + talk * 0.05 * sin(t * 1.7) - sit * (0.32 * fwd - 0.12 * back) * (1.0 - dev);
+  float hy = p2.x + talk * 0.12 * sin(t * 0.9), hp = p4.z + 0.4 * dev + 0.18 * eat * (1.0 - mouth) + 0.28 * work + talk * 0.05 * sin(t * 1.7) - sit * (0.32 * fwd - 0.12 * back) * (1.0 - dev);
   vec3 P = position, N = normal;
   if (sl == 8) P = mix(vec3(-${SX}, ${EY - 0.32}, 0.03), P, dev); // the phone, folded into the hand when not in use
   if (b == 4 || b == 6) { vec3 e = vec3(side * ${SX}, ${EY}, 0.0); P = e + rx(P - e, -eb); N = rx(N, -eb); }
