@@ -1,6 +1,7 @@
 // Beyond the simulated grid: the city ends at a wasteland of packed dirt fading into sand and dunes, with boulders,
 // scrub, abandoned cars, scrapyards and half-buried containers. Streets carry on as dirt tracks; four highways ramp
-// up from the city edge onto causeways across the desert. Dead pylons and far mesas break up the dunes.
+// up from the city edge onto causeways across the desert. Dead pylons break up the dunes, and past them the
+// megacity goes on (farSprawl).
 // Decoration only: nothing here is simulated or stored (ADR-0002).
 import * as THREE from 'three';
 import { palette } from './palette.js';
@@ -9,6 +10,7 @@ import { pick } from './world.js';
 import { streetLamp } from './parts.js';
 import { mergeByMaterial } from './merge.js';
 import { radialTexture } from './textures.js';
+import { glslColor } from './atmosphere.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const REACH = 1900; // metres from the centre to the end of the dunes; fog hides everything past ~1.5 km
@@ -27,7 +29,6 @@ export function buildDesert(kit, edge, lines, onFrame) {
   highways(kit, root, edge);
   wastes(kit, root, edge, lines, height, rand);
   pylons(kit, root, edge, height);
-  mesas(kit, root, edge, height, rand);
   return mergeByMaterial(root);
 }
 
@@ -247,19 +248,50 @@ function pylons(kit, root, edge, height) {
   }
 }
 
-// Mesas far out, read as silhouettes through the haze, off the bands where the city's streets run out of town.
-function mesas(kit, root, edge, height, rand) {
-  // A random spot 1100–1600 m from the centre, past the sprawl and off the streets' lanes (outOfTown), for a mesa this wide.
-  const spot = (size) => {
-    for (;;) {
-      const [a, r] = [rand() * Math.PI * 2, 1100 + rand() * 500];
-      const [x, z] = [Math.cos(a) * r, Math.sin(a) * r];
-      if (Math.min(Math.abs(x), Math.abs(z)) > edge + size * 1.5 + 20) return [x, z];
-    }
-  };
-  for (let k = 0; k < 10; k++) {
-    const r = 90 + rand() * 160, [x, z] = spot(r), h = 60 + rand() * 120;
-    // Wide sloped flanks and a small top, so they read as eroded buttes rather than slabs.
-    part(root, cyl(r * 0.6, r * 1.5, h, 18), kit.concrete(palette.charcoal), x, height(x, z) + h / 2 - 5, z).rotation.y = rand();
+// The megacity going on past the wasteland: thousands of plain towers from among the far dunes out to the horizon
+// smog, sparse and low at first and thickening and rising outward, in districts that thicken and thin, a few tall
+// ones among many low, off the highway corridors.
+// One instanced box, unlit (lighting does not show through this much haze anyway); sparse warm and cold windows are
+// drawn in its shader from world position, so no texture and no per-tower work. It keeps a quarter of itself through
+// the fog (FOG_KEEP, stage.js), so towers stand as faint silhouettes against the glow and their windows glimmer,
+// instead of the ground there being an empty plane of haze.
+export function farSprawl(edge) {
+  const rand = rng(77001), boxes = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  // From just past the packed dirt round the city (so the wasteland still reads there) to the horizon smog bank at
+  // ~2940 m (atmosphere.js horizon). Square distance for the start, like the city and the dirt ring.
+  const height = duneHeight(edge), from = edge + SPRAWL + 80, to = 2900;
+  for (let tries = 0; boxes.length < 9000 && tries < 150000; tries++) {
+    const a = rand() * Math.PI * 2, r = from + (to - from) * Math.sqrt(rand());
+    const [x, z] = [Math.cos(a) * r, Math.sin(a) * r], sq = Math.max(Math.abs(x), Math.abs(z));
+    if (Math.min(Math.abs(x), Math.abs(z)) < ROAD + 50 || sq < from) continue;
+    // Sparse and low among the dunes, thickening and rising toward the horizon, in districts.
+    const out = Math.min(1, (r - from) / 1300), district = 0.5 + 0.5 * Math.sin(x * 0.0021 + 0.7) * Math.cos(z * 0.0017 + 2.1) + 0.25 * Math.sin((x - z) * 0.0053);
+    if (rand() > (0.1 + 0.9 * Math.max(0, district) ** 2) * (0.3 + 0.7 * out)) continue;
+    const [w, d] = [14 + rand() * 30, 14 + rand() * 30], h = 10 + rand() ** 3 * 200 * (0.3 + district) * (0.25 + 0.75 * out);
+    const y = height(x, z) - 6;
+    m.compose(new THREE.Vector3(x, y, z), q.setFromAxisAngle(up, rand() * Math.PI), new THREE.Vector3(w, h + 6, d));
+    boxes.push(m.clone());
   }
+  const geo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+  const mat = new THREE.MeshBasicMaterial({ color: palette.sprawl });
+  mat.defines = { FOG_KEEP: '0.25' };
+  mat.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;\nvarying float vSide;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vWp = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+        vSide = 1.0 - abs(normal.y);`);
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;\nvarying float vSide;')
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+        // Windows: a grid of cells on the walls (3.5 m floors), one in fourteen lit, warm or now and then cold.
+        vec2 cell = vec2(floor((vWp.x + vWp.z) / 3.2), floor(vWp.y / 3.5));
+        float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+        vec2 f = fract(vec2((vWp.x + vWp.z) / 3.2, vWp.y / 3.5));
+        float pane = step(0.25, f.x) * step(f.x, 0.75) * step(0.3, f.y) * step(f.y, 0.75) * vSide * step(4.0, vWp.y);
+        gl_FragColor.rgb += pane * step(0.92, h) * mix(${glslColor(palette.warmWindow)}, ${glslColor(palette.windowIce)}, step(0.985, h)) * 1.4;`);
+  };
+  const mesh = new THREE.InstancedMesh(geo, mat, boxes.length);
+  boxes.forEach((b, i) => mesh.setMatrixAt(i, b));
+  mesh.computeBoundingSphere();
+  return mesh;
 }
+

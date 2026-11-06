@@ -30,15 +30,32 @@ export const palette = {
   nightZenith: 0x0c1330,
   nightSky: 0x1b2a57,
   nightHorizon: 0x3d528f,
-  nightFog: 0x1d2645,
+  nightFog: 0x1c2633, // cold blue haze between the towers; also the far skylines' silhouettes against the glow
   moon: 0x9fb4ff,
-  cloudGlow: 0x7a5a7e,
-  // Polluted twilight sky (atmosphere.js): smog low on the horizon, blue-grey haze, a desaturated dusk above.
-  smogOrange: 0x8a5e3f,
-  smogHaze: 0x56607a,
-  duskBlue: 0x2c3360,
-  duskZenith: 0x121633,
-  smogCloud: 0x5b5866,
+  cloudGlow: 0x4a7680, // teal fill on the shadow side, cold against the red sky
+  // Crimson sunset (atmosphere.js): blood-red smog on the horizon with a scarlet glow over most of it, crimson to
+  // deep burgundy, dark violet and a near-black zenith, massive violet-charcoal storm clouds with blood-red edges and
+  // crimson glowing inside them, a cold teal ground mist, red-violet haze far off, and faint glows over the densest
+  // districts.
+  scarletGlow: 0x8a1c1c,
+  burntSmog: 0x7a2622, // blood-red smog (was burnt orange; less sunset)
+  crimsonLow: 0x5a1a1e,
+  smogHaze: 0x3a2e40,
+  crimsonDeep: 0x360e16, // deep burgundy
+  duskViolet: 0x221222, // dark violet between the burgundy and the zenith
+  bloodZenith: 0x12060a, // near-black burgundy
+  smogCloud: 0x3e2a30,
+  stormCloud: 0x1e1622,
+  stormLit: 0x7a1c18, // storm cloud edges lit blood red from the horizon
+  cloudEmber: 0x6a1420, // crimson glowing inside the storm clouds
+  bloodCloud: 0x8e2018, // low cloud streaks across the horizon
+  farHaze: 0x3a1c2c, // red-violet haze that far-off things fade into
+  pollution: 0x6e2626, // light pollution in the low sky
+  sprawl: 0x161a24, // far sprawl towers, dark against the haze
+  mistTeal: 0x26404a, // street-level mist: cold near the ground, so the red stays in the distance
+  glowRust: 0x7a3a2a,
+  glowAmber: 0x7a5a30,
+  glowOffWhite: 0x8c9096,
   cityGlow: 0x7a6250,
   nightSand: 0x7d6a78,
   charcoal: 0x1e2333,

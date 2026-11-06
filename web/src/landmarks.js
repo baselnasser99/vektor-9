@@ -5,6 +5,7 @@ import { palette } from './palette.js';
 import { box, cyl, part, ring } from './geometry.js';
 import { pipe } from './parts.js';
 import { F } from './world.js';
+import { glslColor } from './atmosphere.js';
 
 // The city's telecom tower, in the middle of the plaza where the boulevards meet (streets.js). Modelled in Blender by
 // tools/blender/telecom_tower.py (its proportions live there) and loaded as a glTF: an old concrete frame (tapered
@@ -14,8 +15,15 @@ import { F } from './world.js';
 // gets a palette material here; its "detail" node (rails, slats, small fittings) is drawn only near the camera
 // (userData.lod 'tower', city.js). Warm light first; cyan on one conduit and the info panels; steady red lamps.
 export function telecomTower(kit, root, x, y, z) {
+  // Its concrete catches a cold ice-blue rim where it turns away from the eye, so the landmark's silhouette reads
+  // cool against the red sky; done in the shader, no light or geometry.
+  const concrete = kit.concrete(palette.weatheredConcrete).clone();
+  concrete.onBeforeCompile = (s) => {
+    s.fragmentShader = s.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      totalEmissiveRadiance += ${glslColor(palette.windowIce)} * pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0) * 0.35;`);
+  };
   const roles = {
-    concrete: kit.concrete(palette.weatheredConcrete), steel: kit.steel(palette.gunmetal, 0.5),
+    concrete, steel: kit.steel(palette.gunmetal, 0.5),
     mech: kit.steel(palette.slate, 0.6), panel: kit.steel(palette.charcoal, 0.4), dark: kit.steel(palette.deepNavy, 0.6),
     glass: kit.windows(1, true, false, 'panorama'), orange: kit.steel(palette.amber, 0.6),
     interior: kit.glow(palette.warmWindow, 1.2), amber: kit.glow(palette.sodium, 2.5), white: kit.glow(palette.glare, 1.5),
