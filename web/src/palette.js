@@ -107,6 +107,34 @@ export const palette = {
   windowRed: 0xb0503a,
   // Red accent light on technology: warning lamps, security indicators, the odd narrow corporate sign. Deep, never neon.
   crimson: 0x8e1b10,
+  // Pedestrians (people.js, figures.js): muted, dark city clothing with rare red or cyan accents, workwear and
+  // reflective strips, skin tones and hair. Lit accents on people reuse the light colours above.
+  clothBlack: 0x131418,
+  clothCharcoal: 0x202228,
+  clothGraphite: 0x2d3037,
+  clothSlate: 0x3e4552,
+  clothNavy: 0x1d2635,
+  clothOlive: 0x393c31,
+  clothBrown: 0x3b2e27,
+  clothSand: 0x6d6459,
+  clothBone: 0x9a958a,
+  clothOxblood: 0x50181b,
+  clothTeal: 0x1e3d44,
+  clothRust: 0x5b3423,
+  workOrange: 0x9a5426,
+  workYellow: 0x8f8338,
+  reflective: 0xc9cdd1,
+  gearSteel: 0x596068,
+  skinLight: 0xe3b896,
+  skinFair: 0xd4a27e,
+  skinTan: 0xb07c58,
+  skinBrown: 0x87573c,
+  skinDeep: 0x5c3b2a,
+  hairBlack: 0x141110,
+  hairBrown: 0x3b2719,
+  hairAsh: 0x7d7872,
+  hairBleach: 0xbfae8e,
+  hairRed: 0x5a1b15,
 };
 
 // A palette color as a CSS hex string, for canvases and the page.
