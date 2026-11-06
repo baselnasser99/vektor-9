@@ -21,7 +21,7 @@ export function buildStreets(kit, layout, root) {
   sectors(kit, root, layout, rand, hub);
   // Every main street, once per axis: centre c, width w, kind, and the axis it runs along.
   const streets = lines.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, kind: l.kind[axis], axis })));
-  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [] }; // road paint glows faintly
+  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [] }; // road paint glows faintly
   perimeter(ctx);
   for (const s of streets) {
     if (s.kind === 'walk') walk(ctx, s);
@@ -29,7 +29,7 @@ export function buildStreets(kit, layout, root) {
     lamps(ctx, s);
   }
   plaza(ctx, hub.c, hub.w);
-  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt,
+  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches,
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2 } }; // life.js traffic: the roundabout
 }
 
@@ -91,7 +91,10 @@ function walk(ctx, s) {
       const side = rand() < 0.5 ? -1 : 1;
       if (rand() < 0.6) tree(kit, ctx.root, ...spot(s, v, side * 2), 5 + rand() * 2);
       else lay(ctx, s, 2.4, 0.6, 1.2, planter, v, side * 2, 0.48, 1);
-      if (rand() < 0.5) lay(ctx, s, 1.8, 0.45, 0.5, bench, v + 3, -side * 2.2, 0.4, 1);
+      if (rand() < 0.5) {
+        lay(ctx, s, 1.8, 0.45, 0.5, bench, v + 3, -side * 2.2, 0.4, 1);
+        ctx.benches.push([...spot(s, v + 3, -side * 2.2), s.axis, -side]); // people.js seats people here, facing away from the trees
+      }
     }
   }
 }

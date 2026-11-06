@@ -168,7 +168,8 @@ export function buildCity(kit, snap) {
     city.add(first);
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
-  return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi };
+  return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi,
+    benches: streets.benches, lamps: streets.lamps };
 }
 
 // What is around each tile that never changes, for the building family rules (families.js familyOf): industry
@@ -247,7 +248,7 @@ function storefrontTiles(snap) {
 // The busiest crossing: where the boulevard meets the next full street toward the opening view, or the one the
 // other way if that has fewer than three corner buildings. { corners, houses }: its four corner tiles and those of
 // them that are buildings (tile indices, row order). Its storefronts, billboards and street props are here.
-function crossing({ size: n, tiles }) {
+export function crossing({ size: n, tiles }) {
   const mid = n / BLOCK / 2;
   for (const k of [mid + 2, mid - 2]) {
     const corners = [mid * BLOCK - 1, mid * BLOCK].flatMap((col) => [k * BLOCK - 1, k * BLOCK].map((row) => row * n + col));

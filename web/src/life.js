@@ -35,7 +35,9 @@ function stopLine(c, lane, t, gap) {
 function lights(lane, hub) {
   const ring = Math.abs(lane.at - hub.c) < hub.w, side = Math.abs(lane.at - hub.c), rho = hub.r + side;
   return (lane.stops ?? []).map(([centre, half]) => {
-    const round = ring && Math.abs(centre - hub.c) < 1, reach = round ? hub.r + hub.w - 4 : half; // ring lanes wait outside the outermost ring
+    // Ring lanes wait outside the outermost ring; the rest just short of the zebra (streets.js road), which lies
+    // 0.3 to 3.3 m past the crossing street's sidewalks, so people (people.js) cross in front of the cars.
+    const round = ring && Math.abs(centre - hub.c) < 1, reach = round ? hub.r + hub.w - 4 : half + 3.6;
     const [x, z] = lane.axis === 'x' ? [centre, lane.c] : [lane.c, centre], cycle = round ? 2 * CYCLE : CYCLE;
     const inner = round ? Math.sqrt(rho * rho - side * side) : 0;
     const clear = (round ? rho * (Math.PI - 2 * Math.asin(side / rho)) + 2 * (reach - inner) : 2 * reach) + CAR;
@@ -121,7 +123,17 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   for (const mesh of [body, head, tail]) mesh.frustumCulled = false;
   const g = new THREE.Group();
   g.add(body, head, tail);
+  g.userData.clock = () => t; // the lights' time, for the pedestrian signals (walkLight)
   return g;
+}
+
+// The pedestrian signal where streets meet at (x, z), for people crossing the street that runs along `axis`:
+// seconds of walk left (they walk while that street's cars have red), or 0. The same cycle and offset as the
+// cars' lights (lights above); the first 2 s of each walk phase are held back so the last cars are clear.
+export function walkLight(x, z, axis, t) {
+  const phase = (t + CYCLE * fract(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453)) % CYCLE, half = CYCLE / 2;
+  const walk = axis === 'x' ? phase >= half : phase < half, into = axis === 'x' ? phase - half : phase;
+  return walk && into > 2 ? half - into : 0;
 }
 
 // Two trains on the railway viaduct (terrain.js railway), one per track, each shuttling between the terminus and
