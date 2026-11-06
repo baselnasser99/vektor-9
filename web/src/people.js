@@ -303,7 +303,8 @@ function places(k, snap, layout, net, info, benches, lamps) {
       if (ax !== axis || Math.abs(off) > 3 || v < lo || v > hi || rand() > 0.6) continue;
       const heading = ax === 'z' ? (sign > 0 ? Math.PI / 2 : -Math.PI / 2) : sign > 0 ? 0 : Math.PI;
       const seats = rand() < 0.35 ? [-0.45, 0.45] : [(rand() - 0.5) * 0.9];
-      add(seats.map((s) => ({ x: ax === 'z' ? x : x + s, z: ax === 'z' ? z + s : z, heading, sit: true })), ['device', 'stand', 'look']);
+      add(seats.map((s) => ({ x: ax === 'z' ? x : x + s, z: ax === 'z' ? z + s : z, heading, sit: true })),
+        seats.length > 1 ? ['talk', 'talk', 'device', 'look', 'rest'] : ['device', 'device', 'look', 'rest', 'doze']);
     }
   }
   if (info.plaza) { // the tower's plaza: a group or two, and people looking up at the tower
@@ -356,20 +357,24 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
       if (!free.length) return null;
       const look = dress(rand, weights);
       const p = { id: free.pop(), look, home: s, rand, ux: 0, uz: 0, y: 0.18, heading: 0, phase: rand() * 6.28, walk: 0, v: 0,
-        dev: 0, talk: 0, sit: 0, yaw: 0, pitch: 0, lean: (rand() - 0.5) * 0.04, lat: 0, dirx: 0, dirz: 1,
+        dev: 0, talk: 0, sit: 0, yaw: 0, pitch: 0, fwd: 0, recline: 0, cross: 0, tap: 0, pose: [0, 0, 0, 0], lean: (rand() - 0.5) * 0.04, lat: 0, dirx: 0, dirz: 1,
         fade: still ? 1 : 0, fadeTo: 1, mode: 'idle', act: 'stand', timer: 0, actTimer: 0, yawT: 0, pitchT: 0, talkT: 0,
         pts: [], k: 0, tail: -1, goal: -1, lane: 1.9 + rand() * 1.1, jit: (rand() - 0.5) * 2.4, back: rand() * 1.8,
         speed: look.speed, place: slot.spot, dist: 0, acc: 0 };
       if (m) {
         Object.assign(p, { ux: m.x, uz: m.z, heading: m.heading, mode: m.sit ? 'sit' : 'idle', sit: m.sit ? 1 : 0, static: true });
-        setAct(p, pick(rand, slot.spot.acts));
-        p.actTimer = rand() * 10; // out of step with the rest of the group
       } else startWalk(p, true);
       p.y = ground(p.ux, p.uz);
       live.push(p);
       return p;
-    });
-    return made.filter(Boolean);
+    }).filter(Boolean);
+    if (made.length === 2 && made[0].mode === 'sit') [made[0].partner, made[1].partner] = [made[1], made[0]]; // a bench shared
+    for (const p of made) if (p.static) {
+      setAct(p, pick(p.rand, slot.spot.acts));
+      p.actTimer = p.rand() * 10; // out of step with the rest of the group
+      [p.fwd, p.recline, p.cross, p.tap] = p.pose; // already settled when they come into view
+    }
+    return made;
   };
   const retire = (p) => {
     p.fadeTo = 0;
@@ -439,6 +444,23 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
     p.yawT = act === 'look' ? (p.rand() - 0.5) * 1.8 : (p.rand() - 0.5) * 0.3;
     p.pitchT = act === 'up' ? -0.45 - p.rand() * 0.2 : 0.02;
     p.talkT = act === 'talk' ? (p.rand() < 0.5 ? 1 : 0.25) : 0;
+    if (p.mode === 'sit') sitAs(p, act);
+  }
+  // How someone sits for what they are doing: [forward, leaning back, legs crossed, tapping] (figures.js POSE). A phone is
+  // read upright or hunched over the knees; talking turns the head to the one beside them; resting leans back on
+  // the hands; dozing slumps with the head down. Legs cross and a foot taps now and then, whatever they are doing.
+  function sitAs(p, act) {
+    const r = p.rand, pose = p.pose;
+    pose[0] = act === 'device' ? (r() < 0.55 ? 0.7 + r() * 0.3 : 0) : act === 'doze' ? 0.35 : act === 'look' ? r() * 0.4 : 0;
+    pose[1] = act === 'rest' ? 0.8 + r() * 0.2 : act === 'doze' && r() < 0.5 ? 0.6 : 0;
+    pose[2] = pose[0] < 0.5 && r() < 0.4 ? 1 : 0;
+    pose[3] = (act === 'device' || act === 'look') && r() < 0.3 ? 1 : 0;
+    if (act === 'talk' && p.partner) { // face the other, as far as a head turns
+      const q = p.partner, a = Math.atan2(q.ux - p.ux, q.uz - p.uz) - p.heading;
+      p.yawT = Math.max(-1.1, Math.min(1.1, Math.atan2(Math.sin(a), Math.cos(a)))) * (0.7 + r() * 0.3);
+    } else if (act === 'talk') setAct(p, 'look'); // nobody to talk to
+    if (act === 'doze') p.pitchT = 0.5 + r() * 0.15;
+    if (act === 'rest') p.pitchT = -0.12 - r() * 0.15;
   }
   const idleActs = ['device', 'look', 'up', 'stand', 'device'];
   function standAbout(p, dt) {
@@ -446,7 +468,7 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
     if (p.actTimer <= 0) {
       if (p.act === 'talk') { // speakers and listeners swap now and then
         p.talkT = p.rand() < 0.45 ? 1 : 0.25;
-        p.yawT = (p.rand() - 0.5) * 0.5;
+        if (!p.partner) p.yawT = (p.rand() - 0.5) * 0.5;
         p.actTimer = 2 + p.rand() * 5;
       } else if (p.act === 'look' && p.rand() < 0.6) {
         p.yawT = (p.rand() - 0.5) * (p.look.patrol ? 2.2 : 1.8);
@@ -473,6 +495,11 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
     p.dev += ((p.act === 'device' ? 1 : 0) - p.dev) * k;
     p.talk += ((p.act === 'talk' ? p.talkT : 0) - p.talk) * k;
     p.sit += ((p.mode === 'sit' ? 1 : 0) - p.sit) * k * 2;
+    const slow = k * 0.5; // settling into another way of sitting takes a couple of seconds
+    p.fwd += (p.pose[0] - p.fwd) * slow;
+    p.recline += (p.pose[1] - p.recline) * slow;
+    p.cross += (p.pose[2] - p.cross) * slow;
+    p.tap += (p.pose[3] - p.tap) * k;
     p.yaw += ((moving ? 0 : p.yawT) - p.yaw) * k;
     p.pitch += ((moving ? 0.02 : p.pitchT) - p.pitch) * k;
     if (!moving) p.v = Math.max(0, p.v - 3 * dt);
@@ -645,12 +672,13 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
       const x = rx + shift[0], z = rz + shift[1], L = p.look;
       p.dist = Math.hypot(x - c.x, p.y + 0.9 - c.y, z - c.z);
       if (p.dist > CROWD.distance || p.fade <= 0) continue;
-      let o = p.id * TEXELS * 4; // the shader's numbers (figures.js POSE), five texels a person
+      let o = p.id * TEXELS * 4; // the shader's numbers (figures.js POSE), six texels a person
       arr[o++] = x; arr[o++] = p.y; arr[o++] = z; arr[o++] = p.heading;
       arr[o++] = p.phase; arr[o++] = p.walk; arr[o++] = L.height; arr[o++] = L.build;
       arr[o++] = p.yaw; arr[o++] = p.dev; arr[o++] = p.talk; arr[o++] = p.sit;
       arr[o++] = L.A; arr[o++] = L.B; arr[o++] = L.C; arr[o++] = p.fade;
-      arr[o++] = L.seed; arr[o++] = p.lean; arr[o++] = p.pitch; arr[o] = L.glow;
+      arr[o++] = L.seed; arr[o++] = p.lean; arr[o++] = p.pitch; arr[o++] = L.glow;
+      arr[o++] = p.fwd; arr[o++] = p.recline; arr[o++] = p.cross; arr[o] = p.tap;
       sphere.center.set(x, p.y + 0.9, z);
       if (!frustum.intersectsSphere(sphere)) continue;
       const lod = p.dist < near ? 0 : p.dist < mid ? 1 : 2;
