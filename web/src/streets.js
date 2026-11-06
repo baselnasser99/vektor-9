@@ -8,7 +8,7 @@ import { box, cyl, part, REPEAT, rng, slab } from './geometry.js';
 import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
-import { ALLEY, BLOCK, HALF, HUB, SIDEWALK, STREETS, TILE } from './world.js';
+import { ALLEY, BLOCK, CAFES, FOOD, HALF, HUB, SIDEWALK, STREETS, TILE, WARM, pick } from './world.js';
 
 const LAMP_EVERY = 55;
 const MEDIAN = 6; // boulevard median width
@@ -21,7 +21,7 @@ export function buildStreets(kit, layout, root) {
   sectors(kit, root, layout, rand, hub);
   // Every main street, once per axis: centre c, width w, kind, and the axis it runs along.
   const streets = lines.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, kind: l.kind[axis], axis })));
-  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [] }; // road paint glows faintly
+  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [], food: [] }; // road paint glows faintly
   perimeter(ctx);
   for (const s of streets) {
     if (s.kind === 'walk') walk(ctx, s);
@@ -29,7 +29,7 @@ export function buildStreets(kit, layout, root) {
     lamps(ctx, s);
   }
   plaza(ctx, hub.c, hub.w);
-  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches,
+  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches, food: ctx.food,
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2 } }; // life.js traffic: the roundabout
 }
 
@@ -81,22 +81,94 @@ function road(ctx, s) {
   }
 }
 
-// Pedestrian street: the roadway paved over between crossings, with trees, planters and benches down the middle.
+// Pedestrian street: the roadway paved over between crossings, with trees, planters and benches down the middle,
+// and on most long stretches a food street (food below) in place of them for a while.
 function walk(ctx, s) {
   const { kit, rand } = ctx, roadway = s.w - 2 * SIDEWALK;
   const paving = kit.concrete(palette.roseGrey), planter = kit.concrete(palette.gunmetal), bench = kit.steel(palette.charcoal, 0.8);
   for (const [a, b] of stretches(ctx, 0)) {
     lay(ctx, s, b - a, 0.18, roadway, paving, (a + b) / 2, 0, 0.09);
+    const [f0, f1] = food(ctx, s, a, b);
     for (let v = a + 6; v < b - 4; v += 12) {
-      const side = rand() < 0.5 ? -1 : 1;
-      if (rand() < 0.6) tree(kit, ctx.root, ...spot(s, v, side * 2), 5 + rand() * 2);
+      // Every choice is drawn even where the food street is, so the rest of the planting stays as it was.
+      const side = rand() < 0.5 ? -1 : 1, isTree = rand() < 0.6, h = isTree ? 5 + rand() * 2 : 0, seat = rand() < 0.5;
+      if (v + 4 > f0 && v - 2 < f1) continue;
+      if (isTree) tree(kit, ctx.root, ...spot(s, v, side * 2), h);
       else lay(ctx, s, 2.4, 0.6, 1.2, planter, v, side * 2, 0.48, 1);
-      if (rand() < 0.5) {
+      if (seat) {
         lay(ctx, s, 1.8, 0.45, 0.5, bench, v + 3, -side * 2.2, 0.4, 1);
         ctx.benches.push([...spot(s, v + 3, -side * 2.2), s.axis, -side]); // people.js seats people here, facing away from the trees
       }
     }
   }
+}
+
+// A food street on a walk's stretch from a to b, on about three in four of the long ones: two or three vendor stalls down one
+// side, facing the middle, and a cafe terrace of small tables and stools under a lit canopy down the other.
+// Returns the part of the stretch it takes, [from, to] ([Infinity, -Infinity] if none). ctx.food gets every stall and
+// stool (people.js puts vendors, customers and diners there).
+function food(ctx, s, a, b) {
+  const r = rng(Math.round(s.c * 7 + a * 13 + 5) >>> 0);
+  if (b - a < 70 || r() < 0.25) return [Infinity, -Infinity];
+  const len = 34, from = a + 10 + r() * (b - a - len - 20), side = r() < 0.5 ? -1 : 1;
+  const { kit, root } = ctx, steel = kit.steel(palette.gunmetal, 0.6), dark = kit.steel(palette.charcoal, 0.7);
+  const cream = kit.steel(palette.cream, 0.5);
+  const face = (toward) => (s.axis === 'z' ? (toward > 0 ? Math.PI / 2 : -Math.PI / 2) : toward > 0 ? 0 : Math.PI);
+  const group = (v, off, toward) => { // a frame on the paving whose +z faces across the street, toward side `toward`
+    const g = new THREE.Group(), [x, z] = spot(s, v, off);
+    g.position.set(x, 0.18, z);
+    g.rotation.y = face(toward);
+    root.add(g);
+    g.updateMatrixWorld(true);
+    return g;
+  };
+  // The stalls: a steel counter with a lit edge, a kitchen unit behind with a menu screen, a canopy with a lit
+  // fringe and the stall's sign, bowls on the counter and two stools.
+  const stalls = 2 + (r() < 0.5 ? 1 : 0);
+  for (let k = 0; k < stalls; k++) {
+    const v = from + 4 + (k * (len - 8)) / (stalls - 1), g = group(v, side * 2.8, -side), light = kit.glow(pick(r, WARM), 1.6);
+    part(g, box(2.4, 0.95, 0.8, 1), steel, 0, 0.475, 0);
+    part(g, box(2.55, 0.05, 0.95), dark, 0, 0.97, 0.05);
+    part(g, box(2.4, 0.05, 0.02), light, 0, 0.8, 0.42);
+    part(g, box(2.4, 2.3, 0.45, 1), dark, 0, 1.15, -0.95); // the vendor stands between
+    const menu = [pick(r, ['NOODLES', 'DUMPLINGS', 'SKEWERS', 'HOT SOUP']), pick(r, ['6 CR', '9 CR', '4 CR'])];
+    part(g, new THREE.PlaneGeometry(1.4, 0.5), kit.message(menu, 280, 100), 0, 1.75, -0.72);
+    for (const x of [-1.2, 1.2]) part(g, box(0.06, 1.6, 0.06), dark, x, 1.8, 0.45);
+    part(g, box(2.9, 0.08, 2.1, 1), dark, 0, 2.62, -0.2);
+    part(g, box(2.9, 0.06, 0.04), light, 0, 2.58, 0.85);
+    part(g, new THREE.PlaneGeometry(2.1, 0.5), kit.sign(pick(r, FOOD), pick(r, WARM)), 0, 2.95, 0.86);
+    for (const x of [-0.7, 0.1, 0.6]) part(g, cyl(0.09, 0.06, 0.07, 10), cream, x, 1.03, 0.15);
+    for (const x of [-0.55, 0.55]) {
+      part(g, cyl(0.17, 0.17, 0.05, 12), dark, x, 0.42, 0.95);
+      part(g, cyl(0.03, 0.04, 0.4, 6), steel, x, 0.2, 0.95);
+    }
+    const [x, z] = spot(s, v, side * 2.8);
+    ctx.food.push({ kind: 'stall', x, z, heading: face(-side), along: s.axis, line: s.c });
+  }
+  // The terrace: tables in a row under a long canopy on four posts, its edges lit, the cafe's name over it.
+  const cafe = group(from + len / 2, -side * 2.4, side), tables = 3 + (r() < 0.5 ? 1 : 0);
+  const light = kit.glow(pick(r, [palette.neonCyan, palette.sodium, palette.neonPink]), 1.4);
+  part(cafe, box(len - 4, 0.08, 3, 1), dark, 0, 2.7, 0);
+  for (const zz of [-1.45, 1.45]) part(cafe, box(len - 4, 0.05, 0.05), light, 0, 2.64, zz);
+  for (const xx of [-(len - 5) / 2, (len - 5) / 2]) for (const zz of [-1.3, 1.3]) part(cafe, box(0.08, 2.6, 0.08), dark, xx, 1.3, zz);
+  part(cafe, new THREE.PlaneGeometry(2.6, 0.55), kit.sign(pick(r, CAFES), pick(r, [palette.neonCyan, palette.neonPink, palette.sodium])), 0, 3.05, 1.52);
+  for (let k = 0; k < tables; k++) {
+    const v = from + 5 + (k * (len - 10)) / (tables - 1), g = group(v, -side * 2.4, side);
+    part(g, cyl(0.42, 0.42, 0.04, 16), dark, 0, 0.76, 0);
+    part(g, cyl(0.05, 0.05, 0.74, 6), steel, 0, 0.38, 0);
+    part(g, cyl(0.24, 0.26, 0.03, 12), steel, 0, 0.015, 0);
+    part(g, cyl(0.05, 0.05, 0.09, 8), light, 0, 0.83, 0); // a small lamp on each table
+    const seats = 2 + Math.floor(r() * 3), turn = r() * Math.PI, [tx, tz] = spot(s, v, -side * 2.4);
+    for (let m = 0; m < seats; m++) {
+      const ang = turn + (m * Math.PI * 2) / seats, sx = Math.sin(ang) * 0.75, sz = Math.cos(ang) * 0.75;
+      part(g, cyl(0.17, 0.17, 0.05, 12), dark, sx, 0.42, sz);
+      part(g, cyl(0.03, 0.04, 0.4, 6), steel, sx, 0.2, sz);
+      part(g, cyl(0.07, 0.05, 0.05, 10), cream, sx * 0.55, 0.8, sz * 0.55); // a bowl in front of each seat
+      const w = new THREE.Vector3(sx, 0, sz).applyMatrix4(g.matrixWorld);
+      ctx.food.push({ kind: 'stool', x: w.x, z: w.z, heading: Math.atan2(tx - w.x, tz - w.z), table: [tx, tz], along: s.axis, line: s.c });
+    }
+  }
+  return [from, from + len];
 }
 
 // Where the boulevards meet: the tower's plaza. A big roundabout circles the tower's island (life.js traffic, hub);

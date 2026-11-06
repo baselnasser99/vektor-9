@@ -169,7 +169,7 @@ export function buildCity(kit, snap) {
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
   return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi,
-    benches: streets.benches, lamps: streets.lamps };
+    benches: streets.benches, lamps: streets.lamps, food: streets.food };
 }
 
 // What is around each tile that never changes, for the building family rules (families.js familyOf): industry
