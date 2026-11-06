@@ -26,12 +26,12 @@ export function familyOf(t, near, glassy) {
 
 // Builds the tile's building. fw: footprint width; lit: false in a blackout.
 // slot: col + 2 x row, which steps neighbours through their family's roof types (roofs.js).
-export function building(kit, t, rand, fw, family, slot) {
+export function building(kit, t, rand, fw, family, slot, signature = false) {
   const g = new THREE.Group(), detail = new THREE.Group();
   detail.name = 'detail';
   g.add(detail);
-  const c = { kit, g, d: detail, rand, lit: t.on, fw, f: t.f, H: t.f * F, seed: Math.floor(rand() * 6), warm: pick(rand, WARM),
-    m: details(kit), roof: roofType(family, t, slot) };
+  const c = { kit, g, d: detail, rand, lit: t.on, fw, f: t.f, H: t.f * F, s: t.s, seed: Math.floor(rand() * 6), warm: pick(rand, WARM),
+    m: details(kit), roof: signature ? 'coreSignature' : roofType(family, t, slot) };
   ({ apartment, office, old, luxury, industrial, mega })[family](c);
   return g;
 }
@@ -109,7 +109,7 @@ function apartment(c) {
     const tw = fw * 0.42;
     for (const s of [-1, 1]) {
       roofY = vol(c, tw, fw * 0.7, y, top, wall(seed), s * fw * 0.26, 0);
-      roof(c, c.roof, tw, fw * 0.7, roofY, wall(seed), false, s * fw * 0.26);
+      roof(c, c.roof, tw, fw * 0.7, roofY, wall(seed), false, s * fw * 0.26, 0, roofY - y);
     }
     vol(c, fw * 0.3, fw * 0.4, y, top - F, wall((seed + 1) % 6));
     balconies(c, tw, fw * 0.7, y, top, 1, 1, -fw * 0.26);
@@ -122,7 +122,7 @@ function apartment(c) {
     balconies(c, fw * 0.86, d, y, top, 2, -1, 0, z);
     if (shape === 0) balconies(c, fw * 0.86, d, y, top, 2, 1);
     if (f >= 8 && seed % 2) bay(c, 2.4, y, top, wall(seed), -fw * 0.2, z + d / 2);
-    free = roof(c, c.roof, fw * 0.86, d, roofY, wall(seed), false, 0, z);
+    free = roof(c, c.roof, fw * 0.86, d, roofY, wall(seed), false, 0, z, roofY - y);
   }
   dress({ kit, g: c.g, rand: c.rand, lit, warm: c.warm, H, y, w: fw * 0.86, tall: f >= 20 }, f, roofY, free);
 }
@@ -144,13 +144,14 @@ function office(c) {
     const h = Math.min(12, (split - lobby) * 0.35);
     part(c.g, box(0.3, h, 1.1, 1), kit.sign(['NOVA', 'VX9', 'SEIRA'][f % 3], palette.crimson, true), w / 2 + 0.5, split - F - h / 2, w / 2 - 1);
   }
-  let top = w;
+  let top = w, from = lobby;
   if (split < H) {
     top = w * 0.78;
+    from = roofY;
     roofY = body(c, top, top, roofY, H, glass);
     columns(top, split + 0.6, H);
   }
-  roof(c, c.roof, top, top, roofY, glass, true);
+  roof(c, c.roof, top, top, roofY, glass, true, 0, 0, roofY - from);
 }
 
 // 3. Older buildings: one simple block of brick or weathered concrete with small deep windows, a heavy cornice,
@@ -173,15 +174,16 @@ function old(c) {
 function luxury(c) {
   const { kit, fw, H, seed, lit } = c, glass = kit.windows(seed, lit, false, 'luxury'), lobby = 2 * F;
   vol(c, fw * 0.95, fw * 0.95, 0, lobby, kit.windows(3, lit, true, 'shop'), 0, 0, 0.6, palette.gunmetal);
-  let y = lobby, w = fw * 0.88;
+  let y = lobby, w = fw * 0.88, from = lobby;
   const tiers = seed % 2 ? [[0.55, 0.88], [0.27, 0.72], [0.18, 0.56]] : [[0.65, 0.86], [0.35, 0.64]];
   tiers.forEach(([frac, scale], k) => {
     const nw = fw * scale, y1 = k === tiers.length - 1 ? H : Math.min(H - F, y + Math.max(1, Math.round(((H - lobby) * frac) / F)) * F);
     if (y > lobby) terrace(c, w, w, y, w - 1.5);
     w = nw;
+    from = y;
     y = vol(c, w, w, y, Math.max(y1, y + F), glass, 0, 0, 0.3, palette.gunmetal);
   });
-  roof(c, c.roof, w, w, y, glass, true);
+  roof(c, c.roof, w, w, y, glass, true, 0, 0, y - from);
 }
 
 // 5. Industrial: a hall with high strip windows, a sawtooth roof on low halls (the family's utility roofs on the
@@ -197,7 +199,7 @@ function industrial(c) {
     }
   } else {
     part(c.g, box(w + 0.3, 0.5, d + 0.3, 1), kit.steel(palette.charcoal), 0, H + 0.25, 0);
-    roof(c, c.roof, w, d, H + 0.5, wall, false);
+    roof(c, c.roof, w, d, H + 0.5, wall, false, 0, 0, H + 0.5);
   }
   // Exposed frame on the +z face: columns and one brace per bay.
   for (let k = 0; k <= 3; k++) part(c.g, box(0.45, H, 0.45, 0), steel, -w / 2 + (k * w) / 3, H / 2, d / 2 + 0.3);
@@ -222,19 +224,20 @@ function mega(c) {
   const { kit, fw, f, H, seed, lit } = c, frame = kit.steel(palette.gunmetal, 0.4), seam = kit.glow(seed % 2 ? palette.neonCyan : c.warm, 1.6);
   podium(kit, c.g, c.rand, lit, c.warm, fw);
   const layers = 3 + (seed % 2), base = 2 * F, per = Math.max(2, Math.floor((f - 2) / layers));
-  let y = base, top;
+  let y = base, top, from = base;
   for (let k = 0; k < layers; k++) {
     const y1 = k === layers - 1 ? H : y + per * F, scale = [0.9, 0.76, 0.86, 0.7][(k + seed) % 4];
     const ox = ((k + seed) % 3 - 1) * 0.8, w = fw * scale, d = fw * (scale - 0.06);
     const wall = kit.windows((seed + k) % 6, lit, k % 2 === 0, k % 2 ? 'office' : 'residential');
     top = { w, d, ox, wall, glass: k % 2 === 1 };
+    from = y;
     y = vol(c, w, d, y, y1, wall, ox, 0, 0.6);
     if (lit && k < layers - 1) part(c.g, box(w + 0.7, 0.18, d + 0.7, 0), seam, ox, y - 0.25, 0);
   }
   // Exoskeleton: two columns up the +x face, braced at every layer.
   for (const z of [-fw * 0.3, fw * 0.3]) part(c.g, box(0.8, H - base, 0.8, 0), frame, fw * 0.47, (H + base) / 2, z);
   for (let yy = base + per * F; yy < H; yy += per * F) part(c.d, box(0.4, 0.4, fw * 0.6, 0), c.m.steel, fw * 0.47, yy, 0);
-  const free = roof(c, c.roof, top.w, top.d, y, top.wall, top.glass, top.ox);
+  const free = roof(c, c.roof, top.w, top.d, y, top.wall, top.glass, top.ox, 0, y - from);
   dress({ kit, g: c.g, rand: c.rand, lit, warm: c.warm, H, y: base, w: fw * 0.86, tall: true }, f, y, free);
 }
 

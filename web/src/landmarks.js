@@ -2,7 +2,7 @@
 // and the spires on the city's tallest towers. Steady lights only (no flashing).
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part, ring } from './geometry.js';
+import { box, cyl, part } from './geometry.js';
 import { pipe } from './parts.js';
 import { F } from './world.js';
 import { glslColor } from './atmosphere.js';
@@ -60,16 +60,6 @@ export function station(kit) {
   const tower = part(g, box(3, 22, 3, 1), steel, len / 2 + 2, 2, 8.5);
   part(tower, box(0.3, 16, 2.4, 0), kit.glow(palette.neonPink, 2.5), 1.6, 2, 0);
   return g;
-}
-
-// Crown for a signature tower: a narrow lantern storey, a needle half the tower's height, halo rings up it and
-// a steady beacon at the tip. h: roof height; w: footprint width.
-export function spire(kit, g, h, w, lit) {
-  const steel = kit.steel(palette.slate, 0.35), halo = kit.glow(palette.neonViolet, 2.5), needle = h / 2;
-  part(g, box(w * 0.45, 2 * F, w * 0.45, 1), kit.windows(2, lit), 0, h + F, 0);
-  part(g, cyl(0.25, w * 0.18, needle, 6), steel, 0, h + 2 * F + needle / 2, 0);
-  if (lit) for (let k = 0; k < 3; k++) ring(g, w * (0.3 - k * 0.07), 0.12, halo, 0, h + 2 * F + 4 + k * needle * 0.22, 0, 28, 4);
-  part(g, new THREE.SphereGeometry(0.4, 8, 6), kit.warning(), 0, h + 2 * F + needle + 0.3, 0);
 }
 
 // Retrofit for a signature or heavy tower (city.js): heavy industrial add-ons hung on its main

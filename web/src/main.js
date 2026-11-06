@@ -4,6 +4,7 @@ import { css, palette } from './palette.js';
 import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { facadeClock } from './facade.js';
+import { ROOFTECH } from './rooftech.js';
 import { buildCity, cityLayout } from './city.js';
 import { REACH, buildDesert, farSprawl, outOfTown } from './desert.js';
 import { traffic, trains } from './life.js';
@@ -30,7 +31,7 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
   controls.update();
 }
 
-const kit = await loadKit(renderer, ['telecom_tower', 'power_plant', 'market_hall', 'storefront', 'storefront_l',
+const kit = await loadKit(renderer, [...ROOFTECH, 'telecom_tower', 'power_plant', 'market_hall', 'storefront', 'storefront_l',
   'shop_stalls', 'shop_counter', 'shop_frame', 'shop_arcade',
   'skybridge_bay', 'skybridge_window', 'skybridge_end', 'billboard_tower', 'billboard_wide', 'billboard_blade',
   'corp_pylon', 'corp_band', 'corp_crown', 'holo_roof', 'holo_wall', 'flagship_extension', 'flagship_lift', 'flagship_lift_top',
