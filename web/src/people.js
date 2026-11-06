@@ -65,6 +65,8 @@ const SKINS = ['skinLight', 'skinFair', 'skinTan', 'skinBrown', 'skinDeep'];
 const HAIR = { hairBlack: 5, hairBrown: 4, hairAsh: 1, hairBleach: 0.6, hairRed: 0.4 };
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length)];
+// Whether a kerb stop's light gives enough walk time left to reach the next stop (life.js walkLight).
+const canCross = ({ light, need }, t) => walkLight(light.x, light.z, light.axis, t) > need;
 function weighted(rand, table) {
   const keys = Object.keys(table), total = keys.reduce((s, k) => s + table[k], 0);
   let r = rand() * total;
@@ -272,8 +274,11 @@ function places(k, snap, layout, net, info, benches, lamps) {
     }
     if ((sd.kind === 'street' || sd.kind === 'boulevard') && rand() < 0.55) { // waiting at the kerb for a ride
       let a = sd.at(3) + 7 + (rand() - 0.5) * 20;
-      const near = (a2) => lamps.some(([lx, lz]) => Math.hypot(lx - place(sd, a2, 0.95)[0], lz - place(sd, a2, 0.95)[1]) < 2.5);
-      while (near(a)) a += 3;
+      const byLamp = (v) => {
+        const [x, z] = place(sd, v, 0.95);
+        return lamps.some(([lx, lz]) => Math.hypot(lx - x, lz - z) < 2.5);
+      };
+      while (byLamp(a)) a += 3;
       const count = 1 + Math.floor(rand() * 3);
       add(Array.from({ length: count }, (_, m) => {
         const [x, z] = place(sd, a + m * 0.95 + (rand() - 0.5) * 0.3, 0.95 + rand() * 0.5);
@@ -316,7 +321,7 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
   const params = new URLSearchParams(location.search);
   const net = network(layout), info = districts(snap, layout, net), { S, G, N, adj, dist, next, ground } = net;
   const fig = figures(CAPACITY), arr = fig.data.image.data;
-  const sectors = info.map((d, k) => ({ ...d, k, active: false, live: [], slots: null, given: 0,
+  const sectors = info.map((d, k) => ({ ...d, k, active: false, live: [], slots: null,
     rect: [net.e0[d.bx] - 25, net.e1[d.bx] + 25, net.e0[d.by] - 25, net.e1[d.by] + 25] }));
   const { corners } = crossing(snap), busyNodes = [];
   if (corners.length) { // the busiest crossing's four corners: walkers in its sectors often head there
@@ -390,10 +395,13 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
       p.k = 0;
     }
     chooseGoal(p);
-    p.mode = 'walk';
-    p.act = 'walk';
+    go(p);
     extend(p);
   }
+  const go = (p) => {
+    p.mode = 'walk';
+    p.act = 'walk';
+  };
   function chooseGoal(p) {
     const { bx, by } = p.home, rand = p.rand, near = [];
     for (let X = 2 * bx - 1; X <= 2 * bx + 2; X++) for (let Z = 2 * by - 1; Z <= 2 * by + 2; Z++) {
@@ -452,17 +460,12 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
     if (p.mode === 'walk') walking(p, dt, t);
     else if (p.mode === 'wait') {
       standAbout(p, dt);
-      if (walkLight(p.wait.light.x, p.wait.light.z, p.wait.light.axis, t) > p.wait.need) {
-        p.mode = 'walk';
-        p.act = 'walk';
-      }
+      if (canCross(p.wait, t)) go(p);
     } else {
       standAbout(p, dt);
       if (!p.static && (p.timer -= dt) <= 0) {
-        if (p.resume) { // back on the way after a short stop
-          p.mode = 'walk';
-          p.act = 'walk';
-        } else startWalk(p, false);
+        if (p.resume) go(p); // back on the way after a short stop
+        else startWalk(p, false);
       }
     }
     // Smooth transitions between states.
@@ -478,7 +481,7 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
   }
   function walking(p, dt, t) {
     let [tx, tz, wait] = p.pts[p.k];
-    if (wait && walkLight(wait.light.x, wait.light.z, wait.light.axis, t) > wait.need) wait = null; // walk now: no need to stop
+    if (wait && canCross(wait, t)) wait = null; // walk now: no need to stop
     const dx = tx - p.ux, dz = tz - p.uz, d = Math.hypot(dx, dz), want = Math.atan2(dx, dz);
     const err = Math.abs(turn(p, want, dt));
     let vmax = p.speed * Math.max(0, 1 - err / 1.5); // slow into a turn; turn on the spot to go back
@@ -632,6 +635,11 @@ export function people({ snap, layout, warp, benches, lamps, clock, camera, cont
     let drawn = 0;
     for (const p of live) {
       const rx = p.ux - p.dirz * p.lat, rz = p.uz + p.dirx * p.lat;
+      // Well past the crowd's distance (the old town's warp moves things 10 m at most): not drawn, no more work.
+      if (Math.hypot(rx - c.x, c.y, rz - c.z) > CROWD.distance + 15) {
+        p.dist = CROWD.distance + 15;
+        continue;
+      }
       p.y += (ground(rx, rz) - p.y) * Math.min(1, dt * 12 || 1);
       warp(rx, rz, shift);
       const x = rx + shift[0], z = rz + shift[1], L = p.look;
