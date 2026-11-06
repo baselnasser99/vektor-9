@@ -165,20 +165,27 @@ vec3 fDeep(vec3 c, float k) { return c - vec3(0.0, 0.13, 0.07) * c.r * k; }
 // cold technology, not neon: cool white and muted ice, true ice-blue only now and then. Saturated cyan is kept for
 // accents (roof strips, holograms), never windows.
 vec3 fPick(float look, float r, float band) {
+  // One exit: with early returns ANGLE's HLSL warned of a possibly unset result.
+  vec3 c;
   if (look < 0.5 || (look > 1.5 && look < 2.5 && band < 0.18)) { // crimson, or a red section of a warm building
     float dim = look < 0.5 && band > 0.82 ? 0.55 : 1.0;
-    if (r < 0.3) return fDeep(fBlood * 0.55, 1.0) * dim;
-    if (r < 0.64) return fDeep(fCrimson * 0.8, 0.8) * dim;
-    if (r < 0.77) return fDeep(fScarlet * 1.15, 0.5) * dim;
-    if (r < 0.84) return fDeep(fHigh * 0.75, 0.7) * dim; // muted rose
-    if (r < 0.88) return fDeep(fHigh * 1.5, 0.4);
-    return r < 0.95 ? fAmber * 0.8 : mix(fWhite, fAmber, 0.35) * 0.75; // the odd warm room keeps it from one red slab
+    c = r < 0.3 ? fDeep(fBlood * 0.55, 1.0) * dim
+      : r < 0.64 ? fDeep(fCrimson * 0.8, 0.8) * dim
+      : r < 0.77 ? fDeep(fScarlet * 1.15, 0.5) * dim
+      : r < 0.84 ? fDeep(fHigh * 0.75, 0.7) * dim // muted rose
+      : r < 0.88 ? fDeep(fHigh * 1.5, 0.4)
+      : r < 0.95 ? fAmber * 0.8 : mix(fWhite, fAmber, 0.35) * 0.75; // the odd warm room keeps it from one red slab
+  } else if (look < 1.5) {
+    vec3 iceMuted = mix(fIce, fWhite, 0.5);
+    c = r < 0.4 ? fWhite * 0.8 : r < 0.86 ? iceMuted * 1.15 : r < 0.95 ? fIce * 1.2 : fDeep(fCrimson * 0.8, 0.8);
+  } else if (look < 2.5) {
+    c = r < 0.45 ? fAmber : r < 0.72 ? mix(fWhite, fAmber, 0.4) * 0.8 : r < 0.88 ? fDeep(fCrimson * 0.75, 0.8) : fDeep(fBlood * 0.55, 1.0);
+  } else if (look < 3.5) {
+    c = r < 0.55 ? fDeep(fBlood * 0.5, 1.0) : r < 0.85 ? fAmber * 0.7 : fWhite * 0.6;
+  } else {
+    c = r < 0.4 ? fDeep(fScarlet * 1.2, 0.5) : r < 0.72 ? fDeep(fCrimson, 0.8) : r < 0.92 ? fDeep(fHigh * 1.3, 0.4) : fWhite;
   }
-  vec3 iceMuted = mix(fIce, fWhite, 0.5);
-  if (look < 1.5) return r < 0.4 ? fWhite * 0.8 : r < 0.86 ? iceMuted * 1.15 : r < 0.95 ? fIce * 1.2 : fDeep(fCrimson * 0.8, 0.8);
-  if (look < 2.5) return r < 0.45 ? fAmber : r < 0.72 ? mix(fWhite, fAmber, 0.4) * 0.8 : r < 0.88 ? fDeep(fCrimson * 0.75, 0.8) : fDeep(fBlood * 0.55, 1.0);
-  if (look < 3.5) return r < 0.55 ? fDeep(fBlood * 0.5, 1.0) : r < 0.85 ? fAmber * 0.7 : fWhite * 0.6;
-  return r < 0.4 ? fDeep(fScarlet * 1.2, 0.5) : r < 0.72 ? fDeep(fCrimson, 0.8) : r < 0.92 ? fDeep(fHigh * 1.3, 0.4) : fWhite;
+  return c;
 }
 // How many rooms an identity lights and how bright: industry mostly dark, landmarks full and bright.
 vec2 fLookLight(float look) { return look > 3.5 ? vec2(1.4, 1.3) : look > 2.5 ? vec2(0.25, 0.8) : vec2(1.0); }
@@ -269,13 +276,15 @@ void facade(inout vec3 albedo) {
     if (framed) { outAlbedo = fFrame; shine = 0.15; }
     else if (pane) {
       vec3 h = fRand(k, 9u);
-      float shade = fInside(g, vec3(-vt, -V.y, vn), k, detail);
-      // Blinds: in some lit rooms a pale blind covers the top of the pane, lit from behind.
-      if (level > 0.0 && h.x < 0.28 * fInterior && g.y > o1.y - (o1.y - o0.y) * (0.25 + 0.5 * h.y)) shade = 0.5;
-      float fresnel = 0.04 + 0.96 * pow(1.0 - vn, 5.0);
-      // Rooms differ a little in brightness and hue (bulbs, blinds, screens), so a lit floor is not one flat colour.
-      light *= (0.8 + 0.4 * h.y) * vec3(1.0, 0.88 + 0.24 * h.z, 0.92 + 0.16 * h.x);
-      glow = light * level * shade * (1.0 - 0.7 * fresnel);
+      if (level > 0.0) { // a dark room shows nothing behind its pane, so skip tracing it (most rooms are dark)
+        float shade = fInside(g, vec3(-vt, -V.y, vn), k, detail);
+        // Blinds: in some lit rooms a pale blind covers the top of the pane, lit from behind.
+        if (level > 0.0 && h.x < 0.28 * fInterior && g.y > o1.y - (o1.y - o0.y) * (0.25 + 0.5 * h.y)) shade = 0.5;
+        float fresnel = 0.04 + 0.96 * pow(1.0 - vn, 5.0);
+        // Rooms differ a little in brightness and hue (bulbs, blinds, screens), so a lit floor is not one flat colour.
+        light *= (0.8 + 0.4 * h.y) * vec3(1.0, 0.88 + 0.24 * h.z, 0.92 + 0.16 * h.x);
+        glow = light * level * shade * (1.0 - 0.7 * fresnel);
+      }
       outAlbedo = fGlass * (0.7 + 0.5 * h.z);
       shine = 1.0;
       fRough = 0.05 + 0.14 * h.y; // panes catch reflections a little differently

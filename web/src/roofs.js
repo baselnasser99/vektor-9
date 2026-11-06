@@ -6,9 +6,10 @@
 // roof is a flat-topped mansard on the odd old building. Small parts go to the near-camera detail layer (c.d).
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part } from './geometry.js';
+import { box, cyl, part, rng } from './geometry.js';
 import { F } from './world.js';
 import { warningLamp } from './parts.js';
+import { commSpire, reactorRoof } from './rooftech.js';
 
 const AVIATION = 24; // floors from which a tower carries red aviation lamps on two roof corners
 
@@ -24,23 +25,40 @@ const CHOICES = {
 const OFFSET = { apartment: 0, office: 1, old: 2, luxury: 3, industrial: 1, mega: 2 }; // so families do not line up
 
 // The roof type for a building: its family's list, stepped by tile position. A historic old building (one in nine,
-// 4 to 12 floors) gets a mansard instead.
+// 4 to 12 floors) gets a mansard instead, and some towers an energy reactor (reactorType).
 export function roofType(family, t, slot) {
   if (family === 'old' && t.f >= 4 && t.f <= 12 && t.s % 9 === 0) return 'mansard';
+  const core = reactorType(family, t);
+  if (core) return core;
   const list = CHOICES[family][t.f >= 16 ? 1 : 0];
   return list[(slot + OFFSET[family]) % list.length];
 }
 
+// Energy reactors (rooftech.js) on towers of 8+ floors, picked by a hash of the tile so nothing else about the
+// building changes: about 70% keep an ordinary dark crown, 20% an integrated mid-size reactor, 8% a larger
+// industrial one and 2% a landmark one (22+ floors; else industrial). A quarter of the industrial halls carry the
+// industrial kind; old buildings never. Roofs too small for a kind get a smaller one, or none (rooftech.js).
+const REACTOR = { none: 0.7, mid: 0.2, industrial: 0.08 }; // the rest: landmark
+function reactorType(family, t) {
+  const u = rng(t.s * 131 + 17)();
+  if (family === 'industrial') return u < 0.25 ? 'coreIndustrial' : null;
+  if (family === 'old' || t.f < 8 || u < REACTOR.none) return null;
+  if (u < REACTOR.none + REACTOR.mid) return 'coreMid';
+  if (u < REACTOR.none + REACTOR.mid + REACTOR.industrial || t.f < 22) return 'coreIndustrial';
+  return 'coreLandmark';
+}
+
 // Builds the roof on a top volume w x d whose roof is at height y, centred at (x, z). wall: the facade material, for
-// parts that are more building; glass: whether that facade is a curtain wall. Returns whether the middle of the
-// roof is left free (for a billboard).
-export function roof(c, type, w, d, y, wall, glass, x = 0, z = 0) {
+// parts that are more building; glass: whether that facade is a curtain wall; below: how far the top volume's walls
+// reach down from the roof (a reactor's ribs and conduits stay on them). Returns whether the middle of the roof is
+// left free (for a billboard).
+export function roof(c, type, w, d, y, wall, glass, x = 0, z = 0, below = 0) {
   const g = new THREE.Group(), small = new THREE.Group();
   g.position.set(x, y, z);
   small.position.set(x, y, z);
   c.g.add(g);
   c.d.add(small);
-  const r = { ...c, g, d: small, w, d2: d, wall, glass, edge: glass ? c.kit.steel(palette.charcoal, 0.5) : c.kit.concrete(palette.gunmetal) };
+  const r = { ...c, g, d: small, w, d2: d, wall, glass, below, edge: glass ? c.kit.steel(palette.charcoal, 0.5) : c.kit.concrete(palette.gunmetal) };
   if (c.f >= AVIATION) for (const s of [-1, 1]) lamp(r, s * (w / 2 - 0.3), 1.2, s * (d / 2 - 0.3));
   accent(r, y);
   return ROOFS[type](r);
@@ -78,6 +96,14 @@ function parapet(r, h = 1, w = r.w, d = r.d2) {
   }
 }
 
+// A thin glowing seam round a w x d edge at height y (no plate: a lit plate reads as a bright platform from above).
+function rim(r, w, d, y, mat) {
+  for (const s of [-1, 1]) {
+    part(r.g, box(w, 0.12, 0.1, 0), mat, 0, y, s * (d / 2));
+    part(r.g, box(0.1, 0.12, d, 0), mat, s * (w / 2), y, 0);
+  }
+}
+
 // Packaged cooling units with a fan on top, in a row along x from x0, n of them.
 function coolers(r, n, x0, z, step = 2.4) {
   const { steel, slab } = r.m;
@@ -102,6 +128,9 @@ function frustum(w, d, h, k) {
   geo.computeVertexNormals();
   return geo;
 }
+
+// A reactor roof of that kind, or the fallback roof type where the roof is too small for any; never free.
+const reactor = (r, kind, fallback) => (reactorRoof(r, kind) ? false : ROOFS[fallback](r));
 
 // ---- the roof types ----------------------------------------------------------------------------------------------
 
@@ -133,7 +162,7 @@ const ROOFS = {
       y += F + 0.4;
     }
     plantRoom(r, w * 0.6, d * 0.6, F, 0, 0, y);
-    if (r.lit) part(r.g, box(w + 0.35, 0.12, d + 0.35, 0), r.kit.glow(palette.warmWindow, 0.9), 0, y - 0.05, 0); // a lit band
+    if (r.lit) rim(r, w + 0.35, d + 0.35, y - 0.05, r.kit.glow(palette.coreBlood, 1.4)); // a thin lit seam round the last step
     return false;
   },
   // A field of cooling units in rows, behind a low parapet.
@@ -144,17 +173,12 @@ const ROOFS = {
     if (r.seed % 3 === 0) lamp(r, -(per - 1) * 1.2 - 0.8, 1.35, -(rows - 1) * 1.3 - 0.6); // a unit's fault light
     return false;
   },
-  // A communications mast on an equipment shelter, dishes, steady red lamps.
+  // A communications spire (rooftech.js) beside an equipment shelter.
   antenna(r) {
     parapet(r, 0.8);
     const { kit } = r, h = 5 + (r.seed % 3) * 2.5, side = r.seed % 2 ? 1 : -1, mx = side * r.w * 0.2;
     part(r.g, box(r.w * 0.4, 2.6, r.d2 * 0.35, 0), kit.steel(palette.gunmetal, 0.6), -mx, 1.3, 0); // shelter
-    part(r.g, box(0.7, h, 0.7, 0), kit.mat('metal_grate_rusty', palette.gunmetal), mx, h / 2, r.d2 * 0.2);
-    for (const k of [0.45, 0.75]) {
-      const dish = part(r.d, new THREE.SphereGeometry(0.9, 8, 3, 0, Math.PI * 2, 0, Math.PI / 4), r.m.steel, mx + 0.6, h * k, r.d2 * 0.2);
-      dish.rotation.z = -1.1;
-    }
-    for (const k of [0.5, 1]) part(r.g, new THREE.SphereGeometry(0.22, 8, 6), kit.warning(), mx, h * k + 0.2, r.d2 * 0.2);
+    commSpire(kit, r.lit, r.g, mx, 0, r.d2 * 0.2, h + 2, rng(r.s * 37 + 5));
     return false;
   },
   // A planted terrace: glass rail, planters along two sides, a glazed pavilion and a pergola.
@@ -187,7 +211,7 @@ const ROOFS = {
   },
   // A distinctive crown, rare: a ring of tall fins, a halo roof floating on posts, or a top sliced at an angle.
   crown(r) {
-    const { kit } = r, frame = kit.steel(palette.gunmetal, 0.4), accent = r.lit && kit.glow(r.glass ? palette.glare : palette.warmWindow, 1);
+    const { kit } = r, frame = kit.steel(palette.gunmetal, 0.4), accent = r.lit && kit.glow(palette.coreBlood, 1.4);
     const kind = r.seed % 3;
     if (kind === 0) { // fins
       const h = 2 * F, n = Math.max(3, Math.round(r.w / 1.5));
@@ -196,12 +220,12 @@ const ROOFS = {
         for (const s of [-1, 1]) part(r.g, box(0.25, h, 0.9, 0), frame, v, h / 2, s * (r.d2 / 2 - 0.45));
       }
       plantRoom(r, r.w * 0.5, r.d2 * 0.5, F, 0, 0);
-      if (accent) part(r.g, box(r.w, 0.12, r.d2, 0), accent, 0, h, 0);
+      if (accent) rim(r, r.w, r.d2, h, accent);
     } else if (kind === 1) { // halo roof on posts
       for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) part(r.g, box(0.5, 2 * F, 0.5, 0), frame, sx * r.w * 0.35, F, sz * r.d2 * 0.35);
       part(r.g, box(r.w + 1.6, 0.5, r.d2 + 1.6, 1), frame, 0, 2 * F + 0.25, 0);
       plantRoom(r, r.w * 0.45, r.d2 * 0.45, F, 0, 0);
-      if (accent) part(r.g, box(r.w + 1.7, 0.12, r.d2 + 1.7, 0), accent, 0, 2 * F, 0);
+      if (accent) rim(r, r.w + 1.7, r.d2 + 1.7, 2 * F, accent);
     } else { // sliced: the top storeys cut at an angle, a glazed slope
       const h = 2 * F;
       part(r.g, box(r.w, h * 0.5, r.d2, 1), r.wall, 0, h * 0.25, 0);
@@ -211,6 +235,11 @@ const ROOFS = {
     }
     return false;
   },
+  // Energy reactors (rooftech.js), built into the top; ordinary plant where the roof is too small for one.
+  coreMid: (r) => reactor(r, 'mid', 'hvac'),
+  coreIndustrial: (r) => reactor(r, 'industrial', 'utility'),
+  coreLandmark: (r) => reactor(r, 'landmark', 'hvac'),
+  coreSignature: (r) => reactor(r, 'signature', 'hvac'), // the three signature towers (city.js)
   // Mansard: steep slate sides to a flat top, with dormers; the one sloped roof, on historic old buildings.
   mansard(r) {
     const { kit } = r, h = 1.4 * F, slate = kit.steel(palette.gunmetal, 0.7);

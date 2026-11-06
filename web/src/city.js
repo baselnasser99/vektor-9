@@ -8,7 +8,7 @@ import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { LOOK_STEP, lightingIdentity } from './facade.js';
 import { buildStreets } from './streets.js';
-import { exoframe, flagship, retrofit, roofworks, spire } from './landmarks.js';
+import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { warningLamp } from './parts.js';
 import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, SIDEWALK, pick } from './world.js';
@@ -94,7 +94,7 @@ export function buildCity(kit, snap) {
     // Each sector leans glass or concrete; about one building in four goes the other way.
     const concrete = ((sector * 7 + snap.seed) % 2 === 0) !== (rand() < 0.25);
     const family = t.k === 'house' && familyOf(t, near[i], !concrete);
-    const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row), build: () => construction(kit, t.f, rand, t.on, fw),
+    const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row, signature.has(i)), build: () => construction(kit, t.f, rand, t.on, fw),
       market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit), lot: () => plaza(kit, rand, t.on),
       rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on) }[t.k]();
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
@@ -118,7 +118,6 @@ export function buildCity(kit, snap) {
       storefront(kit, lot, rng(t.s * 11 + 5), t.on, dx, dz);
     } else if (!['plant', 'lot', 'market'].includes(t.k)) shopfronts(kit, lot, t, rand, dx, dz); // a market is its own shop
     if (signature.has(i)) {
-      spire(kit, g, t.f * F, fw, t.on);
       retrofit(kit, g, (k) => openAbove(snap, col, row, g.rotation.y, k), rng(t.s * 7 + 3)); // its own generator: other buildings keep theirs
     }
     if (heavy.has(i)) { // the same retrofit, held in an exoskeleton, with plant on the roof

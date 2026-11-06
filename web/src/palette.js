@@ -87,6 +87,12 @@ export const palette = {
   neonRed: 0xff3b3b,
   sodium: 0xffa733,
   warmWindow: 0xffc46b,
+  // Rooftop reactors (rooftech.js), as targets on screen: blood red in recesses and seams, crimson in the chamber,
+  // scarlet in its rising bands, soft coral at the hottest points.
+  coreBlood: 0x5a0e16,
+  coreCrimson: 0xb3122a,
+  coreScarlet: 0xff3a3a,
+  coreCoral: 0xff7a66,
   // Window light (facade.js), as targets on screen: dim crimson, the main red, bright scarlet, rare warm red
   // highlights; icy blue and soft white for offices; amber now and then.
   winBlood: 0xa62135,
