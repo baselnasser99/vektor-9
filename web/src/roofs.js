@@ -42,7 +42,25 @@ export function roof(c, type, w, d, y, wall, glass, x = 0, z = 0) {
   c.d.add(small);
   const r = { ...c, g, d: small, w, d2: d, wall, glass, edge: glass ? c.kit.steel(palette.charcoal, 0.5) : c.kit.concrete(palette.gunmetal) };
   if (c.f >= AVIATION) for (const s of [-1, 1]) lamp(r, s * (w / 2 - 0.3), 1.2, s * (d / 2 - 0.3));
+  accent(r, y);
   return ROOFS[type](r);
+}
+
+// Architectural light on a few lit buildings of 10+ floors, picked by a hash of the building (not the seeded
+// random, so nothing else about the building changes): about one in eight gets a thin strip round its roof edge,
+// most dim crimson, now and then magenta or cyan; the tallest few of those also get a light line up one corner.
+// The strips use materials the city already has (the warning lamp's crimson, the mega towers' cyan seams), so
+// they merge into existing draw calls; magenta adds one.
+function accent(r, y) {
+  if (!r.lit || r.f < 10) return;
+  const h = Math.abs(Math.sin(r.H * 12.9898 + r.w * 78.233 + r.d2 * 3.71) * 43758.5453) % 1;
+  if (h > 0.125) return;
+  const glow = h < 0.08 ? r.kit.warning() : h < 0.1 ? r.kit.glow(palette.neonMagenta, 1.2) : r.kit.glow(palette.neonCyan, 1.6);
+  for (const s of [-1, 1]) {
+    part(r.g, box(r.w, 0.16, 0.14, 0), glow, 0, 0.1, s * (r.d2 / 2 + 0.05));
+    part(r.g, box(0.14, 0.16, r.d2, 0), glow, s * (r.w / 2 + 0.05), 0.1, 0);
+  }
+  if (r.f >= 28 && h < 0.04) part(r.g, box(0.22, y * 0.45, 0.22, 0), glow, r.w / 2 + 0.08, -y * 0.225, r.d2 / 2 + 0.08);
 }
 
 // ---- parts -------------------------------------------------------------------------------------------------------

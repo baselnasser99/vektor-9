@@ -5,9 +5,9 @@ import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { facadeClock } from './facade.js';
 import { buildCity, cityLayout } from './city.js';
-import { REACH, buildDesert, outOfTown } from './desert.js';
+import { REACH, buildDesert, farSprawl, outOfTown } from './desert.js';
 import { traffic, trains } from './life.js';
-import { airships, cloudDeck, horizon, moon, rain, rainAmount, stars } from './atmosphere.js';
+import { airships, cloudDeck, districtGlows, horizon, moon, rain, rainAmount, stars } from './atmosphere.js';
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
 const SCHEMA = 3;
@@ -17,7 +17,7 @@ const snapUrl = params.get('snap') ?? '../snapshots/004032.json';
 const snap = await (await fetch(snapUrl)).json();
 if (snap.schema !== SCHEMA) throw new Error(`snapshot schema ${snap.schema}, renderer knows ${SCHEMA}`);
 
-const half = cityLayout(snap).span / 2;
+const layout = cityLayout(snap), half = layout.span / 2;
 // Start low over the southeast corner so streets, shopfronts and signs show; orbit out for the overview.
 const stage = createStage({ span: half * 1.1, fog: 0.0007, camera: [half * 0.55, half * 0.25, half * 0.8], target: [0, 25, half * 0.15] });
 const { renderer, scene, camera, controls, onFrame } = stage;
@@ -46,9 +46,10 @@ onFrame(() => {
   for (const { group, at } of details) group.visible = (x - at[0]) ** 2 + y * y * 0.5 + (z - at[1]) ** 2 < DETAIL * DETAIL;
 });
 const desert = buildDesert(kit, edge, lines, onFrame);
-scene.add(city, desert, traffic(kit, outOfTown(lanes, edge), onFrame, warp, hub));
+scene.add(city, desert, farSprawl(edge), traffic(kit, outOfTown(lanes, edge), onFrame, warp, hub));
 if (rail) scene.add(trains(kit, rail, onFrame));
-scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), ...cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame));
+scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), ...cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame),
+  ...districtGlows(snap, layout, camera, onFrame));
 // ?rain=0..1 previews weather the snapshot does not have.
 const wet = params.has('rain') ? Number(params.get('rain')) : rainAmount(snap);
 if (wet) scene.add(rain(wet, controls.target, onFrame));

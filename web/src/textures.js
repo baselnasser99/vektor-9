@@ -492,6 +492,28 @@ export const bandTexture = () => painted(4, 256, (g, w, h) => {
   g.fillRect(0, 0, w, h);
 }, { srgb: false });
 
+// A low smog bank seen edge-on, wrapping sideways, in the alpha channel: solid in a band about two thirds down,
+// fading out toward the bottom, with a lumpy, uneven top of overlapping soft billows of mixed sizes.
+export const smogBankTexture = () => painted(1024, 128, (g, W, H) => {
+  const rand = rng(29), base = H * 0.68;
+  const fill = g.createLinearGradient(0, base, 0, H);
+  fill.addColorStop(0, 'rgba(255,255,255,0.85)');
+  fill.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = fill;
+  g.fillRect(0, base, W, H - base);
+  for (let i = 0; i < 140; i++) {
+    const [x, r] = [rand() * W, 6 + rand() ** 2 * 40];
+    const y = base + r * 0.3 - rand() * r * 0.6;
+    for (const dx of [-W, 0, W]) {
+      const grad = g.createRadialGradient(x + dx, y, 0, x + dx, y, r);
+      grad.addColorStop(0, 'rgba(255,255,255,0.5)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.fillRect(x + dx - r, y - r, 2 * r, 2 * r);
+    }
+  }
+}, { srgb: false, wrap: true });
+
 // Far-off cities on the horizon, wrapping sideways: a hazier back row and a darker front row of towers in clusters
 // with gaps between them, sparse lit windows, steady red beacons on the tallest, and city glow at their feet.
 export const skylineTexture = () => {
@@ -502,7 +524,7 @@ export const skylineTexture = () => {
     glow.addColorStop(1, `${css(palette.sodium)}38`);
     g.fillStyle = glow;
     g.fillRect(0, 0, W, H);
-    for (const [color, tallest, lit, phase] of [[fog.clone().lerp(new THREE.Color(palette.nightHorizon), 0.45), 0.5, 0.12, 2],
+    for (const [color, tallest, lit, phase] of [[fog.clone().lerp(new THREE.Color(palette.burntSmog), 0.35), 0.5, 0.12, 2],
       [fog, 0.75, 0.25, 0]]) {
       for (let x = 0; x < W;) {
         const w = 6 + rand() * 26, cluster = Math.max(0, Math.sin((x / W) * Math.PI * 6 + phase));
