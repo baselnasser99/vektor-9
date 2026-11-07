@@ -433,10 +433,12 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
   const net = network(layout), info = districts(snap, layout, net), { S, G, N, adj, dist, next } = net;
   // The headquarters (headquarters.js), if there is one: its frame (u across its front, w out from it), its paved
   // plaza and gateway, the people it keeps there, its three doors and its delivery bay.
-  const hqAt = (u, w) => [hq.x + Math.cos(hq.heading) * u + Math.sin(hq.heading) * w, hq.z - Math.sin(hq.heading) * u + Math.cos(hq.heading) * w];
-  const ground = !hq ? net.ground : (x, z) => {
-    const dx = x - hq.x, dz = z - hq.z, u = dx * Math.cos(hq.heading) - dz * Math.sin(hq.heading), w = dx * Math.sin(hq.heading) + dz * Math.cos(hq.heading);
-    return Math.abs(u) > 14 || Math.abs(w) > 14 ? net.ground(x, z) : 0.18 + ENTRANCE.FLOOR;
+  const hc = hq ? Math.cos(hq.heading) : 1, hs = hq ? Math.sin(hq.heading) : 0;
+  const hqAt = (u, w) => [hq.x + hc * u + hs * w, hq.z - hs * u + hc * w];
+  const hqLocal = (x, z) => [(x - hq.x) * hc - (z - hq.z) * hs, (x - hq.x) * hs + (z - hq.z) * hc]; // hqAt's inverse
+  const ground = !hq ? net.ground : (x, z) => { // the plaza's paving covers the whole site
+    const [u, w] = hqLocal(x, z);
+    return Math.abs(u) > HQ.half[0] || Math.abs(w) > HQ.half[1] ? net.ground(x, z) : 0.18 + ENTRANCE.FLOOR;
   };
   const doors = hq ? doorsOf(hq, hqAt, net) : [];
   const fig = figures(CAPACITY), arr = fig.data.image.data;
@@ -717,18 +719,10 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
     const stopping = p.pauseAt !== null && Math.abs(p.bu - p.pauseAt) < 0.8;
     const [tx, tz] = stopping ? hqAt(p.pauseAt, glass) : hqAt(p.bu + p.dirU * 2, LANE[p.dirU]);
     const [ex, ez] = hqAt(p.dirU * DOOR, LANE[p.dirU]);
-    const dx = tx - p.ux, dz = tz - p.uz, d = Math.hypot(dx, dz);
+    const dx = tx - p.ux, dz = tz - p.uz, d = Math.sqrt(dx * dx + dz * dz);
     turn(p, Math.atan2(dx, dz), dt);
-    const vmax = stopping ? Math.min(p.speed * 0.6, Math.sqrt(2 * d)) : p.speed * 0.9;
-    p.v += Math.max(-2.5 * dt, Math.min(1.2 * dt, vmax - p.v));
-    const step = Math.min(d, p.v * dt);
-    if (d > 1e-6) {
-      p.ux += (dx / d) * step;
-      p.uz += (dz / d) * step;
-    }
-    p.phase = (p.phase + (step / (1.5 * p.look.height)) * Math.PI * 2) % (Math.PI * 2);
-    p.bu = (p.ux - hq.x) * Math.cos(hq.heading) - (p.uz - hq.z) * Math.sin(hq.heading);
-    p.bw = (p.ux - hq.x) * Math.sin(hq.heading) + (p.uz - hq.z) * Math.cos(hq.heading);
+    advance(p, dx, dz, d, stopping ? Math.min(p.speed * 0.6, Math.sqrt(2 * d)) : p.speed * 0.9, dt);
+    [p.bu, p.bw] = hqLocal(p.ux, p.uz);
     if (stopping && d < 0.1) { // at the glass: face out over the city a while
       p.mode = 'idle';
       p.v = 0;
@@ -773,22 +767,29 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
       extend(p);
     }
   }
-  function walking(p, dt, t) {
-    let [tx, tz, wait] = p.pts[p.k];
-    if (wait && canCross(wait, t)) wait = null; // walk now: no need to stop
-    const dx = tx - p.ux, dz = tz - p.uz, d = Math.hypot(dx, dz), want = Math.atan2(dx, dz);
-    const err = Math.abs(turn(p, want, dt));
-    let vmax = p.speed * Math.max(0, 1 - err / 1.5); // slow into a turn; turn on the spot to go back
-    if (wait) vmax = Math.min(vmax, Math.sqrt(2.4 * d) + 0.05); // ease into the kerb
+  // One step along (dx, dz), d away: speed eased toward vmax, legs swung to match. Returns the distance moved.
+  function advance(p, dx, dz, d, vmax, dt) {
     p.v += Math.max(-2.5 * dt, Math.min(1.2 * dt, vmax - p.v));
     const s = Math.min(d, p.v * dt);
     if (d > 1e-6) {
       p.ux += (dx / d) * s;
       p.uz += (dz / d) * s;
+    }
+    p.phase = (p.phase + (s / (1.5 * p.look.height * (p.look.fast ? 1.1 : 1))) * Math.PI * 2) % (Math.PI * 2);
+    return s;
+  }
+  function walking(p, dt, t) {
+    let [tx, tz, wait] = p.pts[p.k];
+    if (wait && canCross(wait, t)) wait = null; // walk now: no need to stop
+    const dx = tx - p.ux, dz = tz - p.uz, d = Math.sqrt(dx * dx + dz * dz), want = Math.atan2(dx, dz);
+    const err = Math.abs(turn(p, want, dt));
+    let vmax = p.speed * Math.max(0, 1 - err / 1.5); // slow into a turn; turn on the spot to go back
+    if (wait) vmax = Math.min(vmax, Math.sqrt(2.4 * d) + 0.05); // ease into the kerb
+    const s = advance(p, dx, dz, d, vmax, dt);
+    if (d > 1e-6) {
       p.dirx = dx / d;
       p.dirz = dz / d;
     }
-    p.phase = (p.phase + (s / (1.5 * p.look.height * (p.look.fast ? 1.1 : 1))) * Math.PI * 2) % (Math.PI * 2);
     if (d - s > (wait ? 0.04 : 0.4)) return;
     p.k++;
     if (wait) {
@@ -962,17 +963,24 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
     frustum.setFromProjectionMatrix(m4.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const [near, mid] = [[0, 0], [0, 140], [70, 200]][CROWD.detail], c = camera.position;
     let drawn = 0;
+    const cut = (CROWD.distance + 15) ** 2;
     for (const p of live) {
       const rx = p.ux - p.dirz * p.lat, rz = p.uz + p.dirx * p.lat;
       // Well past the crowd's distance (the old town's warp moves things 10 m at most): not drawn, no more work.
-      if (Math.hypot(rx - c.x, c.y, rz - c.z) > CROWD.distance + 15) {
+      // (Squared sums, not Math.hypot: this runs for everyone every frame.)
+      if ((rx - c.x) ** 2 + c.y ** 2 + (rz - c.z) ** 2 > cut) {
         p.dist = CROWD.distance + 15;
         continue;
       }
-      p.y += ((p.floor ?? ground(rx, rz)) - p.y) * Math.min(1, dt * 12 || 1);
+      if (rx !== p.gx || rz !== p.gz) { // the ground under them, worked out again only once they move
+        p.gx = rx;
+        p.gz = rz;
+        p.gy = p.floor ?? ground(rx, rz);
+      }
+      p.y += (p.gy - p.y) * Math.min(1, dt * 12 || 1);
       warp(rx, rz, shift);
       const x = rx + shift[0], z = rz + shift[1], L = p.look;
-      p.dist = Math.hypot(x - c.x, p.y + 0.9 - c.y, z - c.z);
+      p.dist = Math.sqrt((x - c.x) ** 2 + (p.y + 0.9 - c.y) ** 2 + (z - c.z) ** 2);
       if (p.dist > CROWD.distance || p.fade <= 0) continue;
       let o = p.id * TEXELS * 4; // the shader's numbers (figures.js POSE), seven texels a person
       arr[o++] = x; arr[o++] = p.y; arr[o++] = z; arr[o++] = p.heading;
