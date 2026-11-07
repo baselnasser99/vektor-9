@@ -86,20 +86,21 @@ export function hqEye(site, camera, onFrame) {
   body.add(shell, look);
   const r = rng(4049);
 
-  // The shell (it narrows): the lens front and back, the rims, the broken outer arcs, the brow, the tail.
-  for (const side of [1, -1]) {
+  // The shell (it narrows): the lens front and back, the rims, the broken outer arcs, the brow, the tail. Parts
+  // that look alike share one mesh.
+  const lens = [1, -1].map((side) => {
     const geo = new THREE.ShapeGeometry(new THREE.Shape(outline(W * 0.96, H * 0.94).map((p) => new THREE.Vector2(p.x, p.y))), 24);
     const p = geo.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i) / (W / 2), y = p.getY(i) / (H / 2);
       p.setZ(i, side * 1.5 * Math.max(0, 1 - x * x - y * y * 0.6));
     }
-    geo.computeVertexNormals();
-    shell.add(new THREE.Mesh(geo, holo(crimson, 0.2, u)));
-  }
-  const main = outline(W, H);
+    return geo;
+  });
+  shell.add(new THREE.Mesh(mergeGeometries(lens), holo(crimson, 0.2, u)));
+  const main = outline(W, H), thin = outline(W * 0.86, H * 0.84);
   shell.add(new THREE.Mesh(stroke(main, 0, main.length, 0.15), holo(scarlet, 0.9, u)));
-  for (const z of [0.9, -0.9]) shell.add(new THREE.Mesh(stroke(outline(W * 0.86, H * 0.84), 0, 72, 0.05, z), holo(crimson, 0.28, u)));
+  shell.add(new THREE.Mesh(mergeGeometries([0.9, -0.9].map((z) => stroke(thin, 0, 72, 0.05, z))), holo(crimson, 0.28, u)));
   // Broken arcs of two larger outlines, a little offset and askew: fragments, never a closed ring.
   const arcs = [];
   for (const [k, z, runs] of [[1.12, -0.6, [[2, 15], [20, 31], [40, 52], [58, 67]]], [1.25, 0.5, [[5, 11], [27, 34], [44, 49], [61, 70]]]]) {
@@ -109,32 +110,26 @@ export function hqEye(site, camera, onFrame) {
   const arcMesh = new THREE.Mesh(mergeGeometries(arcs), holo(crimson, 0.38, u));
   arcMesh.rotation.z = 0.02;
   shell.add(arcMesh);
-  const brow = outline(W * 1.06, H * 1.2);
-  shell.add(new THREE.Mesh(stroke(brow, 8, 28, 0.13, 0.2), holo(scarlet, 0.6, u))); // over the upper lid
+  const brow = stroke(outline(W * 1.06, H * 1.2), 8, 28, 0.13, 0.2); // over the upper lid
   const tail = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(W / 2 + 0.2, -0.05, 0), new THREE.Vector3(W / 2 + 1.2, -0.35, 0),
     new THREE.Vector3(W / 2 + 2.1, -0.4, 0)]), 12, 0.06, 5, false);
-  shell.add(new THREE.Mesh(tail, holo(scarlet, 0.7, u)));
+  shell.add(new THREE.Mesh(mergeGeometries([brow, tail]), holo(scarlet, 0.65, u)));
 
   // The iris (it moves; clipped by the lids): a faint disc, broken rings turning slowly in opposite directions,
-  // irregular fibres, a vertical slit pupil and its glow; one front and one back.
-  const iris = new THREE.Group(), outer = new THREE.Group(), inner = new THREE.Group(), pupil = new THREE.Group();
-  const clip = { clip: true };
-  iris.add(new THREE.Mesh(new THREE.CircleGeometry(2.3, 40), holo(scarlet, 0.16, u, clip)));
-  outer.add(new THREE.Mesh(mergeGeometries([[0.2, 1.7], [2.15, 1.25], [3.7, 2.1]].map(([a, l]) => new THREE.RingGeometry(1.95, 2.28, 24, 1, a, l))), holo(crimson, 0.85, u, clip)));
-  inner.add(new THREE.Mesh(mergeGeometries([[0.9, 2.2], [3.6, 1.6], [5.5, 0.6]].map(([a, l]) => new THREE.RingGeometry(1.38, 1.5, 20, 1, a, l))), holo(scarlet, 0.7, u, clip)));
+  // irregular fibres, a vertical slit pupil and its glow. Each part carries a front and a back copy in one geometry,
+  // close together (further apart they read as two pupils from the side); the rings turn about the shared axis.
+  const twin = (geo) => mergeGeometries([0.5, -0.5].map((z) => geo.clone().translate(0, 0, z)));
+  const part = (geo, color, alpha) => new THREE.Mesh(twin(geo), holo(color, alpha, u, { clip: true }));
+  const arcsOf = (r0, r1, n, runs) => mergeGeometries(runs.map(([a, l]) => new THREE.RingGeometry(r0, r1, n, 1, a, l)));
   const fibres = Array.from({ length: 46 }, () => {
     const a = r() * Math.PI * 2, r0 = 0.95 + r() * 0.35, r1 = r0 + 0.35 + r() * 0.8;
     return new THREE.PlaneGeometry(0.04 + r() * 0.04, r1 - r0).translate(0, (r0 + r1) / 2, 0).rotateZ(a);
   });
-  iris.add(outer, inner, new THREE.Mesh(mergeGeometries(fibres), holo(scarlet, 0.45, u, clip)), pupil);
-  pupil.add(new THREE.Mesh(new THREE.CircleGeometry(0.9, 32).scale(0.85, 1.75, 1), holo(scarlet, 0.4, u, clip)));
-  pupil.add(new THREE.Mesh(new THREE.CircleGeometry(0.9, 32).scale(0.42, 1.45, 1), holo(coral, 1, u, clip)));
-  for (const z of [0.5, -0.5]) { // close together: further apart they read as two pupils from the side
-    const c = iris.clone();
-    c.position.z = z;
-    look.add(c);
-  }
-  const rings = look.children.map((c) => [c.children[1], c.children[2]]), slits = look.children.map((c) => c.children[4]);
+  const outer = part(arcsOf(1.95, 2.28, 24, [[0.2, 1.7], [2.15, 1.25], [3.7, 2.1]]), crimson, 0.85);
+  const inner = part(arcsOf(1.38, 1.5, 20, [[0.9, 2.2], [3.6, 1.6], [5.5, 0.6]]), scarlet, 0.7);
+  const pupil = new THREE.Group();
+  pupil.add(part(new THREE.CircleGeometry(0.9, 32).scale(0.85, 1.75, 1), scarlet, 0.4), part(new THREE.CircleGeometry(0.9, 32).scale(0.42, 1.45, 1), coral, 1));
+  look.add(part(new THREE.CircleGeometry(2.3, 40), scarlet, 0.16), outer, inner, part(mergeGeometries(fibres), scarlet, 0.45), pupil);
 
   // A soft elliptical halo behind it all, for a restrained bloom of its own.
   body.add(new THREE.Mesh(new THREE.PlaneGeometry(W * 1.4, H * 1.5), new THREE.MeshBasicMaterial({ color: crimson,
@@ -201,8 +196,9 @@ export function hqEye(site, camera, onFrame) {
     look.position.set(ix, iy, 0);
     shell.scale.y = open;
     u.open.value = open;
-    for (const s of slits) s.scale.set(slit * (1 + 0.04 * Math.sin(t * 0.9)), 1, 1); // the slit breathes a little
-    for (const [a, b] of rings) { a.rotation.z = t * 0.05; b.rotation.z = -t * 0.08; }
+    pupil.scale.set(slit * (1 + 0.04 * Math.sin(t * 0.9)), 1, 1); // the slit breathes a little
+    outer.rotation.z = t * 0.05;
+    inner.rotation.z = -t * 0.08;
     body.rotation.y = gx * 0.22; // the whole eye turns a little with its gaze
     body.rotation.x = -gy * 0.12;
     body.position.y = Math.sin(t * 0.4) * 0.25;

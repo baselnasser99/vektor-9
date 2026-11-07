@@ -166,10 +166,12 @@ export function hqFleet(kit, site, onFrame, still) {
     lamps(dock, [1.7, 2.15, 2.6].map((y) => P(s * (B.face + 0.45), floor + y, w + 6.9)),
       [-1.8, 1.8].flatMap((dw) => [0, 1, 2, 3, 4, 5].map((i) => P(s * (B.face + reach - 0.6 - i * 1.1), floor + 0.06, w + dw))));
   }
-  const glowAt = new THREE.Color();
+  const glowAt = new THREE.Color(), permanent = new Set(parked);
   function light(dock, t) {
     const { mesh, n } = dock.lamps, c = fleet.find((x) => x.dock === dock && x.state !== 'away');
-    const moving = c && c.state !== 'park', landing = c?.state === 'dock', busy = taken.has(dock) || parked.includes(dock);
+    const moving = c && c.state !== 'park', landing = c?.state === 'dock', busy = taken.has(dock) || permanent.has(dock);
+    if (!moving && dock.lamps.busy === busy) return; // nothing animating and nothing changed: the colours hold
+    dock.lamps.busy = moving ? null : busy;
     for (let i = 0; i < n; i++) { // status: free, taken, or a slow pulse while a car comes or goes (never a flash)
       if (moving) glowAt.copy(tint.red).multiplyScalar(1 + 0.6 * Math.sin(t * 2));
       else if (busy) glowAt.copy(tint.red).multiplyScalar(1.5);

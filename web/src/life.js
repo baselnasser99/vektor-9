@@ -46,6 +46,23 @@ function lights(lane, hub) {
 }
 const fract = (v) => v - Math.floor(v);
 
+// A city car, the everyday cousin of IKARO's executive cars (aircars.js): a low painted body, a dark glass cabin set
+// back under a painted roof, four dark wheels, a white headlight bar and a red tail bar. Origin at the middle of the
+// body, 0.65 m above the road; +z ahead; 1.9 x 4.4 m like the old box, so lanes and gaps are unchanged. One geometry
+// per material, each instanced for every car.
+function carParts() {
+  const at = (geo, x, y, z) => geo.clone().translate(x, y, z);
+  const flat = (geos) => mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g)));
+  const wheel = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 12).rotateZ(Math.PI / 2);
+  return {
+    paint: flat([at(box(1.9, 0.55, 4.4, 1), 0, -0.12, 0), at(box(1.5, 0.08, 1.7, 0), 0, 0.62, -0.35)]),
+    glass: at(box(1.6, 0.48, 2.2, 1), 0, 0.36, -0.3),
+    tyres: flat([-0.86, 0.86].flatMap((x) => [-1.45, 1.45].map((z) => at(wheel, x, -0.31, z)))),
+    head: at(box(1.5, 0.07, 0.06, 0), 0, 0.02, 2.21),
+    tail: at(box(1.7, 0.08, 0.06, 0), 0, 0.08, -2.21),
+  };
+}
+
 // Cars with head- and taillights. Each lane runs along its axis at offset `at` and height `y`, from `from` to
 // `to`, carrying `cars` cars that wrap back to the start; lift(along), if set, is its height there (desert.js outOfTown).
 // warp: the city's bend (city.js), so cars follow the curved streets; it is zero out on the highways.
@@ -53,10 +70,10 @@ const fract = (v) => v - Math.floor(v);
 // the island radius plus its own offset, so they nest and keep circling the same way.
 export function traffic(kit, lanes, onFrame, warp, hub) {
   const count = lanes.reduce((sum, l) => sum + l.cars, 0), rand = rng(77);
-  const lamps = (z, y) => mergeGeometries([-0.6, 0.6].map((x) => new THREE.BoxGeometry(0.4, 0.2, 0.1).translate(x, y, z)));
-  const body = new THREE.InstancedMesh(box(1.9, 1.3, 4.4, 1), new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }), count);
-  const head = new THREE.InstancedMesh(lamps(2.21, 0.05), kit.glow(palette.glare, 4), count);
-  const tail = new THREE.InstancedMesh(lamps(-2.21, 0.15), kit.glow(palette.neonRed, 4), count);
+  const geo = carParts(), make = (g, mat) => new THREE.InstancedMesh(g, mat, count);
+  const body = make(geo.paint, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }));
+  const meshes = [body, make(geo.glass, kit.glass(palette.charcoal)), make(geo.tyres, kit.steel(palette.graphite, 0.8)),
+    make(geo.head, kit.glow(palette.glare, 4)), make(geo.tail, kit.glow(palette.neonRed, 4))];
   const cars = [];
   for (const lane of lanes) {
     lane.queue = []; // its cars in order along it, each following the one ahead, so none ever pass through another
@@ -72,7 +89,7 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   const color = new THREE.Color();
   cars.forEach((c, i) => body.setColorAt(i, color.set(pick(rand, MOVING))));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-  const shift = [0, 0], here = [0, 0], ahead = [0, 0], meshes = [body, head, tail]; // reused: no garbage per frame
+  const shift = [0, 0], here = [0, 0], ahead = [0, 0]; // reused: no garbage per frame
   // Where a car `along` its lane is, written into out as [x, z].
   const spot = ({ axis, at }, along, out) => {
     let side = at - hub.c;
@@ -120,9 +137,9 @@ export function traffic(kit, lanes, onFrame, warp, hub) {
   };
   onFrame(tick);
   // Cars move far from where the meshes were created, so never cull them by their starting bounds.
-  for (const mesh of [body, head, tail]) mesh.frustumCulled = false;
+  for (const mesh of meshes) mesh.frustumCulled = false;
   const g = new THREE.Group();
-  g.add(body, head, tail);
+  g.add(...meshes);
   g.userData.clock = () => t; // the lights' time, for the pedestrian signals (walkLight)
   return g;
 }
