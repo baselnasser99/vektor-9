@@ -27,7 +27,7 @@ import { crossing } from './city.js';
 import { walkLight } from './life.js';
 import { BLOCK, SIDEWALK, TILE } from './world.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
-import { ENTRANCE, HQ } from './headquarters.js';
+import { ENTRANCE, HQ, entranceRise, siteFrame } from './headquarters.js';
 
 // Settings (the P panel): people per sector, the most alive at once, walking-speed spread, how often people stop
 // and stand about, detail (0 simplest to 2 full) and the distance they are drawn to, in metres.
@@ -356,7 +356,7 @@ function doorsOf(hq, hqAt, net) {
 // street). On the ground, for each tower: guards beside its security gates and in its gateway, a receptionist,
 // staff in its lobby; a pair talking on the plaza, a guard by the booth at the alley's mouth, someone on a bench now
 // and then. Up the towers, on their own floors (y): staff and a guard on each landing terrace, a technician at the
-// back of a hangar. On the skybridge: office workers and a patrol crossing (bridge, below). Nobody stands on the
+// back of a hangar, a deck officer on each of the security tower's aprons. On the skybridge: office workers and a patrol crossing (bridge, below), a guard at each end. Nobody stands on the
 // approaches between the gates, the pads or the walkers' lanes.
 function hqPlaces(hq, hqAt, rand) {
   const one = (u, w, turn, acts, only, extra = {}) => {
@@ -372,17 +372,25 @@ function hqPlaces(hq, hqAt, rand) {
   const terrace = HQ.terrace.y + 0.22, bay = HQ.hangar.y + 0.18;
   for (const s of [-1, 1]) {
     const tc = s * HQ.TOWER[0];
-    out.push(one(tc - 5.4, 14.8, 0, guard, 4), one(tc + 5.4, 14.8, 0, guard, 4), one(tc + s * 4.5, 9.8, -s * 0.3, guard, 4));
-    out.push(one(tc, -1.0, 0, staff, 1), pair(tc - 3.2, 2.6));
-    out.push(one(tc + 5.6, 12.0, 0.4, ['device', 'look'], 1, { y: terrace }), one(tc - 6.2, 12.2, -0.3, guard, 4, { y: terrace }));
+    // Up on the entrance terrace: a guard beyond each end of the gates, one in the gateway; staff in the lobby.
+    out.push(one(tc - 6.4, ENTRANCE.GATES + 0.6, 0, guard, 4), one(tc + 6.4, ENTRANCE.GATES + 0.6, 0, guard, 4), one(tc + s * 6.8, 8.0, -s * 0.3, guard, 4));
+    out.push(one(tc, -1.5, 0, staff, 1), pair(tc - 3.5, -2.8));
+    out.push(one(tc + 5.6, 11.6, 0.4, ['device', 'look'], 1, { y: terrace }), one(tc - 6.2, 11.8, -0.3, guard, 4, { y: terrace }));
     out.push(one(s * (HQ.hangar.face - HQ.hangar.depth + 1), HQ.hangar.w[0], s > 0 ? Math.PI / 2 : -Math.PI / 2, ['look', 'device'], 2, { y: bay }));
   }
-  out.push(pair(-29.2, 12.6), one(1.6, 16.3, 0, guard, 4));
-  if (rand() < 0.6) { // on a bench, looking across the approach
+  // On the security tower's long aprons (H3, H4): a deck officer beside each pad, well clear of the car's box.
+  for (const w of HQ.hangar.w) out.push(one(HQ.hangar.face + 1.5, w + 4.5, Math.PI / 2, ['look', 'device', 'stand'], 4, { y: bay }));
+  // On the forecourt: a pair talking between the left terrace and the drop-off, a guard by the booth at the gap's
+  // mouth and one at the drop-off; someone on a bench at the side now and then, looking across the approach.
+  out.push(pair(-16.5, 21.5), one(2.0, 12.6, 0, guard, 4), one(-9.5, 20.6, 0.3, guard, 4));
+  if (rand() < 0.6) {
     const s = rand() < 0.5 ? -1 : 1;
-    out.push(one(s * (HQ.TOWER[0] - 6.6), 18.2, s > 0 ? Math.PI / 2 : -Math.PI / 2, ['device', 'look', 'rest'], 1, { sit: true }));
+    out.push(one(s * 37.4, 22, s > 0 ? -Math.PI / 2 : Math.PI / 2, ['device', 'look', 'rest'], 1, { sit: true }));
   }
-  for (let k = 0; k < 6; k++) out.push({ members: [{ x: hq.x, z: hq.z, heading: 0, bridge: true }], acts: ['look', 'device'], only: k === 5 ? 4 : 1, first: true });
+  for (let k = 0; k < 14; k++) out.push({ members: [{ x: hq.x, z: hq.z, heading: 0, bridge: true }], acts: ['look', 'device'], only: k === 13 ? 4 : 1, first: true });
+  // A guard just inside each end of the skybridge, by the wall, clear of the walkers' lanes, looking across it.
+  const deck = HQ.bridge.y + 0.22, end = HQ.GAP + 1.6;
+  out.push(one(-end, HQ.bridge.w[1] - 1, Math.PI / 2, guard, 4, { y: deck }), one(end, HQ.bridge.w[0] + 1, -Math.PI / 2, guard, 4, { y: deck }));
   return out;
 }
 
@@ -433,12 +441,10 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
   const net = network(layout), info = districts(snap, layout, net), { S, G, N, adj, dist, next } = net;
   // The headquarters (headquarters.js), if there is one: its frame (u across its front, w out from it), its paved
   // plaza and gateway, the people it keeps there, its three doors and its delivery bay.
-  const hc = hq ? Math.cos(hq.heading) : 1, hs = hq ? Math.sin(hq.heading) : 0;
-  const hqAt = (u, w) => [hq.x + hc * u + hs * w, hq.z - hs * u + hc * w];
-  const hqLocal = (x, z) => [(x - hq.x) * hc - (z - hq.z) * hs, (x - hq.x) * hs + (z - hq.z) * hc]; // hqAt's inverse
-  const ground = !hq ? net.ground : (x, z) => { // the plaza's paving covers the whole site
+  const { at: hqAt, local: hqLocal } = hq ? siteFrame(hq) : {};
+  const ground = !hq ? net.ground : (x, z) => { // the forecourt's paving covers the whole site; the entrances stand higher
     const [u, w] = hqLocal(x, z);
-    return Math.abs(u) > HQ.half[0] || Math.abs(w) > HQ.half[1] ? net.ground(x, z) : 0.18 + ENTRANCE.FLOOR;
+    return Math.abs(u) > HQ.half[0] || Math.abs(w) > HQ.half[1] ? net.ground(x, z) : 0.18 + ENTRANCE.FLOOR + entranceRise(u, w);
   };
   const doors = hq ? doorsOf(hq, hqAt, net) : [];
   const fig = figures(CAPACITY), arr = fig.data.image.data;
@@ -686,7 +692,8 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
   // The skybridge's walkers: each crosses from a door inside one tower's corridor to the other's, keeping to the lane
   // for its direction, now and then stopping at the glass to look out; at the far door it fades into the tower and,
   // a while later, comes out of one of the doors again. Positions in the site's frame (bu across, bw), on the deck.
-  const LANE = { 1: HQ.bridge.w[0] + 2.4, '-1': HQ.bridge.w[1] - 2.4 }, DOOR = HQ.GAP + 5.6;
+  // Where they stop at the glass: the middles of the bridge's four glass panels, never in front of a frame.
+  const LANE = { 1: HQ.bridge.w[0] + 2.4, '-1': HQ.bridge.w[1] - 2.4 }, DOOR = HQ.GAP + 5.6, PANES = [-6.45, -2.15, 2.15, 6.45];
   function startBridge(p, fresh) {
     p.static = false;
     p.bridge = true;
@@ -694,7 +701,7 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
     p.dirU = p.rand() < 0.5 ? 1 : -1;
     p.bu = fresh ? (p.rand() - 0.5) * 2 * HQ.GAP : -p.dirU * DOOR;
     p.bw = LANE[p.dirU];
-    p.pauseAt = p.rand() < 0.4 ? (p.rand() - 0.5) * 2 * (HQ.GAP - 2) : null;
+    p.pauseAt = p.rand() < 0.4 ? PANES[Math.floor(p.rand() * PANES.length)] : null;
     [p.ux, p.uz] = hqAt(p.bu, p.bw);
     p.heading = hq.heading + (p.dirU > 0 ? Math.PI / 2 : -Math.PI / 2);
     p.mode = 'bridge';
@@ -733,7 +740,7 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
     } else if (Math.hypot(ex - p.ux, ez - p.uz) < 0.5) { // through the far door
       p.mode = 'inside';
       p.fadeTo = 0;
-      p.timer = 6 + p.rand() * 20;
+      p.timer = 3 + p.rand() * 7; // back out soon: the bridge is never empty for long
     }
   }
   // A walker on a seat: turns to face the way it faces, lowers onto it (sliding from where it stood), sits a while,
