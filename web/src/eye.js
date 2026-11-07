@@ -203,7 +203,7 @@ export function hqEye(site, camera, onFrame) {
     body.rotation.x = -gy * 0.12;
     body.position.y = Math.sin(t * 0.4) * 0.25;
     debris.rotation.z = t * 0.01;
-    g.updateMatrixWorld(true);
+    body.updateWorldMatrix(true, false); // just the body and its parents; the renderer does the rest
     u.eye.value.copy(body.matrixWorld).invert(); // the clip's frame: the body, before the shell narrows
     if (t >= nextGlitch) {
       glitchAt = t;

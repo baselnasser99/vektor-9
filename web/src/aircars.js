@@ -72,11 +72,11 @@ export function hqFleet(kit, site, onFrame, still) {
   const away = (ux - site.x) * -site.x + (uz - site.z) * -site.z > 0 ? -1 : 1; // +u points to the hub? go the other way
   const T = HQ.terrace, B = HQ.hangar, street = site.street ?? HQ.half[1] + 12;
   // Docks: where a car sits parked (and its heading), and the corridors in and out, as waypoints [point, speed,
-  // heading or null to face along its motion]. hold: where it waits its turn.
+  // heading or null to face along its motion]; the second point of `in` is the holding point clear of the towers.
   const docks = [];
   for (const s of [-1, 1]) {
     const u = s * HQ.TOWER[0], deck = T.y + 0.06, side = Math.PI / 2 * away; // parked side-on, nose away from the hub
-    docks.push({ park: [P(u, deck, T.w), H(side)], hold: P(u + away * 40, 165, street),
+    docks.push({ park: [P(u, deck, T.w), H(side)],
       in: [[P(u + away * 230, 175, street), CRUISE], [P(u + away * 40, 165, street), CRUISE], [P(u, 70, street), SLOW],
         [P(u, deck + 3, street), SLOW], [P(u, deck + 3, T.w), SLOW, H(Math.PI)], [P(u, deck + 3, T.w), FINE, H(side)], [P(u, deck, T.w), FINE, H(side)]],
       out: [[P(u, deck + 3, T.w), FINE, H(side)], [P(u, deck + 3, T.w), FINE, H(0)], [P(u, deck + 3, street), SLOW],
@@ -86,7 +86,7 @@ export function hqFleet(kit, site, onFrame, still) {
   // mouth, in view, rather than deep inside.
   const bay = (s, w, front = false) => {
     const floor = B.y + 0.06, inside = s * (front ? B.face - 3 : B.face - B.depth / 2 - 0.5), mouth = s * (B.face + 12), face = H(s > 0 ? -Math.PI / 2 : Math.PI / 2);
-    return { park: [P(inside, floor, w), face], hold: P(s * (B.face + 55), floor + 14, w + 8),
+    return { park: [P(inside, floor, w), face],
       in: [[P(s * (B.face + 240), floor + 30, w + 20), CRUISE], [P(s * (B.face + 55), floor + 14, w + 8), CRUISE],
         [P(mouth, floor + 1.6, w), SLOW, face], [P(inside, floor + 1.6, w), FINE, face], [P(inside, floor, w), FINE, face]],
       out: [[P(inside, floor + 1.6, w), FINE, face], [P(mouth, floor + 1.6, w), FINE, face], [P(s * (B.face + 60), floor + 20, w - 6), SLOW],
@@ -97,7 +97,7 @@ export function hqFleet(kit, site, onFrame, still) {
   // the face and turning away, climbing.
   const pad = (s, w) => {
     const floor = B.y + 0.06, spot = s * (B.face + 3.3), face = H(s > 0 ? -Math.PI / 2 : Math.PI / 2);
-    return { park: [P(spot, floor, w), face], hold: P(s * (B.face + 55), floor + 14, w + 8),
+    return { park: [P(spot, floor, w), face],
       in: [[P(s * (B.face + 240), floor + 30, w + 20), CRUISE], [P(s * (B.face + 55), floor + 14, w + 8), CRUISE],
         [P(spot, floor + 9, w), SLOW, face], [P(spot, floor + 2, w), FINE, face], [P(spot, floor, w), FINE, face]],
       out: [[P(spot, floor + 2.5, w), FINE, face], [P(s * (B.face + 18), floor + 6, w), FINE, face], [P(s * (B.face + 60), floor + 20, w - 6), SLOW],
@@ -106,7 +106,8 @@ export function hqFleet(kit, site, onFrame, still) {
   docks.push(bay(-1, B.w[0]), pad(1, B.w[0]));
   const parked = [bay(-1, B.w[1], true), pad(1, B.w[1])]; // two cars kept for good: one at a bay's mouth, one on its pad
 
-  // The fleet: four cars sharing the four docks (so now and then one queues), and the two parked ones.
+  // The fleet: four cars sharing the four docks (one now and then finds them all busy and waits out of sight), and
+  // the two parked ones.
   const fleet = [];
   for (let k = 0; k < 6; k++) {
     const g = car();
@@ -231,9 +232,7 @@ export function hqFleet(kit, site, onFrame, still) {
         c.g.visible = true;
         follow(c, c.dock.in.slice(1, 2));
         c.state = 'approach';
-      } else if (c.state === 'approach' && glide(c, dt)) {
-        c.state = 'queue';
-      } else if (c.state === 'queue') { // at the holding point, its dock already claimed: straight in
+      } else if (c.state === 'approach' && glide(c, dt)) { // at the holding point, its dock already claimed: straight in
         follow(c, c.dock.in.slice(2));
         c.state = 'dock';
       } else if (c.state === 'dock' && glide(c, dt)) {
@@ -250,7 +249,7 @@ export function hqFleet(kit, site, onFrame, still) {
           c.timer = 30 + ((c.home * 53 + Math.floor(time)) % 40);
         }
       }
-      if (c.state !== 'park' && c.state !== 'away' && c.state !== 'queue') c.g.position.y += bob * 0.3;
+      if (c.state !== 'park' && c.state !== 'away') c.g.position.y += bob * 0.3;
       c.g.userData.hover.emissiveIntensity = c.state === 'park' ? c.base * 0.25 : c.base; // the pads dim once it is down
       c.g.userData.head.emissiveIntensity = c.state === 'park' ? c.beam * 0.1 : c.beam;
     }
