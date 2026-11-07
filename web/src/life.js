@@ -175,3 +175,42 @@ export function trains(kit, rail, onFrame) {
   place();
   return g;
 }
+
+// Steam from the food stalls' pots (streets.js food): soft puffs that rise, drift, swell and fade, about one every
+// half second a pot, out of step with each other. One point cloud for every stall; with reduced motion it holds still.
+export function steam(food, warp, onFrame) {
+  const vents = food.filter((f) => f.steam).map((f) => f.steam), PER = 10, shift = [0, 0];
+  const pos = new Float32Array(vents.length * PER * 3), seed = new Float32Array(vents.length * PER);
+  vents.forEach(([x, y, z], i) => {
+    warp(x, z, shift);
+    for (let k = 0; k < PER; k++) {
+      pos.set([x + shift[0], y, z + shift[1]], (i * PER + k) * 3);
+      seed[i * PER + k] = k / PER + fract(i * 0.618);
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  const time = { value: 0 };
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { time, tint: { value: new THREE.Color(palette.coldWhite) } }, transparent: true, depthWrite: false,
+    vertexShader: `uniform float time; attribute float aSeed; varying float vAlpha;
+      void main() {
+        float life = fract(time * 0.2 + aSeed);
+        vec3 p = position + vec3(sin(aSeed * 40.0 + time * 0.7) * 0.18 * life, life * 1.7, cos(aSeed * 23.0 + time * 0.6) * 0.18 * life);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (0.3 + life * 0.9) * 900.0 / -mv.z;
+        vAlpha = smoothstep(0.0, 0.15, life) * (1.0 - life) * smoothstep(120.0, 40.0, -mv.z);
+      }`,
+    fragmentShader: `uniform vec3 tint; varying float vAlpha;
+      void main() {
+        float d = length(gl_PointCoord - 0.5);
+        gl_FragColor = vec4(tint, smoothstep(0.5, 0.1, d) * vAlpha * 0.2);
+      }`,
+  });
+  const cloud = new THREE.Points(geo, mat);
+  cloud.frustumCulled = false; // the puffs rise out of the cloud's bounds
+  onFrame((dt) => { time.value += dt; });
+  return cloud;
+}

@@ -4,7 +4,7 @@
 // traffic lanes cars drive in. Long flat parts are slabs cut into short pieces, so the city's warp bends them.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part, REPEAT, rng, slab } from './geometry.js';
+import { box, cyl, part, REPEAT, ring, rng, slab } from './geometry.js';
 import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
@@ -103,16 +103,19 @@ function walk(ctx, s) {
   }
 }
 
-// A food street on a walk's stretch from a to b, on about three in four of the long ones: two or three vendor stalls down one
-// side, facing the middle, and a cafe terrace of small tables and stools under a lit canopy down the other.
-// Returns the part of the stretch it takes, [from, to] ([Infinity, -Infinity] if none). ctx.food gets every stall and
-// stool (people.js puts vendors, customers and diners there).
+// A food street on a walk's stretch from a to b, on about three in four of the long ones: two or three stalls down
+// one side, facing the middle, each a different kind (stall below), and a cafe terrace down the other: small
+// round tables, each under its own hexagonal parasol with a lit rim, and a neon totem with the cafe's name. Warm
+// light pools on the paving under every stall and table. Returns the part of the stretch it takes, [from, to]
+// ([Infinity, -Infinity] if none). ctx.food gets every stall and stool (people.js puts vendors, customers and
+// diners there).
 function food(ctx, s, a, b) {
   const r = rng(Math.round(s.c * 7 + a * 13 + 5) >>> 0);
   if (b - a < 70 || r() < 0.25) return [Infinity, -Infinity];
   const len = 34, from = a + 10 + r() * (b - a - len - 20), side = r() < 0.5 ? -1 : 1;
-  const { kit, root } = ctx, steel = kit.steel(palette.gunmetal, 0.6), dark = kit.steel(palette.charcoal, 0.7);
-  const cream = kit.steel(palette.cream, 0.5);
+  const { kit, root } = ctx, m = {
+    steel: kit.steel(palette.gunmetal, 0.6), dark: kit.steel(palette.charcoal, 0.7), cream: kit.steel(palette.cream, 0.5),
+    bulbs: kit.glow(palette.warmWindow, 2.2), lantern: kit.glow(palette.neonRed, 1.1) };
   const face = (toward) => (s.axis === 'z' ? (toward > 0 ? Math.PI / 2 : -Math.PI / 2) : toward > 0 ? 0 : Math.PI);
   const group = (v, off, toward) => { // a frame on the paving whose +z faces across the street, toward side `toward`
     const g = new THREE.Group(), [x, z] = spot(s, v, off);
@@ -122,53 +125,136 @@ function food(ctx, s, a, b) {
     g.updateMatrixWorld(true);
     return g;
   };
-  // The stalls: a steel counter with a lit edge, a kitchen unit behind with a menu screen, a canopy with a lit
-  // fringe and the stall's sign, bowls on the counter and two stools.
-  const stalls = 2 + (r() < 0.5 ? 1 : 0);
+  const kinds = ['noodle', 'cart', 'grill', 'drinks'].sort(() => r() - 0.5), stalls = 2 + (r() < 0.5 ? 1 : 0);
   for (let k = 0; k < stalls; k++) {
-    const v = from + 4 + (k * (len - 8)) / (stalls - 1), g = group(v, side * 2.8, -side), light = kit.glow(pick(r, WARM), 1.6);
-    part(g, box(2.4, 0.95, 0.8, 1), steel, 0, 0.475, 0);
-    part(g, box(2.55, 0.05, 0.95), dark, 0, 0.97, 0.05);
-    part(g, box(2.4, 0.05, 0.02), light, 0, 0.8, 0.42);
-    part(g, box(2.4, 2.3, 0.45, 1), dark, 0, 1.15, -0.95); // the vendor stands between
-    const menu = [pick(r, ['NOODLES', 'DUMPLINGS', 'SKEWERS', 'HOT SOUP']), pick(r, ['6 CR', '9 CR', '4 CR'])];
-    part(g, new THREE.PlaneGeometry(1.4, 0.5), kit.message(menu, 280, 100), 0, 1.75, -0.72);
-    for (const x of [-1.2, 1.2]) part(g, box(0.06, 1.6, 0.06), dark, x, 1.8, 0.45);
-    part(g, box(2.9, 0.08, 2.1, 1), dark, 0, 2.62, -0.2);
-    part(g, box(2.9, 0.06, 0.04), light, 0, 2.58, 0.85);
-    part(g, new THREE.PlaneGeometry(2.1, 0.5), kit.sign(pick(r, FOOD), pick(r, WARM)), 0, 2.95, 0.86);
-    for (const x of [-0.7, 0.1, 0.6]) part(g, cyl(0.09, 0.06, 0.07, 10), cream, x, 1.03, 0.15);
-    for (const x of [-0.55, 0.55]) {
-      part(g, cyl(0.17, 0.17, 0.05, 12), dark, x, 0.42, 0.95);
-      part(g, cyl(0.03, 0.04, 0.4, 6), steel, x, 0.2, 0.95);
-    }
+    const v = from + 4 + (k * (len - 8)) / (stalls - 1), g = group(v, side * 2.8, -side), color = pick(r, WARM);
+    const vent = stall(kit, g, kinds[k], color, r, m);
+    pool(g, 2.4, color, 0, 0.6);
     const [x, z] = spot(s, v, side * 2.8);
-    ctx.food.push({ kind: 'stall', x, z, heading: face(-side), along: s.axis, line: s.c });
+    ctx.food.push({ kind: 'stall', x, z, heading: face(-side), along: s.axis, line: s.c,
+      steam: vent && new THREE.Vector3(...vent).applyMatrix4(g.matrixWorld).toArray() });
   }
-  // The terrace: tables in a row under a long canopy on four posts, its edges lit, the cafe's name over it.
-  const cafe = group(from + len / 2, -side * 2.4, side), tables = 3 + (r() < 0.5 ? 1 : 0);
-  const light = kit.glow(pick(r, [palette.neonCyan, palette.sodium, palette.neonPink]), 1.4);
-  part(cafe, box(len - 4, 0.08, 3, 1), dark, 0, 2.7, 0);
-  for (const zz of [-1.45, 1.45]) part(cafe, box(len - 4, 0.05, 0.05), light, 0, 2.64, zz);
-  for (const xx of [-(len - 5) / 2, (len - 5) / 2]) for (const zz of [-1.3, 1.3]) part(cafe, box(0.08, 2.6, 0.08), dark, xx, 1.3, zz);
-  part(cafe, new THREE.PlaneGeometry(2.6, 0.55), kit.sign(pick(r, CAFES), pick(r, [palette.neonCyan, palette.neonPink, palette.sodium])), 0, 3.05, 1.52);
+  // The terrace.
+  const tint = pick(r, [palette.neonCyan, palette.sodium, palette.neonPink]), rim = kit.glow(tint, 1.4);
+  const totem = group(from + (r() < 0.5 ? 1 : len - 1), -side * 2.4, side);
+  part(totem, box(0.3, 2.8, 0.7, 1), m.dark, 0, 1.4, 0);
+  part(totem, new THREE.PlaneGeometry(0.55, 2.3), kit.sign(pick(r, CAFES), tint, true), 0, 1.5, 0.16);
+  part(totem, box(0.32, 0.05, 0.72), rim, 0, 2.82, 0);
+  const tables = 3 + (r() < 0.5 ? 1 : 0);
   for (let k = 0; k < tables; k++) {
     const v = from + 5 + (k * (len - 10)) / (tables - 1), g = group(v, -side * 2.4, side);
-    part(g, cyl(0.42, 0.42, 0.04, 16), dark, 0, 0.76, 0);
-    part(g, cyl(0.05, 0.05, 0.74, 6), steel, 0, 0.38, 0);
-    part(g, cyl(0.24, 0.26, 0.03, 12), steel, 0, 0.015, 0);
-    part(g, cyl(0.05, 0.05, 0.09, 8), light, 0, 0.83, 0); // a small lamp on each table
+    part(g, cyl(0.42, 0.42, 0.04, 16), m.dark, 0, 0.76, 0);
+    part(g, cyl(0.05, 0.05, 0.74, 6), m.steel, 0, 0.38, 0);
+    part(g, cyl(0.24, 0.26, 0.03, 12), m.steel, 0, 0.015, 0);
+    part(g, cyl(0.05, 0.05, 0.09, 8), rim, 0, 0.83, 0); // a small lamp on each table
+    part(g, cyl(0.03, 0.03, 1.55, 6), m.steel, 0, 1.6, 0); // the parasol: pole, hexagonal top, lit rim, bulbs
+    part(g, cyl(0.12, 1.25, 0.28, 6), m.dark, 0, 2.48, 0);
+    ring(g, 1.22, 0.025, rim, 0, 2.34, 0, 6, 4).rotation.z = Math.PI / 6; // its corners under the parasol's
+    for (let c = 0; c < 6; c++) part(g, box(0.06, 0.06, 0.06, 0), m.bulbs, Math.cos(c * Math.PI / 3) * 1.1, 2.26, Math.sin(c * Math.PI / 3) * 1.1);
+    pool(g, 1.8, palette.sodium, 0, 0);
     const seats = 2 + Math.floor(r() * 3), turn = r() * Math.PI, [tx, tz] = spot(s, v, -side * 2.4);
-    for (let m = 0; m < seats; m++) {
-      const ang = turn + (m * Math.PI * 2) / seats, sx = Math.sin(ang) * 0.75, sz = Math.cos(ang) * 0.75;
-      part(g, cyl(0.17, 0.17, 0.05, 12), dark, sx, 0.42, sz);
-      part(g, cyl(0.03, 0.04, 0.4, 6), steel, sx, 0.2, sz);
-      part(g, cyl(0.07, 0.05, 0.05, 10), cream, sx * 0.55, 0.8, sz * 0.55); // a bowl in front of each seat
+    for (let n = 0; n < seats; n++) {
+      const ang = turn + (n * Math.PI * 2) / seats, sx = Math.sin(ang) * 0.75, sz = Math.cos(ang) * 0.75;
+      part(g, cyl(0.17, 0.17, 0.05, 12), m.dark, sx, 0.42, sz);
+      part(g, cyl(0.03, 0.04, 0.4, 6), m.steel, sx, 0.2, sz);
+      part(g, cyl(0.07, 0.05, 0.05, 10), m.cream, sx * 0.55, 0.8, sz * 0.55); // a bowl in front of each seat
       const w = new THREE.Vector3(sx, 0, sz).applyMatrix4(g.matrixWorld);
       ctx.food.push({ kind: 'stool', x: w.x, z: w.z, heading: Math.atan2(tx - w.x, tz - w.z), table: [tx, tz], along: s.axis, line: s.c });
     }
   }
   return [from, from + len];
+}
+
+// A warm pool of light on the paving, radius rad, in frame g (one additive material a colour, shared).
+const pools = new Map();
+function pool(g, rad, color, x, z) {
+  if (!pools.has(color)) pools.set(color, new THREE.MeshBasicMaterial({ map: radialTexture(128), color, transparent: true,
+    opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }));
+  part(g, new THREE.CircleGeometry(rad, 20), pools.get(color), x, 0.03, z).rotation.x = -Math.PI / 2;
+}
+
+// One food stall of `kind` in frame g (+z toward its customers; they stand 1.35 m out and sit on two stools 0.95 m
+// out, the vendor 0.6 m behind the front): a noodle counter with its kitchen unit and canopy, a noodle cart on
+// wheels under a small roof, a skewer grill of glowing coals under a smoke hood with a flue, or a drinks kiosk with
+// a lit fridge and a neon ring. Every kind has a lit name, a menu screen (a live amber display), a blade sign on a
+// pole beside it, warm bulbs and two stools. Returns where its steam rises from, in g (null: none).
+function stall(kit, g, kind, color, r, m) {
+  const light = kit.glow(color, 1.6), name = pick(r, FOOD[kind]), menu = pick(r, {
+    noodle: [['NOODLES', '6 CR'], ['DUMPLINGS', '9 CR'], ['HOT SOUP', '5 CR']], cart: [['BUNS', '3 CR'], ['ODEN', '5 CR']],
+    grill: [['SKEWERS', '4 CR'], ['VAT MEAT', '7 CR']], drinks: [['ICE TEA', '2 CR'], ['SODA', '2 CR'], ['KOFI', '3 CR']] }[kind]);
+  const bulbs = (y, z, w) => {
+    part(g, box(w, 0.012, 0.012), m.dark, 0, y + 0.03, z);
+    for (let i = 0; i < 8; i++) part(g, box(0.07, 0.07, 0.07, 0), m.bulbs, -w / 2 + (i + 0.5) * (w / 8), y - 0.07 * Math.sin(((i + 0.5) / 8) * Math.PI), z);
+  };
+  const front = (w, h, d, y = 0) => { // a counter: body, top and a lit edge
+    part(g, box(w, h, d, 1), m.steel, 0, y + h / 2, 0);
+    part(g, box(w + 0.15, 0.05, d + 0.15), m.dark, 0, y + h + 0.02, 0.05);
+    part(g, box(w, 0.05, 0.02), light, 0, y + h - 0.15, d / 2 + 0.01);
+  };
+  let vent = null;
+  if (kind === 'noodle') {
+    front(2.4, 0.95, 0.8);
+    part(g, box(2.4, 2.3, 0.45, 1), m.dark, 0, 1.15, -0.95); // the vendor stands between
+    part(g, new THREE.PlaneGeometry(1.4, 0.5), kit.display(menu, 280, 100), 0, 1.75, -0.72);
+    for (const x of [-1.2, 1.2]) part(g, box(0.06, 1.6, 0.06), m.dark, x, 1.8, 0.45);
+    part(g, box(2.9, 0.08, 2.1, 1), m.dark, 0, 2.62, -0.2);
+    part(g, box(2.9, 0.06, 0.04), light, 0, 2.58, 0.85);
+    part(g, new THREE.PlaneGeometry(2.1, 0.5), kit.sign(name, color), 0, 2.95, 0.86);
+    for (const x of [-1.05, 1.05]) part(g, cyl(0.12, 0.12, 0.3, 10), m.lantern, x, 2.28, 0.7);
+    bulbs(2.47, 0.88, 2.7);
+    part(g, cyl(0.2, 0.18, 0.28, 14), m.steel, -0.6, 1.13, -0.15);
+    vent = [-0.6, 1.3, -0.15];
+  } else if (kind === 'cart') {
+    front(1.9, 0.7, 0.85, 0.32);
+    for (const x of [-0.7, 0.7]) for (const z of [-0.38, 0.38]) part(g, cyl(0.22, 0.22, 0.08, 14), m.dark, x, 0.22, z).rotation.x = Math.PI / 2;
+    part(g, box(0.05, 0.05, 0.9), m.steel, 1.15, 0.9, 0); // the push bar
+    for (const x of [-0.9, 0.9]) part(g, box(0.05, 1.3, 0.05), m.dark, x, 1.7, -0.35);
+    const roof = part(g, box(2.3, 0.06, 1.5, 1), m.dark, 0, 2.38, 0);
+    roof.rotation.x = -0.12; // a slight pitch toward the customers
+    part(g, box(2.3, 0.05, 0.04), light, 0, 2.27, 0.73);
+    part(g, new THREE.PlaneGeometry(1.7, 0.42), kit.sign(name, color), 0, 2.65, 0.6);
+    part(g, new THREE.PlaneGeometry(0.9, 0.34), kit.display(menu, 240, 90), 0, 0.7, 0.44);
+    bulbs(2.2, 0.74, 2.1);
+    part(g, cyl(0.17, 0.15, 0.24, 14), m.steel, -0.45, 1.18, 0);
+    part(g, cyl(0.12, 0.12, 0.3, 10), m.lantern, 0.95, 2.0, 0.6);
+    vent = [-0.45, 1.32, 0];
+  } else if (kind === 'grill') {
+    front(2.4, 0.95, 0.8);
+    part(g, box(1.6, 0.06, 0.5), kit.glow(palette.neonOrange, 2.2), 0, 1.0, -0.05); // the coals
+    for (let i = 0; i < 9; i++) part(g, box(0.02, 0.02, 0.52), m.dark, -0.72 + i * 0.18, 1.05, -0.05);
+    for (let i = 0; i < 6; i++) part(g, box(0.5, 0.015, 0.015), m.cream, -0.5 + i * 0.2, 1.08, -0.05).rotation.y = Math.PI / 2;
+    part(g, box(2.4, 1.6, 0.45, 1), m.dark, 0, 0.8, -0.95);
+    part(g, box(2.1, 0.55, 1.0, 1), m.steel, 0, 2.25, -0.15); // the hood
+    part(g, cyl(0.12, 0.12, 1.4, 10), m.dark, 0.6, 3.2, -0.3); // its flue
+    part(g, box(2.1, 0.05, 0.04), light, 0, 1.97, 0.36);
+    for (const x of [-1.0, 1.0]) part(g, box(0.06, 1.0, 0.06), m.dark, x, 1.5, 0.3);
+    part(g, new THREE.PlaneGeometry(1.8, 0.42), kit.sign(name, color), 0, 2.27, 0.36);
+    part(g, new THREE.PlaneGeometry(1.2, 0.4), kit.display(menu, 260, 90), 0, 1.25, -0.72);
+    bulbs(1.92, 0.42, 2.0);
+    vent = [0, 1.4, -0.05];
+  } else {
+    front(2.4, 1.05, 0.7);
+    part(g, box(2.2, 2.1, 0.5, 1), m.dark, 0, 1.05, -0.95);
+    part(g, new THREE.PlaneGeometry(1.8, 1.4), kit.glow(palette.coldCyan, 0.9), 0, 1.25, -0.69); // the fridge's glass
+    for (let i = 0; i < 4; i++) part(g, box(1.8, 0.03, 0.06), m.dark, 0, 0.7 + i * 0.37, -0.68);
+    for (let i = 0; i < 5; i++) part(g, cyl(0.04, 0.035, 0.18, 8), kit.glow(pick(r, [palette.neonCyan, palette.neonPink, palette.sodium]), 1.2), -0.7 + i * 0.35, 0.95 + (i % 2) * 0.37, -0.75);
+    part(g, box(2.7, 0.1, 1.9, 1), m.dark, 0, 2.5, -0.2);
+    part(g, box(2.7, 0.05, 0.04), light, 0, 2.46, 0.75);
+    ring(g, 0.42, 0.04, kit.glow(palette.neonCyan, 2), 0, 3.0, 0.3).rotation.x = 0; // standing, facing the street
+    part(g, new THREE.PlaneGeometry(1.6, 0.4), kit.sign(name, color), -0.1, 2.8, 0.76);
+    part(g, new THREE.PlaneGeometry(1.0, 0.36), kit.display(menu, 240, 90), 0, 0.75, 0.37);
+    for (const x of [-0.6, -0.3, 0.5]) part(g, cyl(0.04, 0.035, 0.12, 8), m.cream, x, 1.13, 0.1);
+    bulbs(2.35, 0.78, 2.5);
+  }
+  // The blade sign on its pole beside the stall, lit both ways along the street.
+  part(g, box(0.06, 3.4, 0.06), m.dark, 1.5, 1.7, 0.55);
+  for (const t of [-1, 1]) part(g, new THREE.PlaneGeometry(0.42, 1.5), kit.sign(name, color, true), 1.5 + t * 0.03, 2.55, 0.8).rotation.y = (t * Math.PI) / 2;
+  part(g, new THREE.PlaneGeometry(1.5, 0.38), kit.holo(pick(r, ['OPEN 24H', 'HOT', 'FRESH VAT', 'SPICY', 'TAKE AWAY']), pick(r, [palette.neonCyan, palette.neonPink])), 0, 3.6, 0.2);
+  for (const x of [-0.55, 0.55]) {
+    part(g, cyl(0.17, 0.17, 0.05, 12), m.dark, x, 0.42, 0.95);
+    part(g, cyl(0.03, 0.04, 0.4, 6), m.steel, x, 0.2, 0.95);
+  }
+  return vent;
 }
 
 // Where the boulevards meet: the tower's plaza. A big roundabout circles the tower's island (life.js traffic, hub);

@@ -23,7 +23,8 @@ export const SHOPS = [['KUROTECH', 'KURO'], ['ZENKO TECH', 'ZENKO'], ['NEXA PART
   ['SEIRA CYBER', 'SEIRA'], ['VX9 REPAIR', 'VX9']];
 export const WORDS = ['ODEN 24', 'NOVA', 'VX9', 'KORU', 'SEIRA', 'ZENKO', 'NEXA', 'TOKU']; // invented sign text
 // Street food on the pedestrian walks (streets.js food): stall names and cafe names, all invented.
-export const FOOD = ['NEO RAMEN', 'ODEN 24', 'KORU DUMPLING', 'VAT BBQ', 'NOODLE 9', 'SOY GRILL', 'HOT BUNS', 'ALGAE TEA'];
+export const FOOD = { noodle: ['NEO RAMEN', 'ODEN 24', 'KORU DUMPLING', 'NOODLE 9'], cart: ['HOT BUNS', 'ODEN 24', 'NOODLE 9'],
+  grill: ['VAT BBQ', 'SOY GRILL', 'SKEWER 7'], drinks: ['ALGAE TEA', 'ICE KOFI', 'NEON SODA', 'SYNTH JUICE'] };
 export const CAFES = ['NIGHT KISSA', 'STATIC TEA', 'KOFI 9', 'BLACK SALT', 'CAFE NULL', 'LOW ORBIT'];
 // Invented corporations on the billboards (city.js billboards): brand, slogan, the product its ad shows
 // (textures.js PRODUCTS), and the ad's two colours, off-white or muted amber with an occasional red or cyan.
