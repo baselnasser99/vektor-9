@@ -7,7 +7,7 @@ import { facadeClock } from './facade.js';
 import { ROOFTECH } from './rooftech.js';
 import { buildCity, cityLayout } from './city.js';
 import { REACH, buildDesert, farSprawl, outOfTown } from './desert.js';
-import { traffic, trains } from './life.js';
+import { steam, traffic, trains } from './life.js';
 import { people } from './people.js';
 import { airships, cloudDeck, districtGlows, horizon, moon, rain, rainAmount, stars } from './atmosphere.js';
 
@@ -51,6 +51,7 @@ const desert = buildDesert(kit, edge, lines, onFrame);
 const cars = traffic(kit, outOfTown(lanes, edge), onFrame, warp, hub);
 scene.add(city, desert, farSprawl(edge), cars);
 // People on the sidewalks, crossing with the cars' lights (P shows the crowd settings).
+scene.add(steam(food, warp, onFrame));
 scene.add(people({ snap, layout, warp, benches, lamps, food, clock: cars.userData.clock, camera, controls, onFrame, still: stage.still }));
 if (rail) scene.add(trains(kit, rail, onFrame));
 scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), ...cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame),

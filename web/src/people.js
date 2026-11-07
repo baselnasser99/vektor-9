@@ -10,7 +10,9 @@
 // crossings, stop a while (a phone, a look round, a look up at the towers), and go on; now and then one stops on
 // the way, and now and then one takes a free bench or cafe seat for a while. The rest stand or sit at places that
 // suit it: by entrances, at the kerb waiting for a ride, talking in small groups, on the walks' benches, eating
-// at the food streets' tables and stalls (and the vendors cooking), on the plaza looking up at the tower.
+// at the food streets' tables and stalls (and the vendors cooking), on the plaza looking up at the tower. Walkers
+// also stop at the stalls for food, eating at the counter, on its stools or standing beside them, or queue
+// beside the counter and move up as it frees.
 //
 // How many. The city is split by sector. Sectors near the camera are active (with a margin, so they switch on and
 // off out of sight); each has a seeded list of people, and a prefix of it is live, so the same people are always
@@ -317,14 +319,9 @@ function places(k, snap, layout, net, info, seats, food, lamps) {
     for (const f of food) {
       const v = axis === 'z' ? f.z : f.x;
       if (f.kind !== 'stall' || f.along !== axis || f.line !== lines[L].c || v < lo || v > hi) continue;
-      const [dx, dz] = [Math.sin(f.heading), Math.cos(f.heading)], at = (u, w) => [f.x + dz * u + dx * w, f.z - dx * u + dz * w];
-      const [vx, vz] = at(0, -0.6);
-      add([{ x: vx, z: vz, heading: f.heading }], ['work', 'work', 'work', 'talk']);
-      const guests = Math.floor(rand() * 3), seated = rand() < 0.5;
-      add(Array.from({ length: guests }, (_, m) => {
-        const [x, z] = at((m ? 0.55 : -0.55) + (seated ? 0 : (rand() - 0.5) * 0.3), seated ? 0.95 : 1.4);
-        return { x, z, heading: f.heading + Math.PI, sit: seated };
-      }), ['eat', 'eat', 'device', 'talk']);
+      add([{ x: f.x - Math.sin(f.heading) * 0.6, z: f.z - Math.cos(f.heading) * 0.6, heading: f.heading }], ['work', 'work', 'work', 'talk']);
+      const guests = seats.filter((st) => st.stall === f && st.rank === 1 && rand() < 0.4); // the rest are left for walkers
+      if (guests.length) add(guests.map((st) => ({ ...sat(st), sit: !st.stand })), ['eat', 'eat', 'device', 'talk']);
     }
   }
   if (info.plaza) { // the tower's plaza: a group or two, and people looking up at the tower
@@ -346,15 +343,15 @@ function seatsOf(benches, food, layout, net) {
   const { lines } = layout, { S, G, e0, e1 } = net;
   const facing = (axis, sign) => (axis === 'z' ? (sign > 0 ? Math.PI / 2 : -Math.PI / 2) : sign > 0 ? 0 : Math.PI);
   const seat = (x, z, heading, step, along, extra) => {
-    const across = along === 'z' ? x : z, v = along === 'z' ? z : x;
+    const across = along === 'z' ? x : z, v = along === 'z' ? z : x, lv = extra.via ? extra.via[along === 'z' ? 1 : 0] : v;
     const L = lines.reduce((best, l, i) => (Math.abs(across - l.c) < Math.abs(across - lines[best].c) ? i : best), 0);
     const sign = Math.sign(across - lines[L].c) || 1, kerb = lines[L].c + sign * (lines[L].w / 2 - SIDEWALK);
     let r = 0;
-    while (r < S - 1 && v > e1[r]) r++;
-    const corner = 2 * (sign > 0 ? L : L - 1) + (sign > 0 ? 0 : 1), alongNode = 2 * r + (v - e0[r] < e1[r] - v ? 0 : 1);
+    while (r < S - 1 && lv > e1[r]) r++;
+    const corner = 2 * (sign > 0 ? L : L - 1) + (sign > 0 ? 0 : 1), alongNode = 2 * r + (lv - e0[r] < e1[r] - lv ? 0 : 1);
     const fx = x + Math.sin(heading) * step, fz = z + Math.cos(heading) * step;
     return { x, z, heading, fx, fz, along, L, v, sign, node: along === 'z' ? corner + alongNode * G : alongNode + corner * G,
-      lane: (lane) => (along === 'z' ? [kerb + sign * lane, z] : [x, kerb + sign * lane]), taken: null, walkUp: true, ...extra };
+      lane: (lane) => (along === 'z' ? [kerb + sign * lane, lv] : [lv, kerb + sign * lane]), taken: null, walkUp: true, ...extra };
   };
   const out = benches.flatMap(([x, z, axis, sign], bench) => [-0.45, 0.45].map((d) =>
     seat(axis === 'z' ? x : x + d, axis === 'z' ? z + d : z, facing(axis, sign), 0.5, axis, { bench })));
@@ -363,6 +360,19 @@ function seatsOf(benches, food, layout, net) {
     const off = (u, w) => Math.abs(f.along === 'z' ? u - f.line : w - f.line); // distance from the walk's middle
     st.walkUp = off(st.fx, st.fz) > off(...f.table); // the stand-behind point is on the sidewalk's side of the table
     out.push(st);
+  }
+  // Each stall: two stools at the counter and a place to stand either side of them (rank 1), and a short queue
+  // beside the counter each way (ranks 2 and 3, facing it), all reached round the stall's end (via) from the
+  // sidewalk behind it. f.seats: the stall's own, for moving up the queue.
+  for (const f of food) if (f.kind === 'stall') {
+    const dx = Math.sin(f.heading), dz = Math.cos(f.heading), at = (u, w) => [f.x + dz * u + dx * w, f.z - dx * u + dz * w];
+    const [cx, cz] = at(0, 0.6);
+    f.seats = [[-1.05, 1.35, 1], [-0.55, 0.95, 1], [0.55, 0.95, 1], [1.05, 1.35, 1], [-1.75, 1.55, 2], [1.75, 1.55, 2],
+      [-2.35, 1.8, 3], [2.35, 1.8, 3]].map(([u, w, rank]) => {
+      const [x, z] = at(u, w), sits = rank === 1 && Math.abs(u) < 1, heading = rank > 1 ? Math.atan2(cx - x, cz - z) : f.heading + Math.PI;
+      return seat(x, z, heading, sits ? -0.5 : 0, f.along, { stall: f, stand: !sits, rank, via: at(Math.sign(u) * 2.2, 1.45) });
+    });
+    out.push(...f.seats);
   }
   return out;
 }
@@ -470,9 +480,12 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     }
     const busy = p.home.busy && busyNodes.filter((id) => id !== p.tail && dist[p.tail * N + id] < Infinity);
     p.goal = busy?.length && rand() < 0.4 ? pick(rand, busy) : near.length ? pick(rand, near) : p.tail;
-    // Now and then a free bench or cafe seat near home instead: walk to the corner of its sidewalk, then over to it.
-    if (rand() < 0.08 * CROWD.idle) {
-      const free = seats.filter((st) => !st.taken && st.walkUp && near.includes(st.node));
+    // Now and then a free bench, cafe seat or place at a stall near home instead: walk to the corner of its
+    // sidewalk, then over to it. Stalls draw people more, and they join a queue at its back.
+    if (rand() < 0.1 * CROWD.idle) {
+      const back = (st) => !st.stall || st.rank === Math.min(...st.stall.seats.filter((x) => !x.taken).map((x) => x.rank));
+      let free = seats.filter((st) => !st.taken && st.walkUp && near.includes(st.node) && back(st));
+      if (rand() < 0.5 && free.some((st) => st.stall)) free = free.filter((st) => st.stall);
       if (free.length) {
         p.seat = pick(rand, free);
         p.seat.taken = p;
@@ -538,7 +551,7 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
         p.yawT = (p.rand() - 0.5) * (p.look.patrol ? 2.2 : 1.8);
         p.actTimer = 1.5 + p.rand() * 2.5;
       } else {
-        const own = p.seat && !p.static && (p.seat.table ? ['eat', 'eat', 'device', 'look'] : ['device', 'look', 'rest', 'doze']);
+        const own = p.seat && !p.static && (p.seat.table || p.seat.stall ? ['eat', 'eat', 'device', 'look'] : ['device', 'look', 'rest', 'doze']);
         setAct(p, pick(p.rand, own || (p.place ? p.place.acts : idleActs)));
       }
     }
@@ -562,7 +575,7 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     const k = 1 - Math.exp(-dt * 3), moving = p.mode === 'walk';
     p.dev += ((p.act === 'device' ? 1 : 0) - p.dev) * k;
     p.talk += ((p.act === 'talk' ? p.talkT : 0) - p.talk) * k;
-    p.sit += ((p.mode === 'sit' && (p.static || p.settled) ? 1 : 0) - p.sit) * k * 2;
+    p.sit += ((p.mode === 'sit' && !p.seat?.stand && (p.static || p.settled) ? 1 : 0) - p.sit) * k * 2;
     p.eat += ((p.act === 'eat' ? 1 : 0) - p.eat) * k;
     p.work += ((p.act === 'work' ? 1 : 0) - p.work) * k;
     const slow = k * 0.5; // settling into another way of sitting takes a couple of seconds
@@ -585,11 +598,21 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     if (p.mode === 'sit') {
       p.settled = err < 0.25;
       standAbout(p, dt);
-      if ((p.timer -= dt) <= 0) p.mode = 'standup';
+      const ahead = st.rank > 1 && st.stall.seats.filter((x) => !x.taken && x.rank < st.rank).sort((a, b) => a.rank - b.rank)[0];
+      if (ahead) { // the queue moves up: step into the place ahead
+        st.taken = null;
+        ahead.taken = p;
+        p.seat = ahead;
+        p.pts = [[ahead.fx, ahead.fz, null]];
+        p.k = 0;
+        p.approach = true;
+        p.settled = false;
+        go(p);
+      } else if ((p.timer -= dt) <= 0) p.mode = 'standup';
     } else if (p.sit < 0.04) { // up: back to the sidewalk and on
       st.taken = null;
       p.seat = null;
-      p.pts = [[...st.lane(p.lane), null]];
+      p.pts = [...(st.via ? [[...st.via, null]] : []), [...st.lane(p.lane), null]];
       p.k = 0;
       p.tail = st.node;
       chooseGoal(p);
@@ -629,14 +652,15 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     if (p.k >= p.pts.length && p.seat && p.mode === 'walk') { // at the seat's corner: over to it; there: sit down
       if (!p.approach) {
         p.approach = true;
-        p.pts = [[...p.seat.lane(p.lane), null], [p.seat.fx, p.seat.fz, null]];
+        p.pts = [[...p.seat.lane(p.lane), null], ...(p.seat.via ? [[...p.seat.via, null]] : []), [p.seat.fx, p.seat.fz, null]];
         p.k = 0;
         return;
       }
       p.approach = false;
       p.mode = 'sit';
-      p.timer = (15 + p.rand() * 45) * CROWD.idle;
-      setAct(p, pick(p.rand, p.seat.table ? ['eat', 'eat', 'device', 'look'] : ['device', 'look', 'rest', 'doze']));
+      const eats = p.seat.table || p.seat.stall, queuing = p.seat.rank > 1;
+      p.timer = queuing ? 120 : (p.seat.stall ? 10 + p.rand() * 20 : 15 + p.rand() * 45) * CROWD.idle;
+      setAct(p, pick(p.rand, queuing ? ['look', 'device'] : eats ? ['eat', 'eat', 'device', 'look'] : ['device', 'look', 'rest', 'doze']));
       return;
     }
     if (p.k >= p.pts.length) { // there: stay a while

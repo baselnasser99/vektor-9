@@ -47,11 +47,12 @@ export function storefront(kit, root, rand, lit, dx, dz) {
 export function dress({ kit, g, rand, lit, H, y, w, tall }, floors, roofY, free) {
   const frame = kit.steel(palette.graphite, 0.6);
   if (lit && rand() < 0.45) {
-    const h = Math.min(24, (H - y) * 0.6), side = rand() < 0.5 ? 1 : -1, ad = pick(rand, ADS), [name, line, mark, ink, color] = ad;
-    const x = side * (w / 2 + 0.3), cy = y + (H - y) * 0.5;
+    // Its foot above the one-storey shop strips and their roofs (city.js shopfronts), so they never cover it.
+    const lo = Math.max(y + (H - y) * 0.2, 6), h = Math.min(24, y + (H - y) * 0.8 - lo), side = rand() < 0.5 ? 1 : -1;
+    const ad = pick(rand, ADS), [name, line, mark, ink, color] = ad, x = side * (w / 2 + 0.3), cy = lo + h / 2;
     // Named 'banner' so a corporate sign on the same tower can take its place (city.js corpSigns).
     if (floors % 3 === 0 && cy - 3 >= 6) projector(kit, g, 'wall', ad, side * w / 2, cy - 3, w / 4, side * (Math.PI / 2)).name = 'banner'; // clear of the shops
-    else {
+    else if (h >= 4) {
       part(g, box(0.4, h, 2.6, 1), frame, x, cy, w / 4).name = 'banner';
       const shown = part(g, new THREE.PlaneGeometry(2.4, h - 0.3), kit.corp(name, line, mark, 128, 768, ink, color), x + side * 0.21, cy, w / 4);
       shown.rotation.y = side * (Math.PI / 2);
