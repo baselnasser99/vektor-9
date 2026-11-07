@@ -5,6 +5,9 @@ import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
 import { facadeClock } from './facade.js';
 import { ROOFTECH } from './rooftech.js';
+import { HQ_MODELS } from './headquarters.js';
+import { hqEye } from './eye.js';
+import { hqFleet } from './aircars.js';
 import { buildCity, cityLayout } from './city.js';
 import { REACH, buildDesert, farSprawl, outOfTown } from './desert.js';
 import { steam, traffic, trains } from './life.js';
@@ -32,14 +35,14 @@ if (view?.length === 6 && view.every(Number.isFinite)) {
   controls.update();
 }
 
-const kit = await loadKit(renderer, [...ROOFTECH, 'telecom_tower', 'power_plant', 'market_hall', 'storefront', 'storefront_l',
+const kit = await loadKit(renderer, [...ROOFTECH, ...HQ_MODELS, 'telecom_tower', 'power_plant', 'market_hall', 'storefront', 'storefront_l',
   'shop_stalls', 'shop_counter', 'shop_frame', 'shop_arcade',
   'skybridge_bay', 'skybridge_window', 'skybridge_end', 'billboard_tower', 'billboard_wide', 'billboard_blade',
   'corp_pylon', 'corp_band', 'corp_crown', 'holo_roof', 'holo_wall', 'flagship_extension', 'flagship_lift', 'flagship_lift_top',
   'flagship_armor', 'flagship_crown', 'flagship_ad', 'flagship_conduit', 'flagship_vent',
   'prop_vending', 'prop_sign', 'prop_cabinet', 'prop_camera', 'prop_locker', 'prop_utility']);
 facadeClock(((snap.tick * 5) / 60) % 24, onFrame); // ticks are 5 minutes; room lights follow the hour
-const { city, details, warp, hub, rail, lanes, edge, lines, benches, lamps, food } = buildCity(kit, snap);
+const { city, details, warp, hub, rail, lanes, edge, lines, benches, lamps, food, hq } = buildCity(kit, snap);
 // Small building parts (balconies, rooftop plant, pipes) only near the camera: one group per sector.
 const DETAIL = 400; // metres from a sector's centre
 scene.add(...details.map((d) => d.group));
@@ -52,7 +55,8 @@ const cars = traffic(kit, outOfTown(lanes, edge), onFrame, warp, hub);
 scene.add(city, desert, farSprawl(edge), cars);
 // People on the sidewalks, crossing with the cars' lights (P shows the crowd settings).
 scene.add(steam(food, warp, onFrame));
-scene.add(people({ snap, layout, warp, benches, lamps, food, clock: cars.userData.clock, camera, controls, onFrame, still: stage.still }));
+if (hq) scene.add(hqEye(hq, camera, onFrame), hqFleet(kit, hq, onFrame, stage.still)); // IKARO's eye and hovercars
+scene.add(people({ snap, layout, warp, benches, lamps, food, hq, clock: cars.userData.clock, camera, controls, onFrame, still: stage.still }));
 if (rail) scene.add(trains(kit, rail, onFrame));
 scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), ...cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame),
   ...districtGlows(snap, layout, camera, onFrame));

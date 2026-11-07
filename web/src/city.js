@@ -11,6 +11,7 @@ import { buildStreets } from './streets.js';
 import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { warningLamp } from './parts.js';
+import { buildHQ, hqSite } from './headquarters.js';
 import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, SIDEWALK, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
@@ -85,8 +86,16 @@ export function buildCity(kit, snap) {
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   let flag = flagshipTower(snap, layout, signature, heavy); // -1 if none, or if it has no shaft to dress
+  // The headquarters (headquarters.js): its four tiles are drawn as one megatower, and nothing else lands on them.
+  const hq = hqSite(snap, layout, new Set(crossing(snap).corners)), hqTiles = hq?.tiles ?? new Set();
+  for (const i of hqTiles) {
+    signature.delete(i);
+    heavy.delete(i);
+  }
+  if (hqTiles.has(flag)) flag = -1;
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
+    if (hqTiles.has(i)) return; // drawn as the headquarters, below
     const atHub = Math.abs(col + 0.5 - n / 2) < HUB && Math.abs(row + 0.5 - n / 2) < HUB;
     if (atHub && t.k === 'park') return; // the tower's plaza, paved by streets.js; a snapshot from before it still draws
     const rand = rng(t.s), fw = footprint(t, rand);
@@ -142,20 +151,32 @@ export function buildCity(kit, snap) {
     // Skybridge to the east neighbour in the same sector when both are tall enough.
     const east = snap.tiles[i + 1];
     const linked = family === 'mega' && east?.f >= 16 ? 0.45 : 0.12; // megastructures link up more often
-    if (t.k === 'house' && east?.k === 'house' && col % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < linked) {
+    if (t.k === 'house' && east?.k === 'house' && !hqTiles.has(i + 1) && col % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < linked) {
       const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [cx, pos(col + 1)];
       part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, cz);
       if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
       if (t.on) for (const x of [a + 6.5, b - 6.5]) warningLamp(kit, root, x, y - 1.7, cz - 1.85); // clearance lamps
     }
   });
-  const bridges = bridgePairs(snap, layout, new Set([...signature, ...heavy, flag]), towers); // their machinery faces the streets
+  const bridges = bridgePairs(snap, layout, new Set([...signature, ...heavy, flag, ...hqTiles]), towers); // their machinery faces the streets
   for (const bridge of bridges) root.add(skybridge(kit, snap, bridge));
   billboards(kit, root, snap, towers);
   const askew = [...towers.keys()].filter((i) => inTown(i % n, Math.floor(i / n))); // turned a little: signs would not sit flush
-  corpSigns(kit, root, snap, towers, new Set([...signature, ...heavy, flag, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
+  corpSigns(kit, root, snap, towers, new Set([...signature, ...heavy, flag, ...hqTiles, ...crossing(snap).houses, ...bridges.flatMap((b) => [b.a, b.b]), ...askew]));
   streetProps(kit, root, snap, layout, streets.lamps);
   const rail = railway(kit, root, rails, streets.hi);
+  if (hq) { // a lot of its own, settled like any other; its windows corporate blue (lighting identity 1)
+    const lot = new THREE.Group(), ref = [...hq.tiles][0], tower = buildHQ(kit, hq, snap.tiles[ref].on !== false);
+    lot.position.set(hq.x, 0, hq.z);
+    lot.userData.building = ref + 1 + LOOK_STEP;
+    tower.position.y = 0.18;
+    tower.rotation.y = hq.heading;
+    lot.add(tower);
+    root.add(lot);
+    lot.traverse((o) => { if (o.name === 'detail') o.userData.lod = hq.sector; });
+    if (!detail.has(hq.sector)) detail.set(hq.sector, [hq.x, hq.z]);
+    settle(lot, warp);
+  }
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
   const city = mergeByMaterial(root, warp);
   // Depth first: the facades are drawn once more, before everything, writing only depth (nudged back a hair so
@@ -169,7 +190,7 @@ export function buildCity(kit, snap) {
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
   return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi,
-    benches: streets.benches, lamps: streets.lamps, food: streets.food };
+    benches: streets.benches, lamps: streets.lamps, food: streets.food, hq: hq && { x: hq.x, z: hq.z, heading: hq.heading, sector: hq.sector, street: hq.street } };
 }
 
 // What is around each tile that never changes, for the building family rules (families.js familyOf): industry

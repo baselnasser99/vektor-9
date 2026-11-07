@@ -12,7 +12,9 @@
 // suit it: by entrances, at the kerb waiting for a ride, talking in small groups, on the walks' benches, eating
 // at the food streets' tables and stalls (and the vendors cooking), on the plaza looking up at the tower. Walkers
 // also stop at the stalls for food, eating at the counter, on its stools or standing beside them, or queue
-// beside the counter and move up as it frees.
+// beside the counter and move up as it frees. Office workers near the corporate headquarters go in through its
+// doors and come out again a while later, couriers through its delivery bay; guards, a receptionist and staff stay
+// about its plaza and lobby.
 //
 // How many. The city is split by sector. Sectors near the camera are active (with a margin, so they switch on and
 // off out of sight); each has a seeded list of people, and a prefix of it is live, so the same people are always
@@ -25,6 +27,7 @@ import { crossing } from './city.js';
 import { walkLight } from './life.js';
 import { BLOCK, SIDEWALK, TILE } from './world.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
+import { ENTRANCE, HQ } from './headquarters.js';
 
 // Settings (the P panel): people per sector, the most alive at once, walking-speed spread, how often people stop
 // and stand about, detail (0 simplest to 2 full) and the distance they are drawn to, in metres.
@@ -91,7 +94,7 @@ function dress(rand, weights) {
   const glow = colour(pick(rand, kind.glows));
   const [lo, hi] = kind.speed, spread = CROWD.speed;
   return {
-    mods: mods.map((m) => NAMES.indexOf(m)), patrol: !!kind.patrol, fast: !!kind.fast,
+    mods: mods.map((m) => NAMES.indexOf(m)), kind: a, patrol: !!kind.patrol, fast: !!kind.fast,
     A: top + bottom * 64, B: accent + skin * 64, C: hair + gear * 64 + glow * 4096, glow: kind.glow * (0.6 + 0.4 * rand()),
     height: 0.91 + (rand() + rand()) * 0.085, build: 0.9 + rand() * 0.22, seed: rand(),
     speed: (lo + hi) / 2 + (rand() - 0.5) * (hi - lo) * spread,
@@ -335,6 +338,54 @@ function places(k, snap, layout, net, info, seats, food, lamps) {
   return list;
 }
 
+// The headquarters' doors, as places walkers go to: through the plaza and the gateway (fx, fz) to the door itself
+// (x, z), where they fade into the lobby, from the sidewalk in front (lane) and that sidewalk's nearest corner (node).
+// The delivery bay is one more, for couriers only.
+function doorsOf(hq, hqAt, net) {
+  const { S, G, e0, e1 } = net, bx = hq.sector % S, by = Math.floor(hq.sector / S);
+  const fx = Math.round(Math.sin(hq.heading)), fz = Math.round(Math.cos(hq.heading)), { delivery: bay } = ENTRANCE;
+  return [...ENTRANCE.doors.map((u) => [u, ENTRANCE.DOOR_IN, ENTRANCE.DOOR_OUT, false]), [bay.u, bay.in, bay.out, true]].map(([u, w0, w1, courier]) => {
+    const [x, z] = hqAt(u, w0), [ox, oz] = hqAt(u, w1), [sx, sz] = hqAt(u, HQ.half[1] + 2);
+    const near = (v, b) => (v - e0[b] < e1[b] - v ? 0 : 1);
+    const X = fx ? 2 * bx + (fx > 0 ? 1 : 0) : 2 * bx + near(sx, bx), Z = fz ? 2 * by + (fz > 0 ? 1 : 0) : 2 * by + near(sz, by);
+    return { door: true, courier, x, z, fx: ox, fz: oz, node: X + Z * G, lane: (lane) => hqAt(u, HQ.half[1] + lane), taken: null };
+  });
+}
+
+// Who the headquarters keeps about, all out first among its sector's people (site frame: u across, w out to the
+// street). On the ground, for each tower: guards beside its security gates and in its gateway, a receptionist,
+// staff in its lobby; a pair talking on the plaza, a guard by the booth at the alley's mouth, someone on a bench now
+// and then. Up the towers, on their own floors (y): staff and a guard on each landing terrace, a technician at the
+// back of a hangar. On the skybridge: office workers and a patrol crossing (bridge, below). Nobody stands on the
+// approaches between the gates, the pads or the walkers' lanes.
+function hqPlaces(hq, hqAt, rand) {
+  const one = (u, w, turn, acts, only, extra = {}) => {
+    const [x, z] = hqAt(u, w);
+    return { members: [{ x, z, heading: hq.heading + turn, ...extra }], acts, only, first: true };
+  };
+  const pair = (u, w, y) => {
+    const [ax, az] = hqAt(u - 0.4, w), [bx, bz] = hqAt(u + 0.4, w);
+    return { members: [{ x: ax, z: az, heading: hq.heading + Math.PI / 2, y }, { x: bx, z: bz, heading: hq.heading - Math.PI / 2, y }],
+      acts: ['talk'], only: 1, first: true };
+  };
+  const guard = ['look', 'look', 'stand'], staff = ['device', 'talk', 'look'], out = [];
+  const terrace = HQ.terrace.y + 0.22, bay = HQ.hangar.y + 0.18;
+  for (const s of [-1, 1]) {
+    const tc = s * HQ.TOWER[0];
+    out.push(one(tc - 5.4, 14.8, 0, guard, 4), one(tc + 5.4, 14.8, 0, guard, 4), one(tc + s * 4.5, 9.8, -s * 0.3, guard, 4));
+    out.push(one(tc, -1.0, 0, staff, 1), pair(tc - 3.2, 2.6));
+    out.push(one(tc + 5.6, 12.0, 0.4, ['device', 'look'], 1, { y: terrace }), one(tc - 6.2, 12.2, -0.3, guard, 4, { y: terrace }));
+    out.push(one(s * (HQ.hangar.face - HQ.hangar.depth + 1), HQ.hangar.w[0], s > 0 ? Math.PI / 2 : -Math.PI / 2, ['look', 'device'], 2, { y: bay }));
+  }
+  out.push(pair(-29.2, 12.6), one(1.6, 16.3, 0, guard, 4));
+  if (rand() < 0.6) { // on a bench, looking across the approach
+    const s = rand() < 0.5 ? -1 : 1;
+    out.push(one(s * (HQ.TOWER[0] - 6.6), 18.2, s > 0 ? Math.PI / 2 : -Math.PI / 2, ['device', 'look', 'rest'], 1, { sit: true }));
+  }
+  for (let k = 0; k < 6; k++) out.push({ members: [{ x: hq.x, z: hq.z, heading: 0, bridge: true }], acts: ['look', 'device'], only: k === 5 ? 4 : 1, first: true });
+  return out;
+}
+
 // Every seat people can take: both places on each bench and every cafe stool (streets.js). Each knows the way it
 // faces, where to stand before sitting (in front of a bench, behind a stool), the walk it is on and which side, the
 // sidewalk point across from it (lane: a walker's own distance in from the kerb), and the nearest corner of that
@@ -377,9 +428,17 @@ function seatsOf(benches, food, layout, net) {
   return out;
 }
 
-export function people({ snap, layout, warp, benches, lamps, food, clock, camera, controls, onFrame, still }) {
+export function people({ snap, layout, warp, benches, lamps, food, hq, clock, camera, controls, onFrame, still }) {
   const params = new URLSearchParams(location.search);
-  const net = network(layout), info = districts(snap, layout, net), { S, G, N, adj, dist, next, ground } = net;
+  const net = network(layout), info = districts(snap, layout, net), { S, G, N, adj, dist, next } = net;
+  // The headquarters (headquarters.js), if there is one: its frame (u across its front, w out from it), its paved
+  // plaza and gateway, the people it keeps there, its three doors and its delivery bay.
+  const hqAt = (u, w) => [hq.x + Math.cos(hq.heading) * u + Math.sin(hq.heading) * w, hq.z - Math.sin(hq.heading) * u + Math.cos(hq.heading) * w];
+  const ground = !hq ? net.ground : (x, z) => {
+    const dx = x - hq.x, dz = z - hq.z, u = dx * Math.cos(hq.heading) - dz * Math.sin(hq.heading), w = dx * Math.sin(hq.heading) + dz * Math.cos(hq.heading);
+    return Math.abs(u) > 14 || Math.abs(w) > 14 ? net.ground(x, z) : 0.18 + ENTRANCE.FLOOR;
+  };
+  const doors = hq ? doorsOf(hq, hqAt, net) : [];
   const fig = figures(CAPACITY), arr = fig.data.image.data;
   const sectors = info.map((d, k) => ({ ...d, k, active: false, live: [], slots: null,
     rect: [net.e0[d.bx] - 25, net.e1[d.bx] + 25, net.e0[d.by] - 25, net.e1[d.by] + 25] }));
@@ -400,10 +459,11 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
       const j = Math.floor(rand() * (i + 1));
       [spots[i], spots[j]] = [spots[j], spots[i]];
     }
+    if (hq && s.k === hq.sector) spots.unshift(...hqPlaces(hq, hqAt, rand)); // always among the first out
     const most = Math.round(s.dens * PER_SECTOR * 2.5), share = Math.min(0.75, 0.3 * CROWD.idle);
     s.slots = [];
     for (let count = 0, si = 0; count < most;) {
-      const spot = si < spots.length && rand() < share ? spots[si++] : null;
+      const spot = si < spots.length && (spots[si].first || rand() < share) ? spots[si++] : null;
       s.slots.push({ spot, seed: Math.floor(rand() * 1e9), n: spot ? spot.members.length : 1 });
       count += spot ? spot.members.length : 1;
     }
@@ -412,7 +472,8 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
 
   // Bringing people to life and letting them go.
   const spawn = (s, slot) => {
-    const rand = rng(slot.seed), weights = slot.spot?.corp ? s.weights.map((w, i) => (i === 1 ? w * 3 : w)) : s.weights;
+    const rand = rng(slot.seed), only = slot.spot?.only;
+    const weights = only !== undefined ? s.weights.map((w, i) => (i === only ? 1 : 0)) : slot.spot?.corp ? s.weights.map((w, i) => (i === 1 ? w * 3 : w)) : s.weights;
     const made = (slot.spot ? slot.spot.members : [null]).map((m) => {
       if (!free.length || m?.seat?.taken) return null; // out of room, or a walker sat there first
       const look = dress(rand, weights);
@@ -423,12 +484,14 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
         speed: look.speed, place: slot.spot, dist: 0, acc: 0 };
       if (m) {
         Object.assign(p, { ux: m.x, uz: m.z, heading: m.heading, mode: m.sit ? 'sit' : 'idle', sit: m.sit ? 1 : 0, static: true });
+        if (m.y !== undefined) p.floor = m.y; // up the headquarters' towers
+        if (m.bridge) startBridge(p, true);
         if (m.seat) {
           p.seat = m.seat;
           m.seat.taken = p;
         }
       } else startWalk(p, true);
-      p.y = ground(p.ux, p.uz);
+      p.y = p.floor ?? ground(p.ux, p.uz);
       live.push(p);
       return p;
     }).filter(Boolean);
@@ -467,6 +530,7 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     chooseGoal(p);
     go(p);
     extend(p);
+    if (!p.pts.length) p.pts.push([p.ux, p.uz, null]); // already at its goal's corner: arrive there at once
   }
   const go = (p) => {
     p.mode = 'walk';
@@ -480,6 +544,13 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     }
     const busy = p.home.busy && busyNodes.filter((id) => id !== p.tail && dist[p.tail * N + id] < Infinity);
     p.goal = busy?.length && rand() < 0.4 ? pick(rand, busy) : near.length ? pick(rand, near) : p.tail;
+    // Office workers near the headquarters often go in (doors are never full).
+    const byHq = hq && Math.abs((hq.sector % S) - bx) <= 1 && Math.abs(Math.floor(hq.sector / S) - by) <= 1;
+    if (byHq && (p.look.kind === 1 ? rand() < 0.35 : p.look.kind === 2 && rand() < 0.3)) { // couriers: the bay
+      p.seat = pick(rand, doors.filter((d) => d.courier === (p.look.kind === 2)));
+      p.goal = p.seat.node;
+      return;
+    }
     // Now and then a free bench, cafe seat or place at a stall near home instead: walk to the corner of its
     // sidewalk, then over to it. Stalls draw people more, and they join a queue at its back.
     if (rand() < 0.1 * CROWD.idle) {
@@ -559,11 +630,29 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
 
   // One person's step: walking the route, waiting at a kerb, or standing about.
   function step(p, dt, t) {
+    if (p.bridge) {
+      bridging(p, dt);
+      smooth(p, dt);
+      return;
+    }
     if (p.mode === 'walk') walking(p, dt, t);
     else if (p.mode === 'wait') {
       standAbout(p, dt);
       if (canCross(p.wait, t)) go(p);
     } else if (p.seat && !p.static && (p.mode === 'sit' || p.mode === 'standup')) seated(p, dt);
+    else if (p.mode === 'inside') { // back out of the same door after a while, and on
+      if ((p.timer -= dt) > 0) return;
+      const d = p.seat;
+      p.fadeTo = 1;
+      p.heading = hq.heading;
+      p.seat = null;
+      p.pts = [[d.fx, d.fz, null], [...d.lane(p.lane), null]];
+      p.k = 0;
+      p.tail = d.node;
+      chooseGoal(p);
+      go(p);
+      extend(p);
+    }
     else {
       standAbout(p, dt);
       if (!p.static && (p.timer -= dt) <= 0) {
@@ -571,8 +660,11 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
         else startWalk(p, false);
       }
     }
-    // Smooth transitions between states.
-    const k = 1 - Math.exp(-dt * 3), moving = p.mode === 'walk';
+    smooth(p, dt);
+  }
+  // Smooth transitions between states.
+  function smooth(p, dt) {
+    const k = 1 - Math.exp(-dt * 3), moving = p.mode === 'walk' || p.mode === 'bridge';
     p.dev += ((p.act === 'device' ? 1 : 0) - p.dev) * k;
     p.talk += ((p.act === 'talk' ? p.talkT : 0) - p.talk) * k;
     p.sit += ((p.mode === 'sit' && !p.seat?.stand && (p.static || p.settled) ? 1 : 0) - p.sit) * k * 2;
@@ -588,6 +680,67 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
     if (!moving) p.v = Math.max(0, p.v - 3 * dt);
     const w = Math.min(1.3, p.v / 1.35);
     p.walk += (w - p.walk) * (1 - Math.exp(-dt * 8));
+  }
+  // The skybridge's walkers: each crosses from a door inside one tower's corridor to the other's, keeping to the lane
+  // for its direction, now and then stopping at the glass to look out; at the far door it fades into the tower and,
+  // a while later, comes out of one of the doors again. Positions in the site's frame (bu across, bw), on the deck.
+  const LANE = { 1: HQ.bridge.w[0] + 2.4, '-1': HQ.bridge.w[1] - 2.4 }, DOOR = HQ.GAP + 5.6;
+  function startBridge(p, fresh) {
+    p.static = false;
+    p.bridge = true;
+    p.floor = HQ.bridge.y + 0.22;
+    p.dirU = p.rand() < 0.5 ? 1 : -1;
+    p.bu = fresh ? (p.rand() - 0.5) * 2 * HQ.GAP : -p.dirU * DOOR;
+    p.bw = LANE[p.dirU];
+    p.pauseAt = p.rand() < 0.4 ? (p.rand() - 0.5) * 2 * (HQ.GAP - 2) : null;
+    [p.ux, p.uz] = hqAt(p.bu, p.bw);
+    p.heading = hq.heading + (p.dirU > 0 ? Math.PI / 2 : -Math.PI / 2);
+    p.mode = 'bridge';
+    p.act = 'walk';
+    p.fadeTo = 1;
+  }
+  function bridging(p, dt) {
+    if (p.mode === 'inside') { // in the tower, out of sight
+      if ((p.timer -= dt) <= 0) startBridge(p, false);
+      return;
+    }
+    if (p.mode === 'idle') { // stopped at the glass
+      standAbout(p, dt);
+      if ((p.timer -= dt) <= 0) {
+        p.pauseAt = null;
+        p.mode = 'bridge';
+        p.act = 'walk';
+      }
+      return;
+    }
+    const glass = p.dirU > 0 ? HQ.bridge.w[0] + 0.7 : HQ.bridge.w[1] - 0.7;
+    const stopping = p.pauseAt !== null && Math.abs(p.bu - p.pauseAt) < 0.8;
+    const [tx, tz] = stopping ? hqAt(p.pauseAt, glass) : hqAt(p.bu + p.dirU * 2, LANE[p.dirU]);
+    const [ex, ez] = hqAt(p.dirU * DOOR, LANE[p.dirU]);
+    const dx = tx - p.ux, dz = tz - p.uz, d = Math.hypot(dx, dz);
+    turn(p, Math.atan2(dx, dz), dt);
+    const vmax = stopping ? Math.min(p.speed * 0.6, Math.sqrt(2 * d)) : p.speed * 0.9;
+    p.v += Math.max(-2.5 * dt, Math.min(1.2 * dt, vmax - p.v));
+    const step = Math.min(d, p.v * dt);
+    if (d > 1e-6) {
+      p.ux += (dx / d) * step;
+      p.uz += (dz / d) * step;
+    }
+    p.phase = (p.phase + (step / (1.5 * p.look.height)) * Math.PI * 2) % (Math.PI * 2);
+    p.bu = (p.ux - hq.x) * Math.cos(hq.heading) - (p.uz - hq.z) * Math.sin(hq.heading);
+    p.bw = (p.ux - hq.x) * Math.sin(hq.heading) + (p.uz - hq.z) * Math.cos(hq.heading);
+    if (stopping && d < 0.1) { // at the glass: face out over the city a while
+      p.mode = 'idle';
+      p.v = 0;
+      p.timer = 4 + p.rand() * 6;
+      setAct(p, p.rand() < 0.7 ? 'look' : 'device');
+      p.yawT = (p.rand() - 0.5) * 0.8;
+      p.heading = hq.heading + (p.dirU > 0 ? Math.PI : 0);
+    } else if (Math.hypot(ex - p.ux, ez - p.uz) < 0.5) { // through the far door
+      p.mode = 'inside';
+      p.fadeTo = 0;
+      p.timer = 6 + p.rand() * 20;
+    }
   }
   // A walker on a seat: turns to face the way it faces, lowers onto it (sliding from where it stood), sits a while,
   // then gets up, steps back and walks on from the seat's corner.
@@ -648,6 +801,23 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
       p.resume = true;
       p.timer = 2 + p.rand() * 5;
       setAct(p, pick(p.rand, ['device', 'look', 'up']));
+    }
+    if (p.k >= p.pts.length && p.seat?.door && p.mode === 'walk') { // at the corner, then the forecourt, then inside
+      const d = p.seat;
+      if (!p.approach) {
+        p.approach = true;
+        p.pts = [[...d.lane(p.lane), null], [d.fx, d.fz, null]];
+      } else if (!p.entering) {
+        p.entering = true;
+        p.pts = [[d.x, d.z, null]];
+      } else { // through the door: gone from the street for a while (fading out inside the lobby)
+        p.approach = p.entering = false;
+        p.mode = 'inside';
+        p.fadeTo = 0;
+        p.timer = 20 + p.rand() * 70;
+      }
+      p.k = 0;
+      return;
     }
     if (p.k >= p.pts.length && p.seat && p.mode === 'walk') { // at the seat's corner: over to it; there: sit down
       if (!p.approach) {
@@ -799,7 +969,7 @@ export function people({ snap, layout, warp, benches, lamps, food, clock, camera
         p.dist = CROWD.distance + 15;
         continue;
       }
-      p.y += (ground(rx, rz) - p.y) * Math.min(1, dt * 12 || 1);
+      p.y += ((p.floor ?? ground(rx, rz)) - p.y) * Math.min(1, dt * 12 || 1);
       warp(rx, rz, shift);
       const x = rx + shift[0], z = rz + shift[1], L = p.look;
       p.dist = Math.hypot(x - c.x, p.y + 0.9 - c.y, z - c.z);
