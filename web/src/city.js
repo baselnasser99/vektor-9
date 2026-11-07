@@ -86,7 +86,7 @@ export function buildCity(kit, snap) {
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   let flag = flagshipTower(snap, layout, signature, heavy); // -1 if none, or if it has no shaft to dress
-  // The headquarters (headquarters.js): its four tiles are drawn as one megatower, and nothing else lands on them.
+  // The headquarters (headquarters.js): its 24 tiles are drawn as one campus, and nothing else lands on them.
   const hq = hqSite(snap, layout, new Set(crossing(snap).corners)), hqTiles = hq?.tiles ?? new Set();
   for (const i of hqTiles) {
     signature.delete(i);
@@ -166,7 +166,7 @@ export function buildCity(kit, snap) {
   streetProps(kit, root, snap, layout, streets.lamps);
   const rail = railway(kit, root, rails, streets.hi);
   if (hq) { // a lot of its own, settled like any other; its windows corporate blue (lighting identity 1)
-    const lot = new THREE.Group(), ref = [...hq.tiles][0], tower = buildHQ(kit, hq, snap.tiles[ref].on !== false);
+    const lot = new THREE.Group(), ref = [...hq.tiles].find((i) => snap.tiles[i].k === 'house') ?? [...hq.tiles][0], tower = buildHQ(kit, hq, snap.tiles[ref].on !== false);
     lot.position.set(hq.x, 0, hq.z);
     lot.userData.building = ref + 1 + LOOK_STEP;
     tower.position.y = 0.18;
