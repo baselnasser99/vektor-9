@@ -24,8 +24,8 @@ import * as THREE from 'three';
 import { css, ui } from './palette.js';
 import { rng } from './geometry.js';
 import { crossing } from './city.js';
-import { walkLight } from './life.js';
-import { BLOCK, STREETS, TILE } from './world.js';
+import { walkLight, zebraUse } from './life.js';
+import { BLOCK, CARS, STREETS, TILE } from './world.js';
 import { ZEBRA_W, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
 import { ENTRANCE, HQ, entranceRise, siteFrame } from './headquarters.js';
@@ -37,6 +37,7 @@ const CAPACITY = 3000;
 const PER_SECTOR = 55; // people in an ordinary sector at density 1
 const PLAZA = 44; // radius of the walk round the tower's roundabout (its outer kerb is at about 39.6 m)
 const ZEBRA = (l) => zebraAt(l) - kerbOf(l); // a crosswalk's centre line, along the street from street l's kerb (streets.js road)
+const zebraKey = ({ x, z, axis }) => `${Math.round(x)}|${Math.round(z)}|${axis}`; // life.js zebraUse: turning cars give way while it is fresh
 
 // Who they are. share: of the whole city before district bias. Modules (figures.js) by weight; extras by chance.
 const ARCHETYPES = [
@@ -120,29 +121,39 @@ function network(layout) {
   const link = (a, b, kind, path) => {
     if (!removed.has(a) && !removed.has(b)) adj[a].push({ to: b, kind, path });
   };
-  const none = () => [];
+  // A sidewalk along `axis` from sector corner to sector corner, on the side of main street M, crosses its
+  // sector's mid street (layout.mids) on the zebra in line with it: waiting at the kerb for the walkers' light where
+  // the mid street carries cars and the crossing has lights (walkLight; at crossings without lights cars give way),
+  // straight over an alley, a market lane or the headquarters' campus. Points as in cross below.
+  const side = (axis, b, M, from, to) => (p) => {
+    const m = layout.mids[b], [f, g] = [node(from.id, p.lane), node(to.id, p.lane)], [u0, u1] = axis === 'x' ? [f[0], g[0]] : [f[1], g[1]];
+    const d = Math.sign(u1 - u0), lateral = axis === 'x' ? f[1] : f[0], pt = (u, wait, tag) => (axis === 'x' ? [u, lateral, wait, tag] : [lateral, u, wait, tag]);
+    const cars = CARS.has(layout.kindAt(m, axis === 'x' ? 'z' : 'x', M.c)), near = m.c - d * (kerbOf(m) + 0.45), far = m.c + d * (kerbOf(m) + 0.45);
+    const light = cars && (axis === 'x' ? { x: m.c, z: M.c, axis: 'z' } : { x: M.c, z: m.c, axis: 'x' });
+    return [pt(near, light && { light, need: Math.abs(far - near) / p.speed + 1.5 }), pt(far, null, light && zebraKey(light))];
+  };
   for (let K = 0; K < G; K++) for (let b = 0; b < S; b++) {
-    for (const [a, c] of [[2 * b + K * G, 2 * b + 1 + K * G], [K + 2 * b * G, K + (2 * b + 1) * G]]) {
-      link(a, c, 'side', none);
-      link(c, a, 'side', none);
+    const M = lines[(K >> 1) + (K & 1)];
+    for (const [axis, a, c] of [['x', 2 * b + K * G, 2 * b + 1 + K * G], ['z', K + 2 * b * G, K + (2 * b + 1) * G]]) {
+      link(a, c, 'side', side(axis, b, M, { id: a }, { id: c }));
+      link(c, a, 'side', side(axis, b, M, { id: c }, { id: a }));
     }
   }
   // A crossing walking along `axis` from kerb `from` to kerb `to`, at `v` on the other axis (plus the person's own
   // place across the zebra). Points are [x, z, wait]: wait holds the light and the time needed to the next stop.
   const cross = (axis, from, to, v, light, median) => (p) => {
-    const d = Math.sign(to - from), j = v + p.jit, pt = (u, w) => (axis === 'x' ? [u, j, w] : [j, u, w]);
-    const stop = (a, b) => light && { light, need: Math.abs(b - a) / p.speed + 1.5 };
+    const d = Math.sign(to - from), j = v + p.jit, pt = (u, w, tag) => (axis === 'x' ? [u, j, w, tag] : [j, u, w, tag]);
+    const stop = (a, b) => light && { light, need: Math.abs(b - a) / p.speed + 1.5 }, on = light && zebraKey(light);
     const out = [pt(from - d * p.lane, null), pt(from - d * (0.45 + p.back), stop(from, median ?? to))];
-    if (median !== null) out.push(pt(median - d * 0.8, stop(median, to)));
-    out.push(pt(to + d * 0.45, null), pt(to + d * p.lane, null));
+    if (median !== null) out.push(pt(median - d * 0.8, stop(median, to), on));
+    out.push(pt(to + d * 0.45, null, on), pt(to + d * p.lane, null));
     return out;
   };
   for (let L = 1; L < S; L++) for (let K = 0; K < G; K++) {
     const M = (K >> 1) + (K & 1); // the street across the end of this sidewalk
     if (L === h && M === h) continue; // the roundabout: no crossings
     for (const axis of ['x', 'z']) {
-      const street = axis === 'x' ? lines[L].kind.z : lines[L].kind.x, other = axis === 'x' ? lines[M].kind.x : lines[M].kind.z;
-      if (street !== 'walk' && other === 'walk') continue; // no lights there, and the cars do not stop
+      const street = axis === 'x' ? lines[L].kind.z : lines[L].kind.x; // a walk crossing it gets lights too (walkLight)
       const a = axis === 'x' ? 2 * L - 1 + K * G : K + (2 * L - 1) * G, b = axis === 'x' ? a + 1 : a + G;
       const v = K & 1 ? e1[K >> 1] - ZEBRA(lines[M]) : e0[K >> 1] + ZEBRA(lines[M]);
       const light = street !== 'walk' && (axis === 'x' ? { x: lines[L].c, z: lines[M].c, axis: 'z' } : { x: lines[M].c, z: lines[L].c, axis: 'x' });
@@ -197,15 +208,15 @@ function network(layout) {
   const nodes = [...Array(N).keys()].filter((id) => !removed.has(id));
   console.assert(nodes.every((a) => nodes.every((b) => dist[a * N + b] < Infinity)), 'people: the walking network is not connected');
   // Ground under a point: raised paving (sidewalks, plaza, walks) 0.18 m, roadway 0, a boulevard median 0.28 m.
-  const roadway = (v) => lines.find((l) => Math.abs(v - l.c) < kerbOf(l));
+  const roadway = (v) => layout.cross.find((l) => Math.abs(v - l.c) < kerbOf(l)); // every corridor: streets, mid streets, alleys
   const ground = (x, z) => {
     if (Math.hypot(x - hub, z - hub) < PLAZA - 3) return 0; // the ring road
     const lx = roadway(x), lz = roadway(z);
     if (!lx && !lz) return 0.18;
     if (lx && lz) return 0;
-    const [kind, off, along] = lx ? [lx.kind.z, x - lx.c, z] : [lz.kind.x, z - lz.c, x];
-    if (kind === 'walk') return 0.18;
-    const nearCrossing = lines.some((m) => Math.abs(along - m.c) < zebraAt(m) + ZEBRA_W / 2 + 0.3); // the median stops short of each zebra
+    const [kind, off, along] = lx ? [layout.kindAt(lx, 'z', z), x - lx.c, z] : [layout.kindAt(lz, 'x', x), z - lz.c, x];
+    if (kind === 'walk' || kind === 'none') return 0.18; // paved: a walk, a market lane, the headquarters' campus
+    const nearCrossing = layout.cross.some((m) => Math.abs(along - m.c) < zebraAt(m) + ZEBRA_W / 2 + 0.3); // the median stops short of each zebra
     return kind === 'boulevard' && Math.abs(off) < STREETS.boulevard.median / 2 && !nearCrossing ? 0.28 : 0;
   };
   return { S, G, N, h, hub, e0, e1, at, node, removed, adj, dist, next, ground };
@@ -788,6 +799,7 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
   }
   function walking(p, dt, t) {
     let [tx, tz, wait] = p.pts[p.k];
+    if (p.pts[p.k][3]) zebraUse.set(p.pts[p.k][3], t); // on a zebra (its far kerb is the point it walks to): turning cars wait
     if (wait && canCross(wait, t)) wait = null; // walk now: no need to stop
     const dx = tx - p.ux, dz = tz - p.uz, d = Math.sqrt(dx * dx + dz * dz), want = Math.atan2(dx, dz);
     const err = Math.abs(turn(p, want, dt));

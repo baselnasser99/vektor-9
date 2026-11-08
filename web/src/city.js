@@ -12,37 +12,69 @@ import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite } from './headquarters.js';
-import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
+import { BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
 
-// Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
-// every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
-// width w, and kind per axis (kind.x runs along x at z = c, kind.z along z at x = c). The same lines serve both axes.
+// Tile centres in metres, before the district warp (cityWarp), and the street corridors between them. Across the
+// city, corridors and runs of HALF tiles alternate: a main street between every two sectors (lines, k = 0 and the
+// last being the ring road) and a mid street splitting every sector (mids: a local street in the inner sectors, a
+// service alley in the outermost ones), so the city is a grid of blocks HALF tiles a side. Each corridor has its
+// centre c, width w, sidewalk `side` and kind per axis (kind.x runs along x at z = c, kind.z along z at x = c); the
+// same corridors serve both axes, and a corridor's width is the same along its whole length. cross: every corridor
+// in order. kindAt(l, axis, v): what corridor l along `axis` is at v along it (it may become an old-town market
+// lane, or stop at the headquarters' campus; cut, set by buildCity), or null outside the city.
 export function cityLayout(snap) {
   const n = snap.size, sectors = n / BLOCK, mid = sectors / 2, rand = rng(snap.seed * 13 + 5);
   // A boulevard through the middle (it meets the highways), then narrow and full streets alternating out to the
   // ring road. Widths mirror around the centre so the boulevard sits at 0; whether a narrow one carries traffic
   // or is a pedestrian walk is picked per axis from the seed.
   const kinds = Array.from({ length: sectors + 1 }, (_, k) => {
-    if (k === 0 || k === sectors) return { x: 'local', z: 'local' }; // the ring road: quiet, with parking bays
+    if (k === 0 || k === sectors) return { x: 'ring', z: 'ring' }; // the ring road: quiet, with parking bays
     if (k === mid) return { x: 'boulevard', z: 'boulevard' };
     if (Math.abs(k - mid) % 2 === 0) return { x: 'street', z: 'street' };
     return { x: rand() < 0.5 ? 'walk' : 'lane', z: rand() < 0.5 ? 'walk' : 'lane' };
   });
-  const widths = kinds.map((k) => STREETS[k.x].w); // both axes' kinds at a line have the same width
-  const before = (s) => widths.slice(1, s + 1).reduce((a, b) => a + b, 0); // street width before sector s
-  const span = n * TILE + before(sectors - 1) + sectors * ALLEY;
-  const centres = Array.from({ length: n }, (_, i) => i * TILE + before(Math.floor(i / BLOCK))
-    + (Math.floor(i / HALF) - Math.floor(i / BLOCK)) * ALLEY - span / 2 + TILE / 2);
+  const midKind = (k) => (k === 0 || k === sectors - 1 ? 'alley' : 'local');
+  const cross = [];
+  for (let k = 0; k <= sectors; k++) {
+    cross.push({ kind: kinds[k], mid: false, k });
+    if (k < sectors) cross.push({ kind: { x: midKind(k), z: midKind(k) }, mid: true, k });
+  }
+  for (const l of cross) Object.assign(l, { w: STREETS[l.kind.x].w, side: STREETS[l.kind.x].side }); // both axes' kinds share a width
+  const span = n * TILE + cross.reduce((sum, l) => sum + l.w, 0), centres = [];
+  let at = -span / 2;
+  cross.forEach((l, j) => {
+    l.c = at + l.w / 2;
+    at += l.w;
+    if (j === cross.length - 1) return;
+    for (let t = 0; t < HALF; t++) {
+      centres.push(at + TILE / 2);
+      at += TILE;
+    }
+  });
   const pos = (i) => centres[i];
-  const lines = kinds.map((kind, k) => ({ kind, w: widths[k], side: STREETS[kind.x].side, // both axes' sidewalks match too
-    c: k < sectors ? pos(k * BLOCK) - TILE / 2 - widths[k] / 2 : pos(n - 1) + TILE / 2 + widths[k] / 2 }));
+  const tileAt = (v) => { // the tile whose centre is nearest v along either axis
+    let best = 0;
+    for (let i = 1; i < n; i++) if (Math.abs(centres[i] - v) < Math.abs(centres[best] - v)) best = i;
+    return best;
+  };
+  const lines = cross.filter((l) => !l.mid), mids = cross.filter((l) => l.mid);
   // Old town: of the four 2x2-sector quarters touching the centre, the one with the least terrain.
   const within = (col, row, [sx, sz]) => [col / BLOCK - sx, row / BLOCK - sz].every((v) => v >= 0 && v < 2);
   const terrain = (q) => snap.tiles.filter((t, i) => TERRAIN.includes(t.k) && within(i % n, Math.floor(i / n), q)).length;
   const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].map((q) => [terrain(q) + rand(), q]);
   const town = quarters.sort((p, q) => p[0] - q[0])[0][1];
   const inTown = (col, row) => within(col, row, town);
-  return { n, span, pos, lines, town, inTown, lo: lines[0].c - widths[0] / 2, hi: lines[sectors].c + widths[sectors] / 2 };
+  const lo = cross[0].c - cross[0].w / 2, hi = at;
+  const layout = { n, span, pos, tileAt, lines, mids, cross, town, inTown, lo, hi, cut: () => false };
+  layout.kindAt = (l, axis, v) => {
+    if (v < lo || v > hi) return null;
+    const k = l.kind[axis];
+    if (!l.mid || k === 'alley') return k;
+    const t = tileAt(v), side = l.k * BLOCK + HALF; // a tile beside l, in l's sector
+    if (axis === 'z' ? inTown(side, t) : inTown(t, side)) return 'walk'; // the old town's mid streets: market lanes, no cars
+    return layout.cut(l, axis, v) ? 'none' : k;
+  };
+  return layout;
 }
 
 // Districts: the city is not one plan. The old town (a quarter of 2x2 sectors beside the centre, the one with the
@@ -82,12 +114,14 @@ function settle(g, warp) {
 export function buildCity(kit, snap) {
   const layout = cityLayout(snap), { n, pos, inTown } = layout, root = new THREE.Group();
   const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
+  // The headquarters (headquarters.js): its 24 tiles are drawn as one campus, and nothing else lands on them; the
+  // mid street it straddles stops at the campus (layout.cut), so streets.js paves it over.
+  const hq = hqSite(snap, layout, new Set(crossing(snap).corners)), hqTiles = hq?.tiles ?? new Set();
+  if (hq) layout.cut = hqCut(layout, hq);
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   let flag = flagshipTower(snap, layout, signature, heavy); // -1 if none, or if it has no shaft to dress
-  // The headquarters (headquarters.js): its 24 tiles are drawn as one campus, and nothing else lands on them.
-  const hq = hqSite(snap, layout, new Set(crossing(snap).corners)), hqTiles = hq?.tiles ?? new Set();
   for (const i of hqTiles) {
     signature.delete(i);
     heavy.delete(i);
@@ -148,10 +182,10 @@ export function buildCity(kit, snap) {
     lot.traverse((o) => { if (o.name === 'detail') small = o.userData.lod = sector; });
     if (small !== false && !detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
     settle(lot, warp);
-    // Skybridge to the east neighbour in the same sector when both are tall enough.
+    // Skybridge to the east neighbour in the same block when both are tall enough.
     const east = snap.tiles[i + 1];
     const linked = family === 'mega' && east?.f >= 16 ? 0.45 : 0.12; // megastructures link up more often
-    if (t.k === 'house' && east?.k === 'house' && !hqTiles.has(i + 1) && col % BLOCK !== BLOCK - 1 && Math.min(t.f, east.f) >= 12 && rand() < linked) {
+    if (t.k === 'house' && east?.k === 'house' && !hqTiles.has(i + 1) && col % HALF !== HALF - 1 && Math.min(t.f, east.f) >= 12 && rand() < linked) {
       const y = Math.min(t.f, east.f) * F * (0.4 + rand() * 0.2), [a, b] = [cx, pos(col + 1)];
       part(root, box(b - a, 3.2, 3.6, 1), kit.windows(2, t.on && east.on), (a + b) / 2, y, cz);
       if (t.on) part(root, box(b - a, 0.12, 0.12, 1), kit.glow(palette.neonCyan, 2), (a + b) / 2, y - 1.7, cz + 1.8);
@@ -189,8 +223,17 @@ export function buildCity(kit, snap) {
     city.add(first);
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
-  return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, parked: streets.parked, lines: streets.lines, edge: streets.hi,
+  return { city, details, warp, rail, hub: streets.hub, roads: streets.roads, parked: streets.parked, lines: streets.lines, edge: streets.hi,
     benches: streets.benches, lamps: streets.lamps, food: streets.food, hq: hq && { x: hq.x, z: hq.z, heading: hq.heading, sector: hq.sector, street: hq.street } };
+}
+
+// Where the headquarters' campus covers the mid street it straddles: that corridor, along the axis it runs, over
+// the campus's depth. Returns layout.cut(l, axis, v).
+function hqCut({ pos, mids }, hq) {
+  const along = hq.heading === 0 || hq.heading === Math.PI ? 'z' : 'x'; // the mid street runs from the front street back
+  const deep = hq.cells.map(([c, r]) => (along === 'z' ? r : c)), sector = Math.floor((along === 'z' ? hq.cells[0][0] : hq.cells[0][1]) / BLOCK);
+  const [v0, v1] = [pos(Math.min(...deep)) - TILE / 2, pos(Math.max(...deep)) + TILE / 2];
+  return (l, axis, v) => l === mids[sector] && axis === along && v > v0 && v < v1;
 }
 
 // What is around each tile that never changes, for the building family rules (families.js familyOf): industry
@@ -288,15 +331,15 @@ const PROPS = { vending: 0.8, sign: 0.3, cabinet: 0.5, camera: 0.3, locker: 0.7,
 const CORNERS = [[['a', 3.8, 'sign'], ['a', 9, 'vending'], ['b', 10, 'cabinet']], [['b', 3.8, 'camera'], ['a', 10, 'locker'], ['b', 16, 'utility']],
   [['a', 3.8, 'sign'], ['b', 9, 'vending'], ['a', 15, 'cabinet']], [['b', 3.8, 'camera'], ['b', 10, 'locker'], ['a', 9, 'utility']]];
 function streetProps(kit, root, snap, { pos, n, lines }, lamps) {
-  // shortcut: one sidewalk width for both streets; true while the boulevard and main streets share STREETS side.
-  const { tiles } = snap, kerb = TILE / 2 + lines[lines.length >> 1].side, rand = rng(snap.seed * 43 + 1);
+  // The boulevard's sidewalk (along z, so its kerb is out along x) and the cross street's (a main street).
+  const { tiles } = snap, kx = TILE / 2 + lines[lines.length >> 1].side, kz = TILE / 2 + STREETS.street.side, rand = rng(snap.seed * 43 + 1);
   crossing(snap).corners.forEach((i, k) => {
     const [col, row] = [i % n, Math.floor(i / n)], [dx, dz] = [frontage(col), frontage(row)], [cx, cz] = [pos(col), pos(row)];
     const lit = tiles[i].on !== false, base = kit.industrial(lit);
     for (const [side, from, kind] of CORNERS[k]) {
       // Side a runs along the boulevard (along z), b along the cross street (along x); `from` the corner's kerb.
-      const back = kerb - 0.5 - PROPS[kind] / 2; // its centre, in from the kerb
-      const at = (d) => (side === 'a' ? [cx + dx * back, cz + dz * (kerb - d)] : [cx + dx * (kerb - d), cz + dz * back]);
+      const back = (side === 'a' ? kx : kz) - 0.5 - PROPS[kind] / 2; // its centre, in from the kerb
+      const at = (d) => (side === 'a' ? [cx + dx * back, cz + dz * (kz - d)] : [cx + dx * (kx - d), cz + dz * back]);
       let d = from;
       while (lamps.some(([x, z]) => Math.hypot(x - at(d)[0], z - at(d)[1]) < 2.2)) d += 1.5;
       const [x, z] = at(d), out = side === 'a' ? [dx, 0] : [0, dz]; // toward the street
@@ -486,7 +529,8 @@ function skybridge(kit, { tiles }, { a, b, axis, y, u0, u1, across }) {
 function openAbove({ size: n, tiles }, col, row, turn, k) {
   const [lx, lz] = [[1, 0], [0, 1], [-1, 0], [0, -1]][k];
   const dx = Math.round(lx * Math.cos(turn) + lz * Math.sin(turn)), dz = Math.round(lz * Math.cos(turn) - lx * Math.sin(turn));
-  const street = (i, d) => (d > 0 ? i % BLOCK === BLOCK - 1 : d < 0 && i % BLOCK === 0);
+  const inner = (i) => i >= BLOCK && i < n - BLOCK; // its sector's mid street is a street, not an alley
+  const street = (i, d) => (d > 0 ? i % BLOCK === BLOCK - 1 || (inner(i) && i % BLOCK === HALF - 1) : d < 0 && (i % BLOCK === 0 || (inner(i) && i % BLOCK === HALF)));
   if (street(col, dx) || street(row, dz)) return 0;
   const [u, v] = [col + dx, row + dz];
   return u < 0 || v < 0 || u >= n || v >= n ? 0 : (tiles[v * n + u].f ?? 0) * F;

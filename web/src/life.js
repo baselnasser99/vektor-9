@@ -4,58 +4,49 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { palette } from './palette.js';
 import { box, cyl, part, rng } from './geometry.js';
 import { CAR_COLORS, pick } from './world.js';
-import { ZEBRA_W } from './streets.js';
+import { ZEBRA_W, turnOf } from './streets.js';
 
 const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the move than parked
 const CAR = 4.4; // car length
-const CYCLE = 40; // seconds for a full traffic-light cycle at a crossing: x's half first, then z's
-const AMBER = 3; // the last seconds of each street's go phase
-const ALL_RED = 2; // both streets red at the end of each half, so the crossing clears
-
-// One controller per crossing, shared by its cars, its signal heads and its walkers: where a street along `axis`
-// is in its own cycle, 0..cycle. It may go (green, then amber) up to cycle / 2 - ALL_RED and is red after that,
-// so the two streets never both go. Each crossing's offset is its own (lights below), so neighbours don't all
-// change together.
-const own = (axis, { cycle, offset }, t) => {
-  const phase = (t + offset) % cycle;
-  return axis === 'x' ? phase : (phase + cycle / 2) % cycle;
-};
-const goLeft = (axis, light, t) => light.cycle / 2 - ALL_RED - own(axis, light, t); // seconds of green + amber left (<= 0: red)
-
-// Traffic lights, so cars on crossing streets never meet. A car may cross a stop line only while its street may
-// go long enough to clear the crossing (the roundabout takes longest) and has room to get out the far side
-// (gap: free road to the car ahead), and once it commits it keeps going.
-// Returns how far the car may still go before the next stop line it has to wait at (Infinity if none).
-function stopLine(c, lane, t, gap) {
-  const along = lane.from + (lane.to - lane.from) * c.u, s = lane.s;
-  let room = Infinity;
-  for (const light of lane.lights) {
-    const { centre, reach, clear } = light, d = (centre - s * reach - along) * s - CAR / 2 - 0.5; // to where the car's nose meets the line
-    // Already in it (a car wrapping round to the lane's start still waits), or a nearer line matters more.
-    if (d < -3 || d > room || c.cleared === centre) continue;
-    // Timed at the slowest car's pace (and slower, for pulling away), since a car may be stuck behind one.
-    const open = goLeft(lane.axis, light, t) > (clear + Math.max(0, d) + 2) / 7 && gap > Math.max(0, d) + 2 * reach + CAR + 1;
-    if (open && d < 4) c.cleared = centre; // committed: it goes now, even if the light changes
-    else if (!open) room = Math.max(0, d);
-  }
-  return room;
-}
-
-// The fixed part of every light on a lane, worked out once: where its stop line is (reach from the crossing's
-// centre, streets.js trafficLanes: the car's nose stops just behind it), the zebra beyond it (zebra from the
-// centre, null at the roundabout), its cycle and offset, and the distance to clear it, straight over or round the
-// roundabout's arc and out (spot in traffic).
-function lights(lane, hub) {
-  const ring = Math.abs(lane.at - hub.c) < hub.w, side = Math.abs(lane.at - hub.c), rho = hub.r + side;
-  return (lane.stops ?? []).map(([centre, reach, zebra]) => {
-    const round = ring && Math.abs(centre - hub.c) < 1;
-    const [x, z] = lane.axis === 'x' ? [centre, lane.c] : [lane.c, centre], cycle = round ? 2 * CYCLE : CYCLE;
-    const inner = round ? Math.sqrt(rho * rho - side * side) : 0;
-    const clear = (round ? rho * (Math.PI - 2 * Math.asin(side / rho)) + 2 * (reach - inner) : 2 * reach) + CAR;
-    return { centre, reach, zebra, cycle, offset: cycle * fract(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453), clear };
-  });
-}
+const AMBER = 3; // the last seconds of each go phase
+const ALL_RED = 2; // every approach red at the end of each phase, so the crossing clears
 const fract = (v) => v - Math.floor(v);
+
+// One controller per lit crossing (streets.js roadNet nodes of type 'signal' and 'round'), shared by its cars,
+// signal heads and walkers. Phases run in turn, each green, then AMBER, then ALL_RED: each street straight on and
+// right with left turns permitted (they give way to oncoming cars); where the boulevard meets another street, a
+// protected left phase follows each street's own; at the roundabout no left turns (the ring does that); a walk
+// crossing a car street gets a phase of its own for walkers. Each crossing's offset is its own, so neighbours do
+// not all change together. Opposing approaches always share a phase; crossing streets never go together.
+const set = (...m) => new Set(m);
+function control(N) {
+  const prot = N.type === 'signal' && (N.kinds.x === 'boulevard' || N.kinds.z === 'boulevard');
+  N.phases = ['x', 'z'].flatMap((axis) => {
+    if (!N.kinds[axis]) return [{ axis, moves: set(), green: 12 }]; // walkers cross the car street
+    if (N.type === 'round') return [{ axis, moves: set('straight', 'right'), green: 32 }];
+    return prot ? [{ axis, moves: set('straight', 'right'), green: 15 }, { axis, moves: set('left'), green: 7, left: true }]
+      : [{ axis, moves: set('straight', 'right', 'left'), green: 15 }];
+  });
+  N.cycle = N.phases.reduce((sum, p) => sum + p.green + AMBER + ALL_RED, 0);
+  N.offset = N.cycle * fract(Math.sin(N.x * 12.9898 + N.z * 78.233) * 43758.5453);
+}
+// The phase running at N at time t, and how far into it.
+function phaseAt(N, t) {
+  let u = (t + N.offset) % N.cycle;
+  for (const phase of N.phases) {
+    const span = phase.green + AMBER + ALL_RED;
+    if (u < span) return { phase, into: u };
+    u -= span;
+  }
+  return { phase: N.phases[0], into: 0 };
+}
+// Seconds of green and amber left for `move` from the street along `axis` at N (<= 0: red).
+function goLeft(N, axis, move, t) {
+  const { phase, into } = phaseAt(N, t);
+  return phase.axis === axis && phase.moves.has(move) ? phase.green + AMBER - into : 0;
+}
+const registry = new Map(); // node key -> node, for walkLight
+export const zebraUse = new Map(); // `${node key}|${axis}` -> the lights' time a walker was last on that zebra (people.js)
 
 // A city car, the everyday cousin of IKARO's executive cars (aircars.js): a low painted body, a dark glass cabin set
 // back under a painted roof, four dark wheels, a white headlight bar and a red tail bar. Origin at the middle of the
@@ -74,83 +65,252 @@ function carParts() {
   };
 }
 
-// Cars with head- and taillights. Each lane runs along its axis at offset `at` and height `y`, from `from` to
-// `to`, carrying `cars` cars that wrap back to the start; lift(along), if set, is its height there (desert.js outOfTown).
-// warp: the city's bend (city.js), so cars follow the curved streets; it is zero out on the highways.
-// hub: the roundabout { c, r, w } (streets.js): lanes through it swing out onto a circle round the island, each at
-// the island radius plus its own offset, so they nest and keep circling the same way.
-export function traffic(kit, lanes, onFrame, warp, hub, parked = []) {
-  const count = lanes.reduce((sum, l) => sum + l.cars, 0), rand = rng(77);
-  const geo = carParts(), make = (g, mat) => new THREE.InstancedMesh(g, mat, count);
-  const body = make(geo.paint, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }));
-  const meshes = [body, make(geo.glass, kit.glass(palette.charcoal)), make(geo.tyres, kit.steel(palette.graphite, 0.8)),
-    make(geo.head, kit.glow(palette.glare, 4)), make(geo.tail, kit.glow(palette.neonRed, 4))];
+// Cars with head- and taillights on the road graph (streets.js roadNet, carried out of town by desert.js
+// outOfTown). Every lane link becomes a polyline (warped with the street, at its road height), and every move a
+// car may make at a crossing a connector: straight on, a right turn from the outer lane into the cross street's
+// outer lane, a left turn from the inner lane into its inner lane, both as smooth curves through the crossing; at
+// the roundabout, round the island on the car's own ring. Lane rules (streets.js turnOf) say which lane may go
+// where. Each car follows the one ahead on its path, chooses its next move as it enters a link, and at the stop
+// line waits for its phase (with left turns giving way to oncoming cars), for room beyond the crossing, and for
+// walkers on the zebra it turns across. At crossings without lights (local streets) a car stops, then goes when
+// the crossing is clear, one at a time. Cars leaving town drive on into the haze and come back in on another road.
+// Physics is none: speed eases toward a target set by the gap ahead.
+export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
+  const { nodes, links } = roads, rand = rng(77), shift = [0, 0];
+  registry.clear();
+  for (const N of nodes) {
+    registry.set(N.key, N);
+    N.box = new Set(); // cars on its connectors now
+    N.holder = null; // at a crossing without lights: the one car allowed in
+    if (N.type !== 'yield') control(N);
+  }
+  const lineOf = (L, along) => (L.axis === 'x' ? [along, L.at] : [L.at, along]);
+  const pt = (x, z, y) => {
+    warp(x, z, shift);
+    return [x + shift[0], y, z + shift[1]];
+  };
+  const edge = (pts, extra) => { // a polyline with its running length
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][2] - pts[i - 1][2]));
+    return { pts, cum, len: cum.at(-1), cars: [], ...extra };
+  };
+  const heightAt = (L, along) => (L.lift ? L.lift(along) : L.y);
+  for (const L of links) {
+    const n = Math.max(1, Math.ceil(Math.abs(L.to - L.from) / 8)), pts = [];
+    for (let k = 0; k <= n; k++) {
+      const along = L.from + ((L.to - L.from) * k) / n;
+      pts.push(pt(...lineOf(L, along), heightAt(L, along)));
+    }
+    L.edge = edge(pts, { link: L });
+  }
+  // Connectors through each crossing.
+  const heading = (L) => (L.axis === 'x' ? [L.dir, 0] : [0, L.dir]);
+  const moveOf = (I, O) => {
+    const [ix, iz] = heading(I), [ox, oz] = heading(O), cross = ix * oz - iz * ox;
+    if (cross === 0) return ix === ox && iz === oz ? 'straight' : null; // never a u-turn
+    return cross > 0 ? 'right' : 'left';
+  };
+  const lanesMay = (I) => ({ any: ['straight', 'right', 'left'], left: I.kind === 'boulevard' ? ['left'] : ['straight', 'left'],
+    right: ['straight', 'right'], straight: ['straight'] })[turnOf(I.kind, I.k, I.n)];
+  const fits = (I, O, m) => (m === 'straight' ? O.k === I.k : m === 'right' ? O.k === O.n - 1 : O.k === 0);
+  const curve = (N, I, O, m) => {
+    const a = lineOf(I, I.to), b = lineOf(O, O.from), y0 = heightAt(I, I.to), y1 = heightAt(O, O.from), pts = [];
+    if (N.type === 'round') {
+      // Round the island: in to the car's ring, along it the way it is heading, out on the exit's ring.
+      const c = hub.c, ring = (L, along) => [lineOf(L, along)[0] - c, lineOf(L, along)[1] - c];
+      const onRing = (L, sign) => { // where L's lane meets its ring, before (-1) or after (+1) the centre
+        const side = L.at - c, rho = hub.r + Math.abs(side), u = sign * L.dir * Math.sqrt(Math.max(0, rho * rho - side * side));
+        return { p: ring(L, c + u), rho };
+      };
+      const e = onRing(I, -1), x = onRing(O, 1), a0 = Math.atan2(e.p[1], e.p[0]);
+      let a1 = Math.atan2(x.p[1], x.p[0]);
+      const [hx, hz] = heading(I), ccw = -Math.sin(a0) * hx + Math.cos(a0) * hz > 0; // increasing angle along its heading
+      if (ccw) while (a1 <= a0) a1 += 2 * Math.PI;
+      else while (a1 >= a0) a1 -= 2 * Math.PI;
+      pts.push(pt(...a, y0));
+      const steps = Math.max(4, Math.ceil((Math.abs(a1 - a0) * e.rho) / 3));
+      for (let k = 0; k <= steps; k++) {
+        const f = k / steps, ang = a0 + (a1 - a0) * f, r = e.rho + (x.rho - e.rho) * f;
+        pts.push(pt(c + Math.cos(ang) * r, c + Math.sin(ang) * r, y0));
+      }
+      pts.push(pt(...b, y1));
+      return pts;
+    }
+    if (m === 'straight') {
+      const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 4));
+      for (let k = 0; k <= n; k++) pts.push(pt(a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n, y0 + ((y1 - y0) * k) / n));
+      return pts;
+    }
+    const K = I.axis === 'x' ? [O.at, I.at] : [I.at, O.at]; // where the two lanes' lines meet: the curve's control point
+    for (let k = 0; k <= 12; k++) {
+      const f = k / 12, g = 1 - f;
+      pts.push(pt(g * g * a[0] + 2 * g * f * K[0] + f * f * b[0], g * g * a[1] + 2 * g * f * K[1] + f * f * b[1], y0 + (y1 - y0) * f));
+    }
+    return pts;
+  };
+  // A street that stops short (at a walk, or at the headquarters' campus) is a dead end: its lanes carry no
+  // traffic either way, and neither do lanes that only lead into one.
+  for (let dead = [null]; dead.length;) {
+    dead = links.filter((L) => L.end && !L.end.outs.some((O) => moveOf(L, O)));
+    const gone = new Set(dead.flatMap((L) => [L, ...links.filter((O) => O.start === L.end && O.end === L.start && O.axis === L.axis)]));
+    for (const L of gone) {
+      links.splice(links.indexOf(L), 1);
+      L.start?.outs.splice(L.start.outs.indexOf(L), 1);
+      L.end?.ins.splice(L.end.ins.indexOf(L), 1);
+    }
+  }
+  for (const N of nodes) for (const I of N.ins) {
+    const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left'));
+    let ok = options.filter(({ O, m }) => lanesMay(I).includes(m) && fits(I, O, m));
+    if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === I.k);
+    if (!ok.length) ok = options.filter(({ O, m }) => m !== 'straight' && fits(I, O, m));
+    I.moves = ok.map(({ O, m }) => ({ move: m, out: O, edge: edge(curve(N, I, O, m), { node: N, from: I, next: O.edge }) }));
+  }
+  // Self-check: every lane into a crossing has somewhere to go, or its cars would queue there for good.
+  const stuck = links.filter((L) => L.end && !L.moves.length);
+  console.assert(!stuck.length, `traffic: ${stuck.length} lanes end with nowhere to go: ${stuck.map((L) => `${L.kind} along ${L.axis} at ${L.at.toFixed(1)} into ${L.end.key} (${L.end.type})`).join('; ')}`);
+  const sources = links.filter((L) => L.out === 'source');
+  const choose = (L) => {
+    if (!L.moves?.length) return null;
+    const w = L.moves.map((mv) => (mv.move === 'straight' ? 3 : 1)), total = w.reduce((a, b) => a + b, 0);
+    let r = rand() * total;
+    return L.moves.find((mv, i) => (r -= w[i]) < 0) ?? L.moves[0];
+  };
+  // Cars: about one every so many metres of lane, by street kind, thinner out of town.
+  const EVERY = { boulevard: 90, street: 115, ring: 150, lane: 170, local: 170 };
   const cars = [];
-  for (const lane of lanes) {
-    lane.queue = []; // its cars in order along it, each following the one ahead, so none ever pass through another
-    lane.len = Math.abs(lane.to - lane.from);
-    lane.s = Math.sign(lane.to - lane.from);
-    lane.lights = lights(lane, hub);
-    for (let k = 0; k < lane.cars; k++) {
-      const car = { lane, u: (k + rand() * 0.5) / lane.cars, speed: 9 + rand() * 7, v: 0, cleared: null, placed: -1 };
-      lane.queue.push(car);
+  for (const L of links) {
+    const n = Math.floor(L.edge.len / (EVERY[L.kind] * (L.out ? 1.6 : 1)) + rand());
+    for (let k = 0; k < n; k++) {
+      const d = L.edge.len * (1 - (k + 0.5 + rand() * 0.3) / Math.max(n, 1)); // front first, spread back along it
+      const car = { edge: L.edge, link: L, d, v: 0, speed: 9 + rand() * 7, choice: choose(L), cleared: false, stopped: 0, placed: -1 };
+      L.edge.cars.push(car);
       cars.push(car);
     }
   }
+  console.info(`traffic: ${cars.length} cars on ${links.length} lanes, ${nodes.filter((N) => N.type === 'signal').length} lit crossings, ${nodes.filter((N) => N.type === 'yield').length} without lights`);
+  const count = Math.max(1, cars.length), geo = carParts(), make = (g, mat) => new THREE.InstancedMesh(g, mat, count);
+  const body = make(geo.paint, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }));
+  const meshes = [body, make(geo.glass, kit.glass(palette.charcoal)), make(geo.tyres, kit.steel(palette.graphite, 0.8)),
+    make(geo.head, kit.glow(palette.glare, 4)), make(geo.tail, kit.glow(palette.neonRed, 4))];
   const color = new THREE.Color();
   cars.forEach((c, i) => body.setColorAt(i, color.set(pick(rand, MOVING))));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-  const shift = [0, 0], here = [0, 0], ahead = [0, 0]; // reused: no garbage per frame
-  // Where a car `along` its lane is, written into out as [x, z].
-  const spot = ({ axis, at }, along, out) => {
-    let side = at - hub.c;
-    const u = along - hub.c, rho = hub.r + Math.abs(side);
-    if (Math.abs(side) < hub.w && u * u < rho * rho - side * side) side = Math.sign(side) * Math.sqrt(rho * rho - u * u);
-    const x = axis === 'z' ? hub.c + side : along, z = axis === 'z' ? along : hub.c + side;
-    warp(x, z, shift);
-    out[0] = x + shift[0];
-    out[1] = z + shift[1];
+  const here = [0, 0, 0], ahead = [0, 0, 0];
+  const sample = (E, d, out, nxt) => { // the point d along polyline E (past its end: on along nxt, or held at the end)
+    if (d > E.len && nxt) return sample(nxt, d - E.len, out, nxt.next);
+    d = Math.max(0, Math.min(E.len, d));
+    let i = 1;
+    while (i < E.cum.length - 1 && E.cum[i] < d) i++;
+    const f = (d - E.cum[i - 1]) / Math.max(1e-6, E.cum[i] - E.cum[i - 1]), a = E.pts[i - 1], b = E.pts[i];
+    out[0] = a[0] + (b[0] - a[0]) * f;
+    out[1] = a[1] + (b[1] - a[1]) * f;
+    out[2] = a[2] + (b[2] - a[2]) * f;
     return out;
   };
   const place = () => {
     cars.forEach((c, i) => {
-      if (c.placed === c.u) return; // a car waiting at a light has not moved: its matrices still hold
-      c.placed = c.u;
-      const { from, to, y, lift } = c.lane, along = from + (to - from) * (c.u % 1), s = to > from ? 1 : -1;
-      // Rear and front axles both on the lane's path, so the car turns with the bend of the street and its body
-      // never swings out across the next lane (the roundabout's entry is a sharp turn).
-      spot(c.lane, along - s * 1.4, here);
-      spot(c.lane, along + s * 1.4, ahead);
-      p.set((here[0] + ahead[0]) / 2, lift ? lift(along) : y, (here[1] + ahead[1]) / 2);
-      q.setFromAxisAngle(up, Math.atan2(ahead[0] - here[0], ahead[1] - here[1]));
+      const key = c.d + c.edge.len * 1e3;
+      if (c.placed === key) return; // waiting: its matrices still hold
+      c.placed = key;
+      // Rear and front axles both on the path, so the car turns with the street and through the curves; a link runs
+      // on into the car's chosen connector.
+      const nxt = c.edge.link ? c.choice?.edge : c.edge.next;
+      sample(c.edge, c.d - 1.4, here, nxt);
+      sample(c.edge, c.d + 1.4, ahead, nxt);
+      p.set((here[0] + ahead[0]) / 2, (here[1] + ahead[1]) / 2, (here[2] + ahead[2]) / 2);
+      q.setFromAxisAngle(up, Math.atan2(ahead[0] - here[0], ahead[2] - here[2]));
       m.compose(p, q, one);
       for (const mesh of meshes) mesh.setMatrixAt(i, m);
     });
     for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
   };
-  place();
+  // Whether car c, at the stop line of link L, may go into the crossing now on its chosen move.
+  const mayGo = (c, L, dist, t) => {
+    const mv = c.choice, N = L.end;
+    if (!mv) return false;
+    const last = mv.out.edge.cars.at(-1), inBox = mv.edge.cars.at(-1);
+    if ((last && last.d < CAR + 4) || (inBox && inBox.d < CAR + 3)) return false; // no room beyond: never block the crossing
+    if (mv.move !== 'straight' && t - (zebraUse.get(`${N.key}|${mv.out.axis}`) ?? -1e9) < 0.6) return false; // walkers on the zebra it turns across
+    if (N.type === 'yield') {
+      if (c.stopped < 0.8 || N.holder || N.box.size) return false; // stop, look, one at a time
+      N.holder = c;
+      return true;
+    }
+    const left = goLeft(N, L.axis, mv.move, t), need = (mv.edge.len + Math.max(0, dist) + 2) / 7; // timed at a slow car's pace
+    if (mv.move !== 'left' || phaseAt(N, t).phase.left) return left > need; // enough phase left to clear it
+    // A permitted left gives way to oncoming cars, and clears at the end of the phase once they stop coming (with
+    // AMBER left they no longer commit), finishing in the all-red, as drivers do.
+    if (left <= 0 || left + ALL_RED < need) return false;
+    for (const O of N.ins) {
+      if (O.axis !== L.axis || O.dir === L.dir) continue;
+      const f = O.edge.cars[0];
+      if (f && (f.cleared || (left > AMBER && O.edge.len - f.d < 30))) return false;
+    }
+    for (const b of N.box) if (b.edge.from.axis === L.axis && b.edge.from.dir !== L.dir) return false;
+    return true;
+  };
   let t = 0;
+  const moved = [], edges = [...links.map((L) => L.edge), ...links.flatMap((L) => (L.moves ?? []).map((mv) => mv.edge))];
   const tick = (dt) => {
     dt = Math.min(dt, 0.1); // a stalled tab must not jump cars through each other
     t += dt;
-    for (const lane of lanes) {
-      lane.queue.forEach((c, k) => {
-        const next = lane.queue[(k + 1) % lane.queue.length];
-        let room = next === c ? Infinity : (((next.u - c.u) % 1) + 1) % 1 * lane.len - CAR - 2;
-        room = Math.min(room, stopLine(c, lane, t, room));
-        // Slow smoothly into the gap; pick up speed gently when it opens.
-        c.v = Math.min(c.speed, Math.max(0, room) * 1.2, c.v + 5 * dt);
-        c.u += (c.v * dt) / lane.len;
-        if (c.u >= 1) c.u = 0; // round to the start exactly, where the first crossing's light still holds it
+    for (const E of edges) {
+      E.cars.forEach((c, i) => {
+        let room;
+        const lead = E.cars[i - 1];
+        if (lead) room = lead.d - c.d - CAR - 2;
+        else {
+          const nextE = E.link ? c.choice?.edge : E.next, lastNext = nextE?.cars.at(-1);
+          room = E.len - c.d + (nextE ? (lastNext ? lastNext.d - CAR - 2 : nextE.len) : Infinity);
+          const L = E.link;
+          if (L?.end && !c.cleared) {
+            const dist = E.len - c.d - CAR / 2 - 0.3; // to where its nose meets the stop line
+            if (dist < 4 && mayGo(c, L, dist, t)) c.cleared = true;
+            else room = Math.min(room, Math.max(0, dist));
+          }
+        }
+        c.v = Math.min(c.speed, Math.max(0, room) * 1.2, c.v + 5 * dt); // ease into the gap; pick up speed gently
+        c.stopped = c.v < 0.3 ? c.stopped + dt : 0;
+        c.d += c.v * dt;
+        if (c.d > E.len) moved.push(c);
       });
     }
+    for (const c of moved) {
+      const E = c.edge, over = c.d - E.len;
+      let next;
+      if (E.link) {
+        if (E.link.out === 'sink') { // gone into the haze: back in on another road
+          const S = pick(rand, sources), last = S?.edge.cars.at(-1);
+          if (!S || (last && last.d < CAR + 6)) {
+            c.d = E.len;
+            continue;
+          }
+          next = S.edge;
+        } else next = c.choice.edge;
+      } else next = E.next;
+      E.cars.splice(E.cars.indexOf(c), 1);
+      if (!E.link) { // out of the crossing
+        E.node.box.delete(c);
+        if (E.node.holder === c) E.node.holder = null;
+      }
+      next.cars.push(c);
+      c.edge = next;
+      c.d = E.link?.out === 'sink' ? 0 : over;
+      if (next.link) {
+        c.link = next.link;
+        c.choice = choose(next.link);
+        c.cleared = false;
+      } else next.node.box.add(c);
+    }
+    moved.length = 0;
     place();
   };
+  place();
   onFrame(tick);
-  // Cars move far from where the meshes were created, so never cull them by their starting bounds.
-  for (const mesh of meshes) mesh.frustumCulled = false;
+  for (const mesh of meshes) mesh.frustumCulled = false; // cars move far from where the meshes were created
   const g = new THREE.Group();
-  g.add(...meshes, signals(kit, lanes, spot, onFrame, () => t), parkedCars(kit, geo, parked, warp));
+  g.add(...meshes, signals(kit, roads, warp, onFrame, () => t), parkedCars(kit, geo, parked, warp));
   g.userData.clock = () => t; // the lights' time, for the pedestrian signals (walkLight)
   return g;
 }
@@ -173,66 +333,65 @@ function parkedCars(kit, geo, parked, warp) {
   return g;
 }
 
-// The traffic lights the cars obey (stopLine), drawn, sized by the street (STREETS kind). Every approach gets a
-// pole on its right-hand kerb just behind its zebra, with a head at 3 m facing the cars coming; main streets add a
-// mast arm with one head over their lanes; the boulevard (and the roundabout's entries) two heads on the arm and a
-// head on the median's nose. Local streets keep the single pole head. Every controlled zebra has a walk signal at
-// each end, facing across the street at the people waiting on the other side. Heads are red on top, amber, green
-// below, so position carries the meaning as well as colour; walk signals a red hand over a cold white walker.
-// Nothing blinks. Instanced: a lamp moves only when its state changes.
-// spot: traffic's lane placement (roundabout and warp); clock: the lights' time.
+// The traffic lights of the lit crossings, drawn, sized by the street. Every approach gets a pole on its right-hand
+// kerb just behind its zebra, with a head at 3 m facing the cars coming; main streets add a mast arm with one head
+// over their lanes; the boulevard two on the arm (the one over the left-turn lane shows the protected left phase)
+// and one on the median's nose for the left-turn lane. Every zebra at a lit crossing has a walk signal at each end,
+// facing across the street at the people waiting on the other side. Heads are red on top, amber, green below, so
+// position carries the meaning as well as colour; walk signals a red hand over a cold white walker. Nothing blinks.
+// Crossings of local streets have no lights. Instanced: a lamp moves only when its state changes.
 const HEAD = { y: 3.2, arm: 5.9 };
-function signals(kit, lanes, spot, onFrame, clock) {
-  const approaches = new Map(), xz = [0, 0];
-  for (const lane of lanes) {
-    for (const light of lane.lights) {
-      const key = `${lane.axis}${lane.c}${lane.s}${light.centre}`, off = Math.abs(lane.at - lane.c);
-      const a = approaches.get(key) ?? { lane, light, offs: [] };
-      a.offs.push(off);
-      approaches.set(key, a);
-    }
-  }
-  const heads = [], walks = [], posts = [], arms = [];
-  const at = (axis, off, along, y) => { // world position: `off` across (from the street's centre line), `along` it
-    spot({ axis, at: off }, along, xz);
-    return [xz[0], y, xz[1]];
+function signals(kit, roads, warp, onFrame, clock) {
+  const heads = [], walks = [], posts = [], arms = [], shift = [0, 0];
+  const at = (axis, off, along, y) => { // world position: `off` across (absolute), `along` the street
+    const [x, z] = axis === 'x' ? [along, off] : [off, along];
+    warp(x, z, shift);
+    return [x + shift[0], y, z + shift[1]];
   };
-  for (const { lane, light, offs } of approaches.values()) {
-    const { axis, c, s, kind } = lane, right = Math.sign(lane.at - c), kerb = lane.w / 2 - lane.side;
-    const big = kind === 'boulevard' || kind === 'street', inner = Math.min(...offs), outer = Math.max(...offs);
-    // Along: just behind the zebra (at the roundabout, beside the stop line).
-    const along = light.centre - s * (light.zebra ? light.zebra + ZEBRA_W / 2 + 0.5 : light.reach);
-    const ground = (lane.lift ? lane.lift(along) : lane.y) - 0.65;
-    if (ground > 0.5) continue; // out on a highway ramp: no kerb to stand on
-    const face = axis === 'z' ? (s > 0 ? Math.PI : 0) : (-s * Math.PI) / 2; // toward the cars coming
-    const top = big ? HEAD.arm + 0.7 : HEAD.y + 0.8;
-    posts.push([...at(axis, c + right * (kerb + 0.6), along, ground + top / 2), top]);
-    heads.push({ p: at(axis, c + right * (kerb + 0.35), along, ground + HEAD.y), face, axis, light });
-    if (big) {
-      const span = kerb + 0.6 - (inner - 1.6); // from the pole out over the innermost lane
-      arms.push({ p: at(axis, c + right * (kerb + 0.6 - span / 2), along, ground + top - 0.1), axis, span });
-      const over = kind === 'boulevard' ? [inner, (inner + outer) / 2 + 1.6] : [(inner + outer) / 2];
-      for (const o of over) heads.push({ p: at(axis, c + right * o, along, ground + HEAD.arm), face, axis, light });
+  for (const N of roads.nodes) {
+    if (N.type === 'yield') continue;
+    const groups = new Map();
+    for (const I of N.ins) {
+      const key = `${I.axis}${I.dir}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(I);
     }
-    if (kind === 'boulevard' && light.zebra) { // on the median's nose, for the cars in the inner lane
-      const nose = c + right * 0.9;
-      posts.push([...at(axis, nose, along, ground + 0.12 + (HEAD.y + 0.8) / 2), HEAD.y + 0.8]);
-      heads.push({ p: at(axis, nose - right * 0.25, along, ground + HEAD.y + 0.12), face, axis, light });
-    }
-    if (light.zebra) { // walk signals at both ends of this approach's zebra, on the crossing's side of it
-      const mid = light.centre - s * (light.zebra - ZEBRA_W / 2 - 0.3);
-      const [x, z] = axis === 'x' ? [light.centre, c] : [c, light.centre];
-      for (const end of [1, -1]) {
-        const o = c + end * right * (kerb + 0.5), look = end * right; // looks toward -look across the street
-        const toward = axis === 'z' ? (look > 0 ? -Math.PI / 2 : Math.PI / 2) : look > 0 ? Math.PI : 0;
-        posts.push([...at(axis, o, mid, ground + 1.6), 3.2]);
-        walks.push({ p: at(axis, o, mid, ground + 2.6), face: toward, cross: axis, x, z });
+    for (const ls of groups.values()) {
+      const L = ls[0], { axis, c, dir, kind } = L, right = Math.sign(L.at - c), kerb = L.w / 2 - L.side, centre = axis === 'x' ? N.x : N.z;
+      const big = kind === 'boulevard' || kind === 'street', offs = ls.map((l) => l.off), inner = Math.min(...offs), outer = Math.max(...offs);
+      const along = centre - dir * (L.zebra ? L.zebra + ZEBRA_W / 2 + 0.5 : L.reach); // just behind the zebra (the roundabout: by the stop line)
+      const ground = (L.lift ? L.lift(along) : L.y) - 0.65;
+      if (ground > 0.5) continue; // out on a highway ramp: no kerb to stand on
+      const face = axis === 'z' ? (dir > 0 ? Math.PI : 0) : (-dir * Math.PI) / 2; // toward the cars coming
+      const top = big ? HEAD.arm + 0.7 : HEAD.y + 0.8, protectedLeft = N.phases.some((p) => p.left);
+      posts.push([...at(axis, c + right * (kerb + 0.6), along, ground + top / 2), top]);
+      heads.push({ p: at(axis, c + right * (kerb + 0.35), along, ground + HEAD.y), face, N, axis, move: 'straight' });
+      if (big) {
+        const span = kerb + 0.6 - (inner - 1.6); // from the pole out over the innermost lane
+        arms.push({ p: at(axis, c + right * (kerb + 0.6 - span / 2), along, ground + top - 0.1), axis, span });
+        const over = kind === 'boulevard' ? [[inner, protectedLeft ? 'left' : 'straight'], [(inner + outer) / 2 + 1.6, 'straight']] : [[(inner + outer) / 2, 'straight']];
+        for (const [o, move] of over) heads.push({ p: at(axis, c + right * o, along, ground + HEAD.arm), face, N, axis, move });
+      }
+      if (kind === 'boulevard' && L.zebra) { // on the median's nose, for the left-turn lane
+        const nose = c + right * 0.9;
+        posts.push([...at(axis, nose, along, ground + 0.12 + (HEAD.y + 0.8) / 2), HEAD.y + 0.8]);
+        heads.push({ p: at(axis, nose - right * 0.25, along, ground + HEAD.y + 0.12), face, N, axis, move: protectedLeft ? 'left' : 'straight' });
+      }
+      if (L.zebra && N.type === 'signal') { // walk signals at both ends of this approach's zebra, on the crossing's side of it
+        const mid = centre - dir * (L.zebra - ZEBRA_W / 2 - 0.3);
+        for (const end of [1, -1]) {
+          const o = c + end * right * (kerb + 0.5), look = end * right; // looks toward -look across the street
+          const toward = axis === 'z' ? (look > 0 ? -Math.PI / 2 : Math.PI / 2) : look > 0 ? Math.PI : 0;
+          posts.push([...at(axis, o, mid, ground + 1.6), 3.2]);
+          walks.push({ p: at(axis, o, mid, ground + 2.6), face: toward, N, cross: axis });
+        }
       }
     }
   }
   const steel = kit.steel(palette.charcoal, 0.6), dark = kit.steel(palette.deepNavy, 0.3), n = heads.length, w = walks.length;
   const mesh = (geo, mat, count) => {
-    const m = new THREE.InstancedMesh(geo, mat, count);
+    const m = new THREE.InstancedMesh(geo, mat, Math.max(1, count));
+    m.count = count;
     m.frustumCulled = false;
     return m;
   };
@@ -274,10 +433,10 @@ function signals(kit, lanes, spot, onFrame, clock) {
       changed = true;
     };
     heads.forEach((h, i) => {
-      const g = goLeft(h.axis, h.light, t);
+      const g = goLeft(h.N, h.axis, h.move, t);
       show(h, i, g <= 0 ? 0 : g < AMBER ? 1 : 2, lamps, [0.35, 0, -0.35], 0.24);
     });
-    walks.forEach((h, i) => show(h, i, walkLight(h.x, h.z, h.cross, t) > 0 ? 1 : 0, walkLamps, [0.15, -0.15], 0.15));
+    walks.forEach((h, i) => show(h, i, walkLight(h.N.x, h.N.z, h.cross, t) > 0 ? 1 : 0, walkLamps, [0.15, -0.15], 0.15));
     if (changed) for (const l of [...lamps, ...walkLamps]) l.instanceMatrix.needsUpdate = true;
   };
   update();
@@ -287,13 +446,16 @@ function signals(kit, lanes, spot, onFrame, clock) {
   return g;
 }
 
-// The pedestrian signal where streets meet at (x, z), for people crossing the street that runs along `axis`:
-// seconds of walk left, or 0. They walk while the cross street goes (its whole half, which starts ALL_RED after
-// this street turns red) and stop ALL_RED before this street may go again. The same controller as the cars'
-// lights (own, lights above).
+// The pedestrian signal where streets meet at (x, z) (unwarped), for people crossing the street that runs along
+// `axis`: seconds of walk left, or 0. At a lit crossing they walk while the other street's straight-on phase (or
+// its walkers' phase) runs, and stop a second before it ends; at a crossing without lights they may always go
+// (turning cars give way to them, traffic).
 export function walkLight(x, z, axis, t) {
-  const u = own(axis, { cycle: CYCLE, offset: CYCLE * fract(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) }, t);
-  return u >= CYCLE / 2 ? CYCLE - ALL_RED - u : 0;
+  const N = registry.get(`${Math.round(x)}|${Math.round(z)}`);
+  if (!N || N.type === 'yield') return 99;
+  if (N.type === 'round') return 0;
+  const { phase, into } = phaseAt(N, t);
+  return phase.axis !== axis && !phase.left ? phase.green + AMBER - into - 1 : 0;
 }
 
 // Two trains on the railway viaduct (terrain.js railway), one per track, each shuttling between the terminus and

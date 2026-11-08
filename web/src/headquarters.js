@@ -56,7 +56,7 @@ export function hqSite(snap, { n, pos, inTown, lines }, avoid) {
   const x = (Math.min(...xs) + Math.max(...xs)) / 2, z = (Math.min(...zs) + Math.max(...zs)) / 2;
   // How far out (w) the front street's centre line is: the open air the hovercars come down through.
   const street = { 0: lines[by + 1].c - z, [Math.PI]: z - lines[by].c, [Math.PI / 2]: lines[bx + 1].c - x, [-Math.PI / 2]: x - lines[bx].c }[heading];
-  return { tiles: new Set(ids), x, z, heading, street, floors: Math.max(...ids.map((i) => tiles[i].f ?? 0)), sector: by * S + bx };
+  return { tiles: new Set(ids), cells, x, z, heading, street, floors: Math.max(...ids.map((i) => tiles[i].f ?? 0)), sector: by * S + bx };
 }
 
 // The headquarters, in a group whose origin is the site's centre on the paving and whose +z is its front: both
