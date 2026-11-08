@@ -30,16 +30,10 @@ START_MARKETS = 2
 START_HOUSE_CHANCE = 0.4
 START_FLOORS = (2, 4)
 
-# Terrain the city grows around: a railway in from one edge to a terminus by the core, a few
-# parks, an old industrial site.
+# Terrain the city grows around: a railway in from one edge to a terminus in the outer ring, a
+# few parks, an old industrial site.
 # Placement is integer math only, so every machine lays out the same map.
-RAIL_SLOPES = (
-    (1, 1),
-    (1, 2),
-    (2, 1),
-    (2, 3),
-    (3, 2),
-)  # rail direction (dx, dy), before a random flip
+RAIL_LENGTH = BLOCK  # tiles in from the edge: the outer sectors only, never the center
 RAIL_OFFSET = (8, 12)  # the line passes this many tiles from the center
 HUB_PLAZA = 2  # tiles each side of the central crossing kept as the tower's plaza (park terrain)
 PARKS = 2

@@ -59,29 +59,20 @@ export function telecomTower(kit, root, x, y, z) {
   root.add(g);
 }
 
-// Station on the viaduct, built along x with the deck at y = 0: platforms either side of the tracks, a glass hall
-// under a shallow pitched roof with a lit ridge, and a sign tower at the terminus end (+x).
+// The railway terminus (terrain.js railway), modelled in Blender by tools/blender/train_station.py (its proportions
+// live there) and loaded as a glTF: an armoured train shed over both tracks and two platforms, its roof folded
+// graphite plates with a cold-lit monitor along the ridge; a heavy concourse at the buffer end down to the street,
+// its entrance under a canopy, a crimson line under its roof and a vertical crimson sign (an invented name); a signal
+// gantry at the open throat. Built along -x from its street face at x = 0, the viaduct deck's centre at y = 0, the
+// buffers STOP metres in. Cold light in the shed, warm only in the concourse, steady red lamps.
+export const STATION = { STOP: 16, LENGTH: 105 };
 export function station(kit) {
-  const g = new THREE.Group(), len = 72, steel = kit.steel(palette.slate, 0.4), paving = kit.concrete(palette.roseGrey);
-  const glass = kit.windows(3, true), ridge = kit.glow(palette.neonCyan, 2), warm = kit.glow(palette.sodium, 1.5);
-  for (const side of [-1, 1]) {
-    part(g, box(len, 1, 3, 0), paving, 0, 0.3, side * 6);
-    part(g, box(len, 4.6, 0.3, 0), glass, 0, 3.1, side * 7.4);
-    part(g, box(len, 0.1, 0.1, 0), warm, 0, 0.9, side * 4.6); // platform edge
-    const roof = part(g, box(len + 2, 0.35, 8.4, 0), steel, 0, 6.9, side * 3.8);
-    roof.rotation.x = side * 0.22;
-  }
-  for (let x = -len / 2; x <= len / 2; x += 12) for (const side of [-1, 1]) part(g, box(0.4, 6, 0.4, 0), steel, x, 3.3, side * 7.2);
-  part(g, box(len + 2, 0.2, 0.3, 0), ridge, 0, 7.8, 0);
-  // The terminus end (+x): an end wall, and buffer stops with steady red lamps on both tracks.
-  part(g, box(0.4, 7, 15, 0), steel, len / 2 + 0.8, 3.5, 0);
-  for (const off of [-1.85, 1.85]) {
-    part(g, box(1, 1.4, 2.6, 0), steel, len / 2 - 0.5, 1.3, off);
-    part(g, box(0.1, 0.3, 0.6, 0), kit.warning(), len / 2 - 1.05, 1.7, off);
-  }
-  const tower = part(g, box(3, 22, 3, 1), steel, len / 2 + 2, 2, 8.5);
-  part(tower, box(0.3, 16, 2.4, 0), kit.glow(palette.neonPink, 2.5), 1.6, 2, 0);
-  return g;
+  const base = kit.industrial(true);
+  const roles = { ...base, concrete: kit.concrete(palette.gunmetal), panel: kit.steel(palette.charcoal, 0.4),
+    mech: kit.steel(palette.slate, 0.6), deepred: kit.steel(palette.deepRed, 0.6), glass: kit.glass(palette.smokedGlass),
+    interior: kit.glow(palette.warmWindow, 0.9), ice: kit.glow(palette.windowIce, 1.4), halo: kit.glow(palette.coreCrimson, 1),
+    sign: kit.sign('KARST', palette.coreCrimson, true) };
+  return kit.foldDetail(kit.model('train_station', roles), [base.hazard]);
 }
 
 // Retrofit for a signature or heavy tower (city.js): heavy industrial add-ons hung on its main

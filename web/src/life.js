@@ -480,11 +480,12 @@ function walkAt(N, axis, t) {
 
 // Two trains on the railway viaduct (terrain.js railway), one per track, each shuttling between the terminus and
 // the far end of the line out in the haze, slowing into the station and waiting there a moment.
-// rail: { at(t, out) -> [x, y, z] on the deck centre line, side: [x, z] across it, angle, end, out }.
+// rail: { at(t, out) -> [x, y, z] on the deck centre line, side: [x, z] across it, angle, end, out, stop: metres from
+// the end to the buffers }.
 export function trains(kit, rail, onFrame) {
-  const g = new THREE.Group(), trainsets = [], CAR = 20, CARS = 6, body = kit.windows(2, true);
+  const g = new THREE.Group(), trainsets = [], CAR = 20, CARS = 4, body = kit.windows(2, true); // four cars fit the shed
   const shell = kit.steel(palette.cream, 0.4), stripe = kit.glow(palette.neonCyan, 2);
-  const dir = Math.sign(rail.out - rail.end), room = Math.abs(rail.out - rail.end) - CARS * CAR - 4;
+  const dir = Math.sign(rail.out - rail.end), room = Math.abs(rail.out - rail.end) - CARS * CAR - rail.stop;
   for (const [off, phase] of [[1.85, 0], [-1.85, 0.5]]) {
     const cars = Array.from({ length: CARS }, () => {
       const car = new THREE.Group();
@@ -501,7 +502,7 @@ export function trains(kit, rail, onFrame) {
     for (const { cars, off, u } of trainsets) {
       // Back and forth; the smoothstep slows it at both ends, and clamping holds it at the station a while.
       const there = Math.min(1, Math.max(0, (1 - Math.abs(2 * u - 1)) * 1.15 - 0.15));
-      const head = 4 + room * there * there * (3 - 2 * there);
+      const head = rail.stop + room * there * there * (3 - 2 * there);
       cars.forEach((car, k) => {
         const [x, y, z] = rail.at(rail.end + dir * (head + k * CAR + CAR / 2), point);
         car.position.set(x + rail.side[0] * off, y + 0.6, z + rail.side[1] * off);

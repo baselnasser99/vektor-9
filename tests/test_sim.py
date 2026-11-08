@@ -276,14 +276,16 @@ def test_new_city_lays_out_terrain_around_the_core(seed):
     assert all(where[k] for k in R.TERRAIN)
     for k in R.TERRAIN:
         assert all(chebyshev(x, y, c, c) > R.START_RADIUS + 1 for x, y in where[k])
-    # The railway runs in one piece (each tile touches the next one by a side) from the city edge
-    # to a terminus beside the core, so it never cuts the city in two.
+    # The railway is a straight band two tiles wide, parallel to the streets, in one piece (each
+    # tile touches the next one by a side) from one edge to a terminus in the outer ring, so the
+    # station never stands in the city's middle.
     rail = set(where["rail"])
+    assert len(rail) == 2 * R.RAIL_LENGTH
+    assert len({x for x, _ in rail}) == 2 or len({y for _, y in rail}) == 2
     last = R.SIZE - 1
     exits = [(x, y) for x, y in rail if x in (0, last) or y in (0, last)]
-    assert exits
-    assert all(chebyshev(*a, *b) <= 6 for a in exits for b in exits)  # one way out, not two
-    assert min(chebyshev(x, y, c, c) for x, y in rail) <= R.RAIL_OFFSET[1] + 1
+    assert len(exits) == 2  # one way out, not two
+    assert min(chebyshev(x, y, c, c) for x, y in rail) >= c - R.RAIL_LENGTH
     start = next(iter(rail))
     seen, todo = {start}, [start]
     while todo:
