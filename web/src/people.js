@@ -25,7 +25,8 @@ import { css, ui } from './palette.js';
 import { rng } from './geometry.js';
 import { crossing } from './city.js';
 import { walkLight } from './life.js';
-import { BLOCK, SIDEWALK, TILE } from './world.js';
+import { BLOCK, STREETS, TILE } from './world.js';
+import { ZEBRA_W, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
 import { ENTRANCE, HQ, entranceRise, siteFrame } from './headquarters.js';
 
@@ -34,8 +35,8 @@ import { ENTRANCE, HQ, entranceRise, siteFrame } from './headquarters.js';
 export const CROWD = { density: 1, max: 1200, speed: 1, idle: 1, detail: 2, distance: 450 };
 const CAPACITY = 3000;
 const PER_SECTOR = 55; // people in an ordinary sector at density 1
-const PLAZA = 44; // radius of the walk round the tower's roundabout (its outer kerb is at 40.8 m)
-const ZEBRA = SIDEWALK + 1.8; // a crosswalk's centre line, along the street from the corner kerb (streets.js road)
+const PLAZA = 44; // radius of the walk round the tower's roundabout (its outer kerb is at about 39.6 m)
+const ZEBRA = (l) => zebraAt(l) - kerbOf(l); // a crosswalk's centre line, along the street from street l's kerb (streets.js road)
 
 // Who they are. share: of the whole city before district bias. Modules (figures.js) by weight; extras by chance.
 const ARCHETYPES = [
@@ -107,8 +108,8 @@ function network(layout) {
   const { n, pos, lines } = layout, S = n / BLOCK, G = 2 * S, N = G * G, h = S / 2, hub = lines[h].c;
   const e0 = [], e1 = []; // each sector's kerb lines, the same along both axes
   for (let b = 0; b < S; b++) {
-    e0[b] = pos(b * BLOCK) - TILE / 2 - SIDEWALK;
-    e1[b] = pos(b * BLOCK + BLOCK - 1) + TILE / 2 + SIDEWALK;
+    e0[b] = pos(b * BLOCK) - TILE / 2 - lines[b].side; // each street's own sidewalk (STREETS side)
+    e1[b] = pos(b * BLOCK + BLOCK - 1) + TILE / 2 + lines[b + 1].side;
   }
   const at = (X, i) => (X & 1 ? e1[X >> 1] - i : e0[X >> 1] + i); // a corner's coordinate, `i` in from the kerb
   const node = (id, i) => [at(id % G, i), at(Math.floor(id / G), i)];
@@ -143,7 +144,7 @@ function network(layout) {
       const street = axis === 'x' ? lines[L].kind.z : lines[L].kind.x, other = axis === 'x' ? lines[M].kind.x : lines[M].kind.z;
       if (street !== 'walk' && other === 'walk') continue; // no lights there, and the cars do not stop
       const a = axis === 'x' ? 2 * L - 1 + K * G : K + (2 * L - 1) * G, b = axis === 'x' ? a + 1 : a + G;
-      const v = K & 1 ? e1[K >> 1] - ZEBRA : e0[K >> 1] + ZEBRA;
+      const v = K & 1 ? e1[K >> 1] - ZEBRA(lines[M]) : e0[K >> 1] + ZEBRA(lines[M]);
       const light = street !== 'walk' && (axis === 'x' ? { x: lines[L].c, z: lines[M].c, axis: 'z' } : { x: lines[M].c, z: lines[L].c, axis: 'x' });
       const median = street === 'boulevard' ? lines[L].c : null;
       link(a, b, 'cross', cross(axis, e1[L - 1], e0[L], v, light, median));
@@ -196,7 +197,7 @@ function network(layout) {
   const nodes = [...Array(N).keys()].filter((id) => !removed.has(id));
   console.assert(nodes.every((a) => nodes.every((b) => dist[a * N + b] < Infinity)), 'people: the walking network is not connected');
   // Ground under a point: raised paving (sidewalks, plaza, walks) 0.18 m, roadway 0, a boulevard median 0.28 m.
-  const roadway = (v) => lines.find((l) => Math.abs(v - l.c) < l.w / 2 - SIDEWALK);
+  const roadway = (v) => lines.find((l) => Math.abs(v - l.c) < kerbOf(l));
   const ground = (x, z) => {
     if (Math.hypot(x - hub, z - hub) < PLAZA - 3) return 0; // the ring road
     const lx = roadway(x), lz = roadway(z);
@@ -204,8 +205,8 @@ function network(layout) {
     if (lx && lz) return 0;
     const [kind, off, along] = lx ? [lx.kind.z, x - lx.c, z] : [lz.kind.x, z - lz.c, x];
     if (kind === 'walk') return 0.18;
-    const nearCrossing = lines.some((m) => Math.abs(along - m.c) < m.w / 2 + SIDEWALK);
-    return kind === 'boulevard' && Math.abs(off) < 3 && !nearCrossing ? 0.28 : 0;
+    const nearCrossing = lines.some((m) => Math.abs(along - m.c) < zebraAt(m) + ZEBRA_W / 2 + 0.3); // the median stops short of each zebra
+    return kind === 'boulevard' && Math.abs(off) < STREETS.boulevard.median / 2 && !nearCrossing ? 0.28 : 0;
   };
   return { S, G, N, h, hub, e0, e1, at, node, removed, adj, dist, next, ground };
 }
@@ -404,7 +405,7 @@ function seatsOf(benches, food, layout, net) {
   const seat = (x, z, heading, step, along, extra) => {
     const across = along === 'z' ? x : z, v = along === 'z' ? z : x, lv = extra.via ? extra.via[along === 'z' ? 1 : 0] : v;
     const L = lines.reduce((best, l, i) => (Math.abs(across - l.c) < Math.abs(across - lines[best].c) ? i : best), 0);
-    const sign = Math.sign(across - lines[L].c) || 1, kerb = lines[L].c + sign * (lines[L].w / 2 - SIDEWALK);
+    const sign = Math.sign(across - lines[L].c) || 1, kerb = lines[L].c + sign * kerbOf(lines[L]);
     let r = 0;
     while (r < S - 1 && lv > e1[r]) r++;
     const corner = 2 * (sign > 0 ? L : L - 1) + (sign > 0 ? 0 : 1), alongNode = 2 * r + (lv - e0[r] < e1[r] - lv ? 0 : 1);

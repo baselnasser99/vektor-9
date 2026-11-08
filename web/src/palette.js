@@ -23,6 +23,7 @@ export const palette = {
   salmonAlt: 0xe98a8f,
   amber: 0xf2a43a,
   signal: 0xe2453c,
+  signalGreen: 0x2fd59a, // traffic lights' go lamp (life.js signals): an LED blue-green, as real signals are
   lime: 0x9be15d,
   cyan: 0x72d3ec,
 
