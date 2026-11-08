@@ -30,15 +30,21 @@ function control(N) {
   N.cycle = N.phases.reduce((sum, p) => sum + p.green + AMBER + ALL_RED, 0);
   N.offset = N.cycle * fract(Math.sin(N.x * 12.9898 + N.z * 78.233) * 43758.5453);
 }
-// The phase running at N at time t, and how far into it.
+// The phase running at N at time t, and how far into it; kept on N for the rest of that frame (cars, heads and
+// walkers all ask).
 function phaseAt(N, t) {
-  let u = (t + N.offset) % N.cycle;
+  if (N.at === t) return N.now;
+  let u = (t + N.offset) % N.cycle, now = { phase: N.phases[0], into: 0 };
   for (const phase of N.phases) {
     const span = phase.green + AMBER + ALL_RED;
-    if (u < span) return { phase, into: u };
+    if (u < span) {
+      now = { phase, into: u };
+      break;
+    }
     u -= span;
   }
-  return { phase: N.phases[0], into: 0 };
+  N.at = t;
+  return (N.now = now);
 }
 // Seconds of green and amber left for `move` from the street along `axis` at N (<= 0: red).
 function goLeft(N, axis, move, t) {
@@ -65,25 +71,13 @@ function carParts() {
   };
 }
 
-// Cars with head- and taillights on the road graph (streets.js roadNet, carried out of town by desert.js
-// outOfTown). Every lane link becomes a polyline (warped with the street, at its road height), and every move a
-// car may make at a crossing a connector: straight on, a right turn from the outer lane into the cross street's
-// outer lane, a left turn from the inner lane into its inner lane, both as smooth curves through the crossing; at
-// the roundabout, round the island on the car's own ring. Lane rules (streets.js turnOf) say which lane may go
-// where. Each car follows the one ahead on its path, chooses its next move as it enters a link, and at the stop
-// line waits for its phase (with left turns giving way to oncoming cars), for room beyond the crossing, and for
-// walkers on the zebra it turns across. At crossings without lights (local streets) a car stops, then goes when
-// the crossing is clear, one at a time. Cars leaving town drive on into the haze and come back in on another road.
-// Physics is none: speed eases toward a target set by the gap ahead.
-export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
-  const { nodes, links } = roads, rand = rng(77), shift = [0, 0];
-  registry.clear();
-  for (const N of nodes) {
-    registry.set(N.key, N);
-    N.box = new Set(); // cars on its connectors now
-    N.holder = null; // at a crossing without lights: the one car allowed in
-    if (N.type !== 'yield') control(N);
-  }
+// The road graph as paths cars follow: every lane link a polyline (warped with the street, at its road height),
+// and at each crossing a connector for every move a car in that lane may make (I.moves): straight on, a right turn
+// from the outer lane into the cross street's outer lane, a left turn from the inner lane into its inner lane, both
+// smooth curves through the crossing; at the roundabout, round the island on the car's own ring. Lane rules
+// (streets.js turnOf) say which lane may go where. Dead-end lanes are dropped first.
+function paths(roads, warp, hub) {
+  const { nodes, links } = roads, shift = [0, 0];
   const lineOf = (L, along) => (L.axis === 'x' ? [along, L.at] : [L.at, along]);
   const pt = (x, z, y) => {
     warp(x, z, shift);
@@ -169,6 +163,25 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
   // Self-check: every lane into a crossing has somewhere to go, or its cars would queue there for good.
   const stuck = links.filter((L) => L.end && !L.moves.length);
   console.assert(!stuck.length, `traffic: ${stuck.length} lanes end with nowhere to go: ${stuck.map((L) => `${L.kind} along ${L.axis} at ${L.at.toFixed(1)} into ${L.end.key} (${L.end.type})`).join('; ')}`);
+}
+
+// Cars with head- and taillights on the road graph (streets.js roadNet, carried out of town by desert.js
+// outOfTown), along its paths (paths above). Each car follows the one ahead on its path, chooses its next move as it
+// enters a link, and at the stop
+// line waits for its phase (with left turns giving way to oncoming cars), for room beyond the crossing, and for
+// walkers on the zebra it turns across. At crossings without lights (local streets) a car stops, then goes when
+// the crossing is clear, one at a time. Cars leaving town drive on into the haze and come back in on another road.
+// Physics is none: speed eases toward a target set by the gap ahead.
+export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
+  const { nodes, links } = roads, rand = rng(77);
+  registry.clear();
+  for (const N of nodes) {
+    registry.set(N.key, N);
+    N.box = new Set(); // cars on its connectors now
+    N.holder = null; // at a crossing without lights: the one car allowed in
+    if (N.type !== 'yield') control(N);
+  }
+  paths(roads, warp, hub);
   const sources = links.filter((L) => L.out === 'source');
   const choose = (L) => {
     if (!L.moves?.length) return null;
@@ -200,8 +213,12 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
   const sample = (E, d, out, nxt) => { // the point d along polyline E (past its end: on along nxt, or held at the end)
     if (d > E.len && nxt) return sample(nxt, d - E.len, out, nxt.next);
     d = Math.max(0, Math.min(E.len, d));
-    let i = 1;
-    while (i < E.cum.length - 1 && E.cum[i] < d) i++;
+    let lo = 0, i = E.cum.length - 1; // binary search: lanes out of town have hundreds of points
+    while (i - lo > 1) {
+      const m = (lo + i) >> 1;
+      if (E.cum[m] < d) lo = m;
+      else i = m;
+    }
     const f = (d - E.cum[i - 1]) / Math.max(1e-6, E.cum[i] - E.cum[i - 1]), a = E.pts[i - 1], b = E.pts[i];
     out[0] = a[0] + (b[0] - a[0]) * f;
     out[1] = a[1] + (b[1] - a[1]) * f;
@@ -256,6 +273,7 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     dt = Math.min(dt, 0.1); // a stalled tab must not jump cars through each other
     t += dt;
     for (const E of edges) {
+      if (!E.cars.length) continue; // most connectors are empty most of the time
       E.cars.forEach((c, i) => {
         let room;
         const lead = E.cars[i - 1];
@@ -436,7 +454,7 @@ function signals(kit, roads, warp, onFrame, clock) {
       const g = goLeft(h.N, h.axis, h.move, t);
       show(h, i, g <= 0 ? 0 : g < AMBER ? 1 : 2, lamps, [0.35, 0, -0.35], 0.24);
     });
-    walks.forEach((h, i) => show(h, i, walkLight(h.N.x, h.N.z, h.cross, t) > 0 ? 1 : 0, walkLamps, [0.15, -0.15], 0.15));
+    walks.forEach((h, i) => show(h, i, walkAt(h.N, h.cross, t) > 0 ? 1 : 0, walkLamps, [0.15, -0.15], 0.15));
     if (changed) for (const l of [...lamps, ...walkLamps]) l.instanceMatrix.needsUpdate = true;
   };
   update();
@@ -451,7 +469,9 @@ function signals(kit, roads, warp, onFrame, clock) {
 // its walkers' phase) runs, and stop a second before it ends; at a crossing without lights they may always go
 // (turning cars give way to them, traffic).
 export function walkLight(x, z, axis, t) {
-  const N = registry.get(`${Math.round(x)}|${Math.round(z)}`);
+  return walkAt(registry.get(`${Math.round(x)}|${Math.round(z)}`), axis, t);
+}
+function walkAt(N, axis, t) {
   if (!N || N.type === 'yield') return 99;
   if (N.type === 'round') return 0;
   const { phase, into } = phaseAt(N, t);
