@@ -96,22 +96,23 @@ const lit = (map, intensity = NEON) => new THREE.MeshStandardMaterial({ color: 0
 // irregular noise field rises through it, small coral highlights at its hottest points, and a slow breath per
 // reactor (its phase from its place, so neighbours are out of step); a landmark's (kind 1) is stronger and now and
 // then surges slowly. No flashing: the field drifts about a fifth of a metre a second and a breath takes fourteen
-// seconds; with reduced motion the time never advances. The red is
+// seconds; with reduced motion the time never advances. Kind 2 (the telecom tower's core spindle) is a landmark's
+// whose field also turns slowly about the model's vertical axis, once in about eighty seconds. The red is
 // corrected for AgX as the windows' are (facade.js fDeep), or it turns salmon. One material per kind, so every
 // chamber in the city draws in one call.
 function coreMaterial(kind) {
   const m = new THREE.MeshStandardMaterial({ color: palette.deepNavy, roughness: 0.35, metalness: 0, emissive: 0xffffff,
-    emissiveIntensity: NEON * (kind ? 2.6 : 1.7) }); // recessed behind ribs and bars, so brighter than a sign
+    emissiveIntensity: NEON * [1.7, 2.6, 3.6][kind] }); // recessed behind ribs and bars, so brighter than a sign
   const c = (v) => ({ value: new THREE.Color(v) });
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, { cTime: facadeTime, cKind: { value: kind }, cBlood: c(palette.coreBlood),
       cCrimson: c(palette.coreCrimson), cScarlet: c(palette.coreScarlet), cCoral: c(palette.coreCoral) });
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCoreW;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvCoreW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCoreW, vCoreL;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvCoreW = (modelMatrix * vec4(transformed, 1.0)).xyz; vCoreL = transformed;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vCoreW; uniform float cTime, cKind; uniform vec3 cBlood, cCrimson, cScarlet, cCoral;
+        varying vec3 vCoreW, vCoreL; uniform float cTime, cKind; uniform vec3 cBlood, cCrimson, cScarlet, cCoral;
         float cH(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
         float cN(vec3 p) { // smooth value noise
           vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -123,7 +124,9 @@ function coreMaterial(kind) {
         float cT = cTime + cPh * 60.0;
         float cBreath = 0.86 + 0.14 * sin(cT * 0.45);
         // Slow, irregular variation over one continuous surface, drifting upward: plasma, not stripes or windows.
-        vec3 cP = vCoreW * 0.55 + vec3(0.0, -cT * 0.12, 0.0);
+        vec3 cQ = vCoreW;
+        if (cKind > 1.5) { float cA = cT * 0.08; cQ = vec3(mat2(cos(cA), -sin(cA), sin(cA), cos(cA)) * vCoreL.xz, vCoreL.y).xzy; }
+        vec3 cP = cQ * 0.55 + vec3(0.0, -cT * 0.12, 0.0);
         float cV = 0.65 * cN(cP) + 0.35 * cN(cP * 2.1 + vec3(5.2, -cT * 0.1, 1.3));
         float cSurge = cKind > 0.5 ? pow(max(sin(cT * 0.29) * sin(cT * 0.17 + 1.3), 0.0), 4.0) : 0.0;
         vec3 cE = mix(cBlood, cCrimson, 0.5 + 0.5 * cBreath);
@@ -133,6 +136,29 @@ function coreMaterial(kind) {
         totalEmissiveRadiance *= cE * (cBreath + 0.45 * cSurge);`);
   };
   m.customProgramCacheKey = () => 'core';
+  return m;
+}
+
+// The telecom tower's power conduits (tools/blender/telecom_tower.py): scarlet, brightest at the reactor chamber's lip
+// (13.5 m from the tower's axis) and a quarter as bright at the containment ring (21 m), with a slow pulse running
+// inward along each at about 2.4 m/s, each conduit out of step with the next. With reduced motion the time never
+// advances.
+function conduitMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: palette.deepNavy, roughness: 0.4, metalness: 0, emissive: palette.coreScarlet,
+    emissiveIntensity: NEON * 1.6 });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.qTime = facadeTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vQ;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvQ = transformed;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vQ; uniform float qTime;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float qR = length(vQ.xz), qIn = smoothstep(21.0, 13.5, qR);
+        float qPulse = pow(0.5 + 0.5 * sin(qR * 0.5 + qTime * 1.2 + atan(vQ.z, vQ.x) * 3.0), 8.0);
+        totalEmissiveRadiance *= (0.25 + 0.75 * qIn) * (0.55 + 0.9 * qPulse);`);
+  };
+  m.customProgramCacheKey = () => 'conduit';
   return m;
 }
 
@@ -210,8 +236,10 @@ export async function loadKit(renderer, models = [], base = './assets') {
       hologram(corpTexture(name, line, mark, w, h, ink, markColor, true), ink, 0, phaseOf(`${name}${w}`), 1.5)),
     // The fans of light from a projector's lens, one per tint.
     beam: (tint) => once(`beam:${tint}`, () => hologram(null, tint, 1, 0, 1)),
-    // A reactor's energy chamber (coreMaterial above): kind 0 ordinary, 1 a landmark's.
+    // A reactor's energy chamber (coreMaterial above): kind 0 ordinary, 1 a landmark's, 2 the telecom tower's (turning).
     core: (kind = 0) => once(`core:${kind}`, () => coreMaterial(kind)),
+    // The telecom tower's pulsing power conduits (conduitMaterial above).
+    conduit: () => once('conduit', conduitMaterial),
     // A corporate sign's amber info display: a traffic sign's dot-matrix message, redrawn now and then (liveSign).
     display: (lines, w, h) => once(`display:${lines.join('/')}:${w}x${h}`, () =>
       liveSign(lit(messageTexture(lines, w, h)), 1, phaseOf(lines.join()))),

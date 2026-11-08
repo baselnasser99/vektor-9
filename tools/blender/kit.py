@@ -62,6 +62,22 @@ ROLES = {
     "holo": (0x7FB6BF, 0.0, 0.3, 0xA8DCE4, 1.2, 0.45, None),  # a see-through product hologram
     "awning_a": (0xA8452E, 0.0, 0.8, None, 0, 1, None),  # awning stripes: the tile's warm colour
     "awning_b": (0xCFC6B8, 0.0, 0.8, None, 0, 1, None),  # and cream
+    "shell": (0xC9CED3, 0.3, 0.4, None, 0, 1, None),  # cool off-white crown structure
+    "deck": (0x293642, 0.3, 0.45, None, 0, 1, None),  # dark gunmetal observation drum
+    "strut": (0x425567, 0.4, 0.5, None, 0, 1, None),  # steel-blue struts under the drum
+    "core": (
+        0x161C29,
+        0.0,
+        0.35,
+        0xB3122A,
+        14.0,
+        1,
+        None,
+    ),  # reactor core (animated in the renderer)
+    "halo": (0x161C29, 0.0, 0.5, 0x5A0E16, 4.0, 1, None),  # the core's soft crimson spill
+    "corering": (0x161C29, 0.0, 0.35, 0x8E1020, 8.0, 1, None),  # reactor ring, dimmer
+    "chamber": (0x161C29, 0.0, 0.35, 0xB3122A, 11.0, 1, None),  # the reactor drum
+    "conduit": (0x161C29, 0.0, 0.4, 0xB3122A, 6.0, 1, None),  # pulsing power conduits
 }
 TO_BLENDER = Matrix.Rotation(math.pi / 2, 4, "X")  # three (x, y, z) -> Blender (x, -z, y)
 parts = {}  # (role, detail) -> [objects]

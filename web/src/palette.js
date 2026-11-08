@@ -62,6 +62,10 @@ export const palette = {
   gunmetal: 0x2f3648,
   slate: 0x4b5569,
   weatheredConcrete: 0x7e8992, // the telecom tower's old frame
+  crownWhite: 0xc9ced3, // cool-grey highlights on the edges of its dark Reactor Crown
+  drumGunmetal: 0x293642, // its observation and control drum under the crown
+  smokedGlass: 0x101b26, // the drum's smoked blue-black glass
+  strutSteel: 0x425567, // the raking struts from the transfer ring up to the drum
   // The power plant (SECTOR 07): grimy industrial materials and small, dim working lights.
   blackenedConcrete: 0x34373b,
   weatheredTitanium: 0x666d73,
