@@ -12,7 +12,7 @@ import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, works } from './terrain.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite } from './headquarters.js';
-import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, SIDEWALK, pick } from './world.js';
+import { ALLEY, BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp). Main streets run between sectors; an alley splits
 // every sector in half both ways. lines: every main street, k = 0 and the last being the ring road: its centre c,
@@ -23,7 +23,7 @@ export function cityLayout(snap) {
   // ring road. Widths mirror around the centre so the boulevard sits at 0; whether a narrow one carries traffic
   // or is a pedestrian walk is picked per axis from the seed.
   const kinds = Array.from({ length: sectors + 1 }, (_, k) => {
-    if (k === 0 || k === sectors) return { x: 'street', z: 'street' };
+    if (k === 0 || k === sectors) return { x: 'local', z: 'local' }; // the ring road: quiet, with parking bays
     if (k === mid) return { x: 'boulevard', z: 'boulevard' };
     if (Math.abs(k - mid) % 2 === 0) return { x: 'street', z: 'street' };
     return { x: rand() < 0.5 ? 'walk' : 'lane', z: rand() < 0.5 ? 'walk' : 'lane' };
@@ -34,7 +34,7 @@ export function cityLayout(snap) {
   const centres = Array.from({ length: n }, (_, i) => i * TILE + before(Math.floor(i / BLOCK))
     + (Math.floor(i / HALF) - Math.floor(i / BLOCK)) * ALLEY - span / 2 + TILE / 2);
   const pos = (i) => centres[i];
-  const lines = kinds.map((kind, k) => ({ kind, w: widths[k],
+  const lines = kinds.map((kind, k) => ({ kind, w: widths[k], side: STREETS[kind.x].side, // both axes' sidewalks match too
     c: k < sectors ? pos(k * BLOCK) - TILE / 2 - widths[k] / 2 : pos(n - 1) + TILE / 2 + widths[k] / 2 }));
   // Old town: of the four 2x2-sector quarters touching the centre, the one with the least terrain.
   const within = (col, row, [sx, sz]) => [col / BLOCK - sx, row / BLOCK - sz].every((v) => v >= 0 && v < 2);
@@ -189,7 +189,7 @@ export function buildCity(kit, snap) {
     city.add(first);
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
-  return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, lines: streets.lines, edge: streets.hi,
+  return { city, details, warp, rail, hub: streets.hub, lanes: streets.lanes, parked: streets.parked, lines: streets.lines, edge: streets.hi,
     benches: streets.benches, lamps: streets.lamps, food: streets.food, hq: hq && { x: hq.x, z: hq.z, heading: hq.heading, sector: hq.sector, street: hq.street } };
 }
 
@@ -287,8 +287,9 @@ export function crossing({ size: n, tiles }) {
 const PROPS = { vending: 0.8, sign: 0.3, cabinet: 0.5, camera: 0.3, locker: 0.7, utility: 0.6 }; // depth (m)
 const CORNERS = [[['a', 3.8, 'sign'], ['a', 9, 'vending'], ['b', 10, 'cabinet']], [['b', 3.8, 'camera'], ['a', 10, 'locker'], ['b', 16, 'utility']],
   [['a', 3.8, 'sign'], ['b', 9, 'vending'], ['a', 15, 'cabinet']], [['b', 3.8, 'camera'], ['b', 10, 'locker'], ['a', 9, 'utility']]];
-function streetProps(kit, root, snap, { pos, n }, lamps) {
-  const { tiles } = snap, kerb = TILE / 2 + SIDEWALK, rand = rng(snap.seed * 43 + 1);
+function streetProps(kit, root, snap, { pos, n, lines }, lamps) {
+  // shortcut: one sidewalk width for both streets; true while the boulevard and main streets share STREETS side.
+  const { tiles } = snap, kerb = TILE / 2 + lines[lines.length >> 1].side, rand = rng(snap.seed * 43 + 1);
   crossing(snap).corners.forEach((i, k) => {
     const [col, row] = [i % n, Math.floor(i / n)], [dx, dz] = [frontage(col), frontage(row)], [cx, cz] = [pos(col), pos(row)];
     const lit = tiles[i].on !== false, base = kit.industrial(lit);

@@ -3,13 +3,16 @@ import { palette } from './palette.js';
 
 export const TILE = 14; // metres per tile; buildings take up to 12.5 m of it
 export const BLOCK = 8; // tiles per sector side (sim/rules.py BLOCK)
-export const SIDEWALK = 4; // every street has a 4 m sidewalk on each side, included in its width
-// Street kinds between sectors: width in metres, traffic lane centres from the centre line (each way), cars per lane.
+// Street kinds between sectors, a hierarchy (STYLE_GUIDE Street level): total width w (fixed: it places every
+// tile, so it never changes), sidewalk `side` each side (inside w), traffic lane centres from the centre line (each
+// way), `edge` where the traffic lanes end (local streets keep parking and loading bays between it and the kerb),
+// median width, and cars per lane (streets.js CORNER rounds every block corner alike). 3.3 to 3.5 m lanes, like real city streets.
 export const STREETS = {
-  boulevard: { w: 34, lanes: [4.9, 8.2, 11.5], cars: 4 }, // 6 m planted median, three lanes each way
-  street: { w: 24, lanes: [1.9, 5.7], cars: 3 }, // two lanes each way, double centre line
-  lane: { w: 16, lanes: [2.1], cars: 2 }, // one lane each way, dashed centre line
-  walk: { w: 16, lanes: [], cars: 0 }, // pedestrian street: paved, planted, no cars
+  boulevard: { w: 34, side: 5, lanes: [3.67, 7, 10.33], edge: 12, median: 4, cars: 9 }, // type C: three lanes each way
+  street: { w: 24, side: 5, lanes: [2.125, 5.375], edge: 7, median: 0, cars: 6 }, // type B, main: two each way
+  local: { w: 24, side: 6, lanes: [1.75], edge: 3.5, median: 0, cars: 3 }, // type A: one each way, bays both sides
+  lane: { w: 16, side: 4, lanes: [1.75], edge: 3.5, median: 0, cars: 2 }, // type A, narrow: one each way
+  walk: { w: 16, side: 4, lanes: [], edge: 0, median: 0, cars: 0 }, // pedestrian street: paved, planted, no cars
 };
 export const ALLEY = 5; // service alley through the middle of every sector, after HALF tiles
 export const HALF = 4;
