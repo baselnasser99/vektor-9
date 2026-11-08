@@ -6,11 +6,14 @@ import { box, cyl, part } from './geometry.js';
 import { pipe } from './parts.js';
 import { F } from './world.js';
 import { glslColor } from './atmosphere.js';
+import { facadeMaterial } from './facade.js';
 
 // The city's telecom tower, in the middle of the plaza where the boulevards meet (streets.js). Modelled in Blender by
 // tools/blender/telecom_tower.py (its proportions live there) and loaded as a glTF: an old concrete frame (tapered
 // core, three legs on web walls, a transfer ring) carrying decades of steel retrofits at three plant nodes, a command
-// crown (panoramic glass behind angular armour, a reinforced control level, one curved display) and a short mast;
+// crown (panoramic glass behind angular armour, a reinforced control level, one curved display) under the Reactor
+// Crown (a dark armoured containment crown, wider than the deck, with eight armour segments round a large crimson
+// reactor chamber, and a short dark mast on one segment);
 // at its foot a hub with a portal, garages, a power yard and vent towers. Each mesh is named by its material role and
 // gets a palette material here; its "detail" node (rails, slats, small fittings) is drawn only near the camera
 // (userData.lod 'tower', city.js). Warm light first; cyan on one conduit and the info panels; steady red lamps.
@@ -22,13 +25,32 @@ export function telecomTower(kit, root, x, y, z) {
     s.fragmentShader = s.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       totalEmissiveRadiance += ${glslColor(palette.windowIce)} * pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0) * 0.35;`);
   };
+  // The curved display on the control level: still the operator's ad, but in the reactor's scarlet and a warm gold
+  // rather than magenta and cyan, and a little dimmer than a street billboard, so the core stays the brightest thing.
+  const ad = kit.billboard('NEON NOODLES', palette.coreScarlet, palette.warmWindow).clone();
+  ad.emissiveIntensity *= 0.7;
+  ad.emissiveMap = ad.emissiveMap.clone(); // the curved panel's UVs run bottom to top: flip it so the text reads upright
+  ad.emissiveMap.repeat.y = -1;
+  ad.emissiveMap.offset.y = 1;
+  ad.emissiveMap.needsUpdate = true;
   const roles = {
     concrete, steel: kit.steel(palette.gunmetal, 0.5),
     mech: kit.steel(palette.slate, 0.6), panel: kit.steel(palette.charcoal, 0.4), dark: kit.steel(palette.deepNavy, 0.6),
-    glass: kit.windows(1, true, false, 'panorama'), orange: kit.steel(palette.amber, 0.6),
+    // Smoked blue-black observation glass (only this tower uses the panorama style), framed in slate mullions.
+    glass: facadeMaterial('panorama', { seed: 1, glass: palette.smokedGlass }), orange: kit.steel(palette.amber, 0.6),
     interior: kit.glow(palette.warmWindow, 1.2), amber: kit.glow(palette.sodium, 2.5), white: kit.glow(palette.glare, 1.5),
-    cyan: kit.glow(palette.neonCyan, 1.5), ad: kit.billboard('NEON NOODLES', palette.neonMagenta, palette.neonCyan),
-    red: kit.warning(),
+    cyan: kit.glow(palette.neonCyan, 1.5), ad, red: kit.warning(),
+    // The raking struts from the transfer ring up to the drum: a medium steel-blue, between the drum and the shaft.
+    strut: kit.steel(palette.strutSteel, 0.5),
+    // The Reactor Crown: a charcoal containment ring (panel), graphite armour segments, reactor foundation and braces,
+    // gunmetal plates, slate supports, cool-grey only on the ring's top edge. The animated reactor shader in the
+    // domed centre (the tower's own kind, brightest and slowly turning), the wide drum (a landmark's) and the ring
+    // round it (the ordinary kind, dimmest); pulsing power conduits; a soft crimson spill and seams.
+    graphite: kit.steel(palette.graphite, 0.5), shell: kit.steel(palette.crownWhite, 0.4),
+    // The observation and control drum under it: a dark gunmetal, between the crown and the steel-blue struts.
+    deck: kit.steel(palette.drumGunmetal, 0.4),
+    core: kit.core(2), chamber: kit.core(1), corering: kit.core(0), conduit: kit.conduit(),
+    halo: kit.glow(palette.coreCrimson, 0.9),
   };
   const g = kit.model('telecom_tower', roles);
   g.getObjectByName('detail').userData.lod = 'tower';

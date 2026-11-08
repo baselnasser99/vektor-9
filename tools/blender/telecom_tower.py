@@ -10,8 +10,10 @@ foot, standing on pile caps, grown out of the core on web walls low down and tie
 steel girders higher up; a concrete transfer ring where the legs and core meet under the crown,
 and twelve raking steel columns from it out to the crown's floor. The crown: a louvred service
 level, the main observation level (outward-raked glass, steel mullions, a transom, a lit ceiling),
-a control level, a shallow tapered roof and a plant penthouse. A short lattice-and-pole mast
-(about 14% of the height). At the foot, a two-level podium round a glazed lobby.
+a control level, and over it the Reactor Crown: a dark armoured containment crown, wider than
+the deck, round a large recessed crimson reactor chamber, with eight armour segments and a
+short dark mast on one of them. At the foot, a two-level podium round a
+glazed lobby.
 
 Decades of retrofits sit on that concrete frame, concentrated at three structural nodes so most of
 the shaft stays clean: a lower plant node where the web walls end (housings, fans, radiators, a
@@ -19,7 +21,7 @@ steel collar), the main mechanical level (a two-storey drum clamped between the 
 collars, a gantry, comms modules) and an upper equipment node under the transfer ring. Enclosed
 steel lift shafts with a lit conduit and maintenance indicators, and two large pipelines feeding
 the plant nodes. The crown becomes a command level: angular armour over the legs, a reinforced
-control level with slit glazing, one curved display, comms dishes, a radome, walkways. The base
+control level with slit glazing, one curved display, walkways. The base
 becomes a hub: a monumental portal, power yard with transformers, vent towers, garages, an annex
 on an enclosed cable bridge. Signage is invented text. build(1) makes a lighter variant (LOD1).
 
@@ -51,7 +53,6 @@ from kit import (  # noqa: E402
     block,
     clear,
     collar,
-    dish,
     facing,
     fan,
     grille,
@@ -73,8 +74,8 @@ from kit import (  # noqa: E402
 )
 
 # Proportions, in metres. Tune here; everything else follows.
-H = 260.0  # mast tip
-TOP = 224.0  # top of the concrete (plant penthouse roof); the mast is the last 36 m
+H = 242.0  # mast tip
+TOP = 224.0  # sets the core's taper (it stops under the reactor chamber)
 CORE = (6.5, 3.4)  # core radius at the ground and at TOP (straight taper)
 JOINT = 12.0  # concrete panel joint spacing on core and legs
 LEG_R = (18.0, 8.0)  # leg centre radius at the foot and at the top
@@ -92,6 +93,10 @@ SERVICE, MAIN, UPPER = 4.0, 8.5, 5.0  # storey heights in the crown
 CROWN_R = (15.3, 16.1)  # main glass radius at its foot and head (raked out)
 UPPER_R = 13.2  # restaurant level glass radius
 CS = 1.12  # crown scale: all crown radii below are multiplied by this
+# Reactor Crown: outer radius (about 1.25 times the observation deck's), chamber radius, armour
+# segments (count, half-width in radians, the first one's angle)
+CROWN_OUT, CHAMBER = 24.6, 13.5
+SEGMENTS, SEG_W, SEG0 = 8, 0.17, math.pi / 2
 LEG_ANGLES = [k * 2 * math.pi / 3 + math.pi / 2 for k in range(3)]
 ENTRANCE, SERVICE_SIDE, VENT_SIDE = math.radians(270), math.radians(30), math.radians(150)
 LIFTS = (math.radians(270), math.radians(150))  # glazed lift shafts on the core
@@ -133,13 +138,14 @@ def gaps():
 
 def build_core():
     """Tapered concrete core in JOINT-high lifts with recessed joints, from the ground up through
-    the crown to the penthouse. LOD 1: one plain taper."""
+    the crown to the reactor chamber's floor. LOD 1: one plain taper."""
+    top = crown_levels()[4] - 0.6
     if kit.LOD:
-        lathe("concrete", [(core_r(0), 0), (core_r(TOP), TOP)], 24)
+        lathe("concrete", [(core_r(0), 0), (core_r(top), top)], 24)
         return
     y = 0.0
-    while y < TOP - 0.1:
-        y1 = min(y + JOINT, TOP)
+    while y < top - 0.1:
+        y1 = min(y + JOINT, top)
         lathe(
             "concrete",
             [
@@ -374,7 +380,8 @@ def build_transfer():
     """Where the structure gathers under the crown: a concrete transfer ring round the core that
     the legs run into, faceted and with a recessed joint; twelve raking steel columns from bearing
     plates on its face out to the crown floor's edge, and radial steel beams under the floor
-    from each column head back to the core, so the load path reads."""
+    from each column head back to the core, so the load path reads. The steel is its own role
+    ("strut"): a medium steel-blue between the dark drum above and the concrete below."""
     y0, y1 = RING
     mid = (y0 + y1) / 2
     lathe(
@@ -396,17 +403,20 @@ def build_transfer():
     head_r, beam_y = 15.0 * CS, FLOOR - 1.2 - 0.45
     for k in range(12):
         a = k * math.pi / 6 + LEG_ANGLES[0]
-        bar("steel", radial(a, 9.9, y0 + 1.9), radial(a, head_r, FLOOR - 1.1), 1.0, 0.8, a)
-        block("steel", 0.3, 2.2, 1.6, at(facing(a), *radial(a, 9.95, y0 + 2.1)))
+        bar("strut", radial(a, 9.9, y0 + 1.9), radial(a, head_r, FLOOR - 1.1), 1.0, 0.8, a)
+        block("strut", 0.3, 2.2, 1.6, at(facing(a), *radial(a, 9.95, y0 + 2.1)))
         r0 = core_r(beam_y)
-        block("steel", head_r - r0, 0.9, 0.55, at(facing(a), *radial(a, (head_r + r0) / 2, beam_y)))
+        block("strut", head_r - r0, 0.9, 0.55, at(facing(a), *radial(a, (head_r + r0) / 2, beam_y)))
 
 
 def build_crown():
-    """The observation crown, from its floor slab up to the plant penthouse."""
+    """The observation crown, from its floor slab up to the control level's roof, in the darker
+    support band under the Reactor Crown: worn gunmetal slabs (role "deck", not the shaft's
+    concrete) with cool-grey trim on their lips, dark panel breaks, thin crimson seams, and a
+    warm line of light under the upper slab."""
     f = FLOOR
     lathe(
-        "concrete",
+        "deck",
         [
             (core_r(f) - 0.2, f - 1.2),
             (15.5 * CS, f - 1.2),
@@ -416,6 +426,8 @@ def build_crown():
         ],
         64,
     )
+    ring("shell", 15.85 * CS, 0.07, f - 0.05, 96, 4)  # trim on the floor slab's lip
+    ring("halo", 15.92 * CS, 0.05, f - 0.45, 96, 4)  # crimson seam round its face
     # Service level: set back, louvred.
     s1 = f + SERVICE
     lathe("dark", [(13.6 * CS, f), (13.6 * CS, s1)], 64)
@@ -426,7 +438,7 @@ def build_crown():
     # Main floor slab, the observation level's glass, mullions, a transom, the lit ceiling.
     m0 = s1 + 0.8
     lathe(
-        "concrete",
+        "deck",
         [
             (core_r(s1), s1),
             (16.1 * CS, s1),
@@ -442,19 +454,20 @@ def build_crown():
     for k in range(60):
         a = k * 2 * math.pi / 60
         foot, head = radial(a, CROWN_R[0] * CS + 0.05, m0), radial(a, CROWN_R[1] * CS + 0.05, m1)
-        bar("steel", foot, head, 0.32, 0.16, a)
-    ring("steel", (CROWN_R[0] + CROWN_R[1]) / 2 * CS + 0.12, 0.1, m0 + MAIN * 0.5, 64, 4)
+        bar("mech", foot, head, 0.32, 0.16, a)  # slate, so the frame reads against the dark drum
+    ring("shell", (CROWN_R[0] + CROWN_R[1]) / 2 * CS + 0.12, 0.1, m0 + MAIN * 0.5, 96, 4)
+    ring("shell", 16.25 * CS, 0.07, m0 - 0.1, 96, 4)  # trim on the main slab's lip
     lathe("interior", [(4.2 * CS, m1 - 0.05), (15.6 * CS, m1 - 0.05)], 64)  # ceiling, facing down
     for k in range(12):  # interior columns, and a few silhouettes: counters, seating
         a = k * math.pi / 6 + 0.13
-        tube("concrete", radial(a, 10.5 * CS, m0), radial(a, 10.5 * CS, m1), 0.45, seg=10)
+        tube("deck", radial(a, 10.5 * CS, m0), radial(a, 10.5 * CS, m1), 0.45, seg=10)
         if k % 2:
             p = radial(a + 0.25, 13.2 * CS, m0 + 0.55)
             block("dark", 2.4, 1.1, 0.8, at(facing(a + 0.25), *p), True)
-    # Upper slab with a thin overhang, and a cool line of light under its edge.
+    # Upper slab with a thin overhang, and a warm line of light under its edge.
     u0 = m1 + 1.0
     lathe(
-        "concrete",
+        "deck",
         [
             (core_r(m1), m1),
             (16.8 * CS, m1),
@@ -465,7 +478,20 @@ def build_crown():
         ],
         64,
     )
-    ring("white", 16.95 * CS, 0.05, m1 - 0.03, 96, 4)
+    ring("interior", 16.95 * CS, 0.05, m1 - 0.03, 96, 4)
+    ring("shell", 16.95 * CS, 0.07, u0 - 0.05, 96, 4)  # trim on its top lip
+    ring("halo", 17.12 * CS, 0.05, (m1 + u0) / 2, 96, 4)  # crimson seam round its face
+    for k in range(48):  # dark panel breaks across its face
+        a = k * 2 * math.pi / 48
+        bar(
+            "dark",
+            radial(a, 17.1 * CS + 0.02, m1 + 0.4),
+            radial(a, 17.1 * CS + 0.02, u0 - 0.35),
+            0.1,
+            0.18,
+            a,
+            True,  # near the camera only
+        )
     # Control level: reinforced. A composite wall to sill height, a band of slit glazing behind
     # steel fins, and a visor-like upper wall leaning out over it; the lit ceiling shows through.
     u1 = u0 + UPPER
@@ -481,32 +507,6 @@ def build_crown():
     for k in range(16):
         a = k * math.pi / 8
         block("dark", 1.2, 0.9, 1.2, at(facing(a), *radial(a, 11.4 * CS, u0 + 0.45)), True)
-    # Roof: a thin overhanging slab, a shallow taper, the plant penthouse with louvres.
-    lathe(
-        "concrete",
-        [
-            (core_r(u1), u1),
-            (14.4 * CS, u1),
-            (14.6 * CS, u1 + 0.35),
-            (14.3 * CS, u1 + 0.7),
-            (6.2 * CS, u1 + 3.4),
-            (4.9 * CS, u1 + 3.6),
-            (4.9 * CS, TOP - 0.6),
-            (5.3 * CS, TOP - 0.4),
-            (5.3 * CS, TOP),
-            (0, TOP),
-        ],
-        64,
-    )
-    slope = math.atan2(2.7, 8.1 * CS)
-    for k in range(24):
-        a = k * 2 * math.pi / 24
-        fin = at(facing(a) @ Matrix.Rotation(0.4, 4, "Y"), *radial(a, 5.0 * CS, (u1 + TOP + 3) / 2))
-        block("steel", 0.5, TOP - u1 - 4.8, 0.08, fin)
-        rib = at(facing(a) @ Matrix.Rotation(-slope, 4, "Z"), *radial(a, 10.3 * CS, u1 + 2.1))
-        block("steel", 8.4 * CS, 0.12, 0.16, rib, True)
-    for a in LEG_ANGLES:
-        lamp(radial(a + math.pi / 3, 14.3 * CS, u1 + 1.0), 0.3)
 
 
 def crown_levels():
@@ -517,16 +517,162 @@ def crown_levels():
     return s1, m0, m1, u0, u0 + UPPER
 
 
-def roof_y(r):
-    """Height of the crown's sloping roof at radius r."""
-    u1 = crown_levels()[4]
-    return u1 + 0.7 + (14.3 * CS - r) / ((14.3 - 6.2) * CS) * 2.7
+def build_reactor():
+    """The Reactor Crown: a dark armoured containment crown about 1.25 times the observation
+    deck's width over the control level. Steel-blue knee brackets and a dark underside carry it
+    out from the control level; a thick graphite containment ring with crimson viewing slots in
+    its face; inside, a recessed chamber about 27 m across: a wide glowing ring crossed by dark
+    ribs between concentric containment rings, and in the middle the reactor rising above the
+    armour (a dark foundation, a low wide faceted crimson drum held by dark braces, a bright domed
+    centre). Eight massive bevelled graphite armour segments stand on the ring round it,
+    rising to their inner edge, with crimson seams; glowing power conduits in every other gap
+    between them; cool-grey only on the ring's top edge."""
+    u0, u1 = crown_levels()[3:]
+    U = UPPER_R * CS
+    R, C = CROWN_OUT, CHAMBER
+    lathe(  # underside, containment ring and deck, in one dark section (charcoal)
+        "panel",
+        [
+            (U + 0.6, u1),
+            (U + 1.2, u1),
+            (R - 3.6, u1 + 3.6),
+            (R - 1.0, u1 + 4.4),
+            (R, u1 + 5.2),
+            (R, u1 + 8.4),
+            (R - 0.6, u1 + 9.4),
+            (R - 2.8, u1 + 9.6),
+            (R - 3.4, u1 + 9.0),
+            (R - 3.4, u1 + 5.6),
+            (C, u1 + 5.4),
+            (C, u1 + 4.2),
+            (C - 0.4, u1 + 4.2),
+        ],
+        96,
+        smooth_angle=35,
+    )
+    ring("shell", R - 0.3, 0.12, u1 + 9.45, 96, 4)  # cool-grey highlight on the ring's top edge
+    lathe(
+        "mech",
+        [(R - 2.2, u1 + 4.0), (R + 0.1, u1 + 4.9), (R + 0.1, u1 + 5.3), (R - 2.2, u1 + 4.4)],
+        96,
+    )
+    for k in range(SEGMENTS):  # knee brackets under the segments, clear of the display
+        a = SEG0 + k * 2 * math.pi / SEGMENTS
+        if abs((a - ENTRANCE + math.pi) % (2 * math.pi) - math.pi) < 0.65:
+            continue
+        knee = [(U + 0.9, u0 + 0.4), (U + 2.4, u0 + 0.4), (R - 1.6, u1 + 4.3), (U + 0.9, u1 + 0.6)]
+        arc("mech", knee, a - 0.04, a + 0.04, 1)
+    for k in range(SEGMENTS):  # viewing slots between the segments: a crimson glow behind lips
+        a = SEG0 + (k + 0.5) * 2 * math.pi / SEGMENTS
+        slot = [
+            (R - 0.3, u1 + 6.1),
+            (R + 0.05, u1 + 6.1),
+            (R + 0.05, u1 + 7.7),
+            (R - 0.3, u1 + 7.7),
+        ]
+        arc("halo", slot, a - 0.12, a + 0.12, 4)
+        for y in (u1 + 5.9, u1 + 7.9):
+            lip = [(R - 0.1, y - 0.2), (R + 0.4, y - 0.2), (R + 0.4, y + 0.2), (R - 0.1, y + 0.2)]
+            arc("mech", lip, a - 0.14, a + 0.14, 4)
+    # The chamber: a halo wall, the luminous ring between containment rings, dark ribs over it.
+    lathe("halo", [(C - 0.05, u1 + 5.35), (C - 0.05, u1 + 4.3)], 96)
+    ring("mech", C - 0.8, 0.5, u1 + 4.9, 96, 6)
+    lathe("corering", [(C - 1.2, u1 + 4.8), (C - 2.6, u1 + 4.45), (9.6, u1 + 4.8)], 96)
+    ring("mech", 9.3, 0.45, u1 + 5.1, 96, 6)
+    rib = [(C - 0.9, u1 + 4.7), (9.4, u1 + 4.7), (9.4, u1 + 5.2), (C - 0.9, u1 + 5.2)]
+    for k in range(24):
+        a = k * math.pi / 12
+        arc("dark", rib, a - 0.018, a + 0.018, 1)
+    # The reactor: low, wide and heavy. A dark graphite foundation wider than the chamber; on it a
+    # faceted crimson chamber about 17 m across, one continuous glowing drum held by eight dark
+    # braces and slate hoops, its shoulder sloping in to the bright domed centre.
+    lathe(
+        "graphite",
+        [(0, u1 + 4.6), (9.0, u1 + 4.6), (9.0, u1 + 6.8), (8.6, u1 + 7.4), (8.3, u1 + 7.4)],
+        48,
+    )
+    ring("mech", 9.05, 0.3, u1 + 5.6, 64, 6)
+    drum = [(8.3, 7.4), (8.4, 13.6), (7.6, 14.2), (4.7, 14.8)]
+    lathe("chamber", [(r, u1 + y) for r, y in drum] + [(0, u1 + 14.8)], 16, smooth_angle=10)
+    brace = [(8.45, 7.4), (8.55, 13.7), (7.7, 14.35), (4.9, 14.95)]
+    brace = [(r, u1 + y) for r, y in brace]
+    for k in range(8):
+        a = k * math.pi / 4 + math.pi / 8
+        arc("graphite", brace + [(r - 0.5, y) for r, y in reversed(brace)], a - 0.05, a + 0.05, 2)
+    ring("mech", 8.55, 0.25, u1 + 10.5, 64, 6)
+    ring("mech", 8.1, 0.3, u1 + 13.9, 64, 6)
+    ring("mech", 4.8, 0.25, u1 + 14.9, 48, 6)
+    centre = [(4.7, 14.7), (4.5, 15.2), (3.0, 15.6)]
+    lathe("core", [(0, u1 + 14.7)] + [(r, u1 + y) for r, y in centre] + [(0, u1 + 15.8)], 32)
+
+    # Power conduits in every other gap between the segments, on the deck from the ring to the
+    # chamber's lip, between two slate rails; the renderer runs slow pulses along them inward.
+    def deck(r, dy):
+        return u1 + 5.4 + (r - C) / (R - 3.4 - C) * 0.2 + dy
+
+    for k in range(0, SEGMENTS, 2):
+        a = SEG0 + (k + 0.5) * 2 * math.pi / SEGMENTS
+        lit = [
+            (C + 0.1, deck(C, 0.05)),
+            (R - 3.5, deck(R, 0.05)),
+            (R - 3.5, deck(R, 0.15)),
+            (C + 0.1, deck(C, 0.15)),
+        ]
+        arc("conduit", lit, a - 0.016, a + 0.016, 1)
+        rail = [
+            (C + 0.1, deck(C, 0)),
+            (R - 3.5, deck(R, 0)),
+            (R - 3.5, deck(R, 0.4)),
+            (C + 0.1, deck(C, 0.4)),
+        ]
+        for side in (-1, 1):
+            arc("mech", rail, a + side * 0.022, a + side * 0.034, 1)
+    # Armour segments: bevelled, rising to the inner edge, a gunmetal plate stepped on the slope,
+    # a steel-blue ridge, a crimson seam along the slope and one round the inner face.
+    w = SEG_W
+    body = [
+        (C + 0.1, u1 + 5.2),
+        (R - 1.4, u1 + 5.2),
+        (R - 1.4, u1 + 9.8),
+        (R - 3.1, u1 + 10.4),
+        (C + 2.5, u1 + 11.6),
+        (C + 0.9, u1 + 11.4),
+        (C + 0.1, u1 + 10.2),
+    ]
+    plate = [
+        (R - 3.3, u1 + 10.45),
+        (C + 2.6, u1 + 11.62),
+        (C + 2.6, u1 + 11.95),
+        (R - 3.3, u1 + 10.75),
+    ]
+    ridge = [
+        (C + 2.5, u1 + 11.6),
+        (C + 2.5, u1 + 11.75),
+        (C + 0.9, u1 + 11.55),
+        (C + 0.9, u1 + 11.4),
+    ]
+    seam = [
+        (R - 3.2, u1 + 10.8),
+        (C + 2.7, u1 + 11.97),
+        (C + 2.7, u1 + 12.05),
+        (R - 3.2, u1 + 10.88),
+    ]
+    inner = [(C, u1 + 9.4), (C + 0.12, u1 + 9.4), (C + 0.12, u1 + 9.8), (C, u1 + 9.8)]
+    for k in range(SEGMENTS):
+        a = SEG0 + k * 2 * math.pi / SEGMENTS
+        arc("graphite", body, a - w, a + w, 4)
+        arc("steel", plate, a - w + 0.035, a + w - 0.035, 4)
+        arc("mech", ridge, a - w, a + w, 4)
+        arc("halo", seam, a - 0.006, a + 0.006, 1)
+        arc("halo", inner, a - w + 0.02, a + w - 0.02, 4)
+    for a in LEG_ANGLES:  # aviation lamps on the ring
+        lamp(radial(a + math.pi / 3, R - 0.4, u1 + 9.75), 0.3)
 
 
 def build_command():
     """The crown as a command complex: angular armour over each leg on the observation level,
     the operator's mark on one, one curved display on the control level over the entrance,
-    walkways round two stretches of the glass, large dishes and modular arrays, a radome."""
+    walkways round two stretches of the glass."""
     s1, m0, m1, u0, u1 = crown_levels()
     g0, g1 = CROWN_R[0] * CS, CROWN_R[1] * CS
     for k, a in enumerate(LEG_ANGLES):  # faceted armour, wide at the waist, steel capped
@@ -537,7 +683,9 @@ def build_command():
             (g1 + 1.4, m1 + 0.4),
             (g1 - 0.2, m1 + 0.4),
         ]
-        arc("concrete", prof, a - 0.28, a + 0.28, 4)
+        arc("deck", prof, a - 0.28, a + 0.28, 4)
+        seam = [(r + 0.08, y) for r, y in prof[1:4]] + [(r + 0.02, y) for r, y in prof[3:0:-1]]
+        arc("halo", seam, a - 0.012, a + 0.012, 1)  # a crimson seam down the middle of each
         U = UPPER_R * CS  # the fin carries on up the control level, raked back at the top
         arc(
             "steel",
@@ -585,64 +733,25 @@ def build_command():
         )
         pts = [radial(c - 0.55 + 1.1 * i / 10, slab + 1.5, m0 - 0.15) for i in range(11)]
         rail("orange", pts)
-    for a in (gaps()[0] + 0.5, gaps()[2] - 0.4):  # large dishes on pedestals at the roof edge
-        r = 11.2 * CS
-        p = radial(a, r, roof_y(r) + 4.6)
-        tube("mech", radial(a, r - 0.8, roof_y(r - 0.8)), radial(a, r - 0.8, p[1]), 0.35, seg=10)
-        dish(
-            4.2,
-            at(
-                facing(a) @ Matrix.Rotation(math.pi / 2, 4, "Y") @ Matrix.Rotation(-0.35, 4, "X"),
-                *p,
-            ),
-        )
-    for k in range(4):  # modular arrays on the penthouse
-        a = k * math.pi / 2 + 0.4
-        block("steel", 0.35, 3.4, 1.3, at(facing(a), *radial(a, 5.6 * CS, TOP - 2.4)))
-    a, r = gaps()[1] + 0.3, 8.6 * CS  # radome on a plinth
-    y = roof_y(r)
-    lathe("mech", [(0, y), (1.4, y), (1.4, y + 1.0), (0, y + 1.0)], 16, center=radial(a, r, 0)[::2])
-    bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=20 if not kit.LOD else 10, v_segments=10, radius=2.4)
-    add(bm, "mech", Matrix.Translation(radial(a, r, y + 2.6)), smooth_angle=80)
 
 
 def build_mast():
-    """Short mast: a three-legged lattice (horizontal frames and one diagonal per face per panel,
-    all node to node), two platforms, panel antennas; a tapered pole; obstruction lights."""
-    y0, y1, panels = TOP, TOP + 18.0, 3
-    corner = [k * 2 * math.pi / 3 + math.pi / 6 for k in range(3)]
-
-    def node(c, y):
-        return radial(c, 2.2 + (1.0 - 2.2) * (y - y0) / (y1 - y0), y)
-
-    for c in corner:
-        tube("steel", node(c, y0), node(c, y1), 0.22, seg=8)
-    for i in range(panels + 1):
-        y = y0 + i * (y1 - y0) / panels
-        for k, c in enumerate(corner):
-            nxt = corner[(k + 1) % 3]
-            tube("steel", node(c, y), node(nxt, y), 0.1, seg=6)
-            if i < panels:
-                lo, hi = (c, nxt) if (i + k) % 2 else (nxt, c)
-                tube("steel", node(lo, y), node(hi, y + (y1 - y0) / panels), 0.08, seg=6)
-    for y, r in ((y0 + 6.0, 3.0), (y1, 2.0)):  # platforms with rails
-        lathe("steel", [(0.6, y - 0.08), (r, y - 0.08), (r, y + 0.08), (0.6, y + 0.08)], 24)
-        ring("steel", r - 0.05, 0.03, y + 1.1, 24, 4, True)
-    for k, c in enumerate(corner):  # panel antennas on the lattice and the pole
-        a = c + math.pi / 3
-        block("steel", 0.25, 2.6, 0.7, at(facing(a), *radial(a, 2.0, y0 + 9.5)))
-        b = a + 0.4
-        block("steel", 0.22, 2.0, 0.6, at(facing(b), *radial(b, 1.0, y1 + 4.5 + k * 0.4)))
-    lathe(
-        "steel",
-        [(0.8, y1 - 1.0), (0.8, y1), (0.28, H - 1.6), (0.08, H - 1.6), (0.08, H), (0, H)],
-        16,
-    )
-    for c in corner:
-        lamp(node(c, y1 + 0.3), 0.25)
-    lamp(radial(0, 0.5, y1 + 8.0), 0.22)
-    lamp((0, H + 0.2, 0), 0.3)
+    """A short dark communications mast on one armour segment's slope (not over the core):
+    a tapered graphite pole, a compact sensor housing, two panel antennas, red lamps."""
+    u1 = crown_levels()[4]
+    a = SEG0 + 2 * math.pi / SEGMENTS * 2
+    x, _, z = radial(a, CROWN_OUT - 5.5, 0)
+    y0 = u1 + 10.6
+    pole = [(1.6, y0 - 0.6), (1.6, y0 + 0.6), (0.9, y0 + 1.2), (0.3, H - 1.0), (0, H - 1.0)]
+    lathe("graphite", pole, 16, center=(x, z))
+    lathe("steel", [(0.12, H - 1.0), (0.12, H), (0, H)], 8, center=(x, z))
+    sensor = [(1.0, H - 12.0), (1.4, H - 11.6), (1.4, H - 10.2), (0.9, H - 9.8), (0, H - 9.8)]
+    lathe("mech", sensor, 16, center=(x, z))
+    for side in (-1, 1):
+        b = a + side * math.pi / 2
+        block("steel", 0.25, 2.4, 0.7, at(facing(b), *offset((x, H - 16.0, z), a, side * 0.9)))
+    lamp((x, H + 0.15, z), 0.28)
+    lamp((x, H - 9.6, z), 0.22)
 
 
 def build_base():
@@ -762,6 +871,7 @@ def build(lod=0):
         build_transfer,
         build_crown,
         build_command,
+        build_reactor,
         build_mast,
         build_base,
     ):

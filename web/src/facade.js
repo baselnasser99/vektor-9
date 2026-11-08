@@ -34,7 +34,7 @@ export const STYLES = {
   luxury: { kind: 0, glass: true, bay: 3, floor: F, win: [0.92, 0.82, 0.08], recess: 0.15, room: 5.5, mullions: 3,
     column: 3, frame: 0.05, slab: 0.3, lit: 0.55, look: 0 },
   panorama: { kind: 0, glass: true, bay: 2.2, floor: 5.5, win: [0.97, 0.9, 0.05], recess: 0.06, room: 9, mullions: 1,
-    column: 0, frame: 0.04, slab: 0, lit: 0.45, look: 1 }, // the tower's observation glass: one tall continuous band
+    column: 0, frame: 0.04, slab: 0, lit: 0.35, look: 1 }, // the tower's observation glass: one tall smoked band
   industrial: { kind: 1, bay: 4, floor: F, win: [0.86, 0.28, 0.6], recess: 0.1, room: 8, mullions: 4, column: 1,
     frame: 0.06, slab: 0, lit: 0.5, look: 3 },
 };
@@ -90,7 +90,8 @@ export function facadeClock(hour, onFrame) {
 }
 
 // The facade material for a type; color and map are the wall between the windows. lit: false is a blackout.
-export function facadeMaterial(style, { lit = true, seed = 1, color = palette.slate, map = null } = {}) {
+// glass: the panes' tint (the telecom tower's smoked observation glass passes its own).
+export function facadeMaterial(style, { lit = true, seed = 1, color = palette.slate, map = null, glass = palette.deepNavy } = {}) {
   const s = STYLES[style], c = (v) => new THREE.Color(v);
   const m = new THREE.MeshStandardMaterial({ color, map, roughness: 0.85, metalness: 0.1 });
   m.userData.facade = style; // merge.js gives its vertices their building's id (aBuilding)
@@ -100,7 +101,7 @@ export function facadeMaterial(style, { lit = true, seed = 1, color = palette.sl
     fBars: { value: new THREE.Vector4(s.mullions, s.column, s.frame, s.slab) },
     fLight: { value: new THREE.Vector4(s.lit * FACADE.lit, lit ? FACADE.brightness : 0, s.kind, seed) },
     fInterior: { value: FACADE.interior }, fSkin: { value: s.glass ? 1 : 0 },
-    fFrame: { value: c(palette.charcoal) }, fGlass: { value: c(palette.deepNavy) },
+    fFrame: { value: c(palette.charcoal) }, fGlass: { value: c(glass) },
     fBlood: { value: c(palette.winBlood) }, fCrimson: { value: c(palette.winCrimson) }, fScarlet: { value: c(palette.winScarlet) },
     fHigh: { value: c(palette.winHighlight) }, fIce: { value: c(palette.winIce) }, fWhite: { value: c(palette.windowWhite) },
     fAmber: { value: c(palette.winAmber) }, fCool: { value: c(palette.glare) },
