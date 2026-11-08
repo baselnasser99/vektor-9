@@ -537,7 +537,8 @@ function openAbove({ size: n, tiles }, col, row, turn, k) {
   const street = (i, d) => (d > 0 ? i % BLOCK === BLOCK - 1 || (inner(i) && i % BLOCK === HALF - 1) : d < 0 && (i % BLOCK === 0 || (inner(i) && i % BLOCK === HALF)));
   if (street(col, dx) || street(row, dz)) return 0;
   const [u, v] = [col + dx, row + dz];
-  return u < 0 || v < 0 || u >= n || v >= n ? 0 : (tiles[v * n + u].f ?? 0) * F;
+  if (u < 0 || v < 0 || u >= n || v >= n) return 0;
+  return tiles[v * n + u].k === 'rail' ? 28 : (tiles[v * n + u].f ?? 0) * F; // rail: keep clear of the station's roof
 }
 
 // Which side of its quarter-block a tile row or column faces: -1 or 1 on the edge, 0 inside.

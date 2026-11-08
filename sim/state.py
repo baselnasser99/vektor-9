@@ -1,6 +1,5 @@
 """City state: creation, power, and validation. The state dict is the snapshot (ADR-0003)."""
 
-import math
 import random
 
 from sim import rules as R
@@ -134,30 +133,24 @@ def lay_terrain(seed):
 
 
 def lay_rail(rng, clear):
-    """A straight band from one edge to a terminus beside the core, as {tile index: "rail"}.
+    """A straight band two tiles wide, parallel to the streets, from one edge of the map
+    RAIL_LENGTH tiles in, as {tile index: "rail"}.
 
-    With direction (dx, dy), v / |(dx, dy)| is a tile's signed distance from the line;
-    0 <= v < |dx| + |dy| is the thinnest band whose tiles always touch by a side (a "standard"
-    digital line), so the rail has no gaps. a is a tile's position along the line, 0 where it passes
-    closest to the center; the rail keeps one side of that, so it ends there instead of cutting the
-    city in two.
+    It runs along the middle of a row of blocks (rows 1 and 2 of each BLOCK // 2, where the renderer
+    draws blocks), so the viaduct and its terminus station sit clear of the streets beside them and
+    the city's center keeps no railway. The outermost sectors are never in the starting core.
     """
-    n, c = R.SIZE, R.SIZE // 2
-    dx, dy = rng.choice(R.RAIL_SLOPES)
-    dx *= rng.choice((1, -1))
-    l2, width = dx * dx + dy * dy, abs(dx) + abs(dy)
+    n, c, half = R.SIZE, R.SIZE // 2, R.BLOCK // 2
     lo, hi = R.RAIL_OFFSET
-    k = rng.randint(math.isqrt(lo * lo * l2) + 1, math.isqrt(hi * hi * l2))
-    if rng.choice((True, False)):
-        # The other side of the core: the band reaches width - 1 nearer the center on that side,
-        # so shift it out by that much, or it could dip into the core and leave a gap.
-        k = -(k + width - 1)
-    side = rng.choice((1, -1))
+    rows = [
+        r for r in range(n - 1) if r % half == 1 and lo <= min(abs(r - c), abs(r + 1 - c)) <= hi
+    ]
+    row, along_x, edge = rng.choice(rows), rng.choice((True, False)), rng.choice((0, n - 1))
     rail = {}
     for i in range(n * n):
         x, y = xy(i)
-        v = (x - c) * dy - (y - c) * dx - k
-        if 0 <= v < width and side * ((x - c) * dx + (y - c) * dy) >= 0 and not clear[i]:
+        a, b = (x, y) if along_x else (y, x)  # a: along the line, b: across it
+        if b in (row, row + 1) and abs(a - edge) < R.RAIL_LENGTH and not clear[i]:
             rail[i] = "rail"
     return rail
 
