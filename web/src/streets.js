@@ -65,21 +65,23 @@ const inRing = (ctx, s, v, pad = 0) => Math.abs(s.c - ctx.hub) < 1 && Math.abs(v
 // only meets it; a corridor stopped at the headquarters' campus on both sides is not there). Each: the corridor l
 // and what it is either side of s ([-1 side, +1 side]). Segments: the stretches of s between them, each with its
 // kind there (s itself may be a market lane in the old town, or paved over at the campus): { a, b, l0, l1, kind },
-// a and b at the crossing corridors' centres.
+// a and b at the crossing corridors' centres. Both are worked out once per street and kept on it.
 function crossingsOf(ctx, s) {
+  if (s.xs) return s.xs;
   const across = s.axis === 'x' ? 'z' : 'x', reach = s.w / 2 + 1;
-  return ctx.cross.flatMap((l) => {
+  return (s.xs = ctx.cross.flatMap((l) => {
     if (l.kind[across] === 'alley') return [];
     const sides = [-1, 1].map((d) => ctx.layout.kindAt(l, across, s.c + d * reach));
     return sides.some((k) => k && k !== 'none') ? [{ l, sides }] : [];
-  });
+  }));
 }
 function segments(ctx, s) {
+  if (s.segs) return s.segs;
   const xs = crossingsOf(ctx, s);
-  return xs.slice(1).map((x, k) => {
+  return (s.segs = xs.slice(1).map((x, k) => {
     const a = xs[k].l.c, b = x.l.c;
     return { a, b, l0: xs[k].l, l1: x.l, kind: ctx.layout.kindAt(s.line, s.axis, (a + b) / 2) };
-  }).filter((g) => g.kind);
+  }).filter((g) => g.kind));
 }
 const carries = (kind) => CARS.has(kind);
 
@@ -598,10 +600,11 @@ function perimeter(ctx) {
 
 // Sodium lamps along each segment, arms over the street, with a soft pool of light under each: about every 40 m on
 // both kerbs of main streets and the boulevard, staggered from kerb to kerb on narrower ones.
+let lampPools = null; // one material for every lamp's pool, so they all merge into one draw call
 function lamps(ctx, s, segs) {
   const { kit, root } = ctx;
-  const pools = new THREE.MeshBasicMaterial({ map: radialTexture(128), color: palette.sodium, transparent: true, opacity: 0.16,
-    blending: THREE.AdditiveBlending, depthWrite: false });
+  const pools = (lampPools ??= new THREE.MeshBasicMaterial({ map: radialTexture(128), color: palette.sodium, transparent: true, opacity: 0.16,
+    blending: THREE.AdditiveBlending, depthWrite: false }));
   const kerb = kerbOf(s) + 0.6, both = s.kind === 'street' || s.kind === 'boulevard';
   let flip = 1;
   for (const g of segs) {
@@ -668,8 +671,8 @@ function roadNet(ctx, streets) {
       }
     }
   }
-  for (const s of streets) { // walks crossing a car street: walkers get lights there
-    if (s.kind !== 'walk' && !segments(ctx, s).some((g) => g.kind === 'walk')) continue;
+  for (const s of streets) { // walks crossing a car street (pedestrian streets and market lanes): walkers get lights there
+    if (s.kind === 'alley') continue;
     for (const g of segments(ctx, s)) {
       if (g.kind !== 'walk') continue;
       for (const v of [g.a, g.b]) {

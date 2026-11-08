@@ -52,10 +52,14 @@ export function cityLayout(snap) {
     }
   });
   const pos = (i) => centres[i];
-  const tileAt = (v) => { // the tile whose centre is nearest v along either axis
-    let best = 0;
-    for (let i = 1; i < n; i++) if (Math.abs(centres[i] - v) < Math.abs(centres[best] - v)) best = i;
-    return best;
+  const tileAt = (v) => { // the tile whose centre is nearest v along either axis (centres rise: a binary search)
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+      const m = (lo + hi) >> 1;
+      if (centres[m] < v) lo = m;
+      else hi = m;
+    }
+    return Math.abs(centres[lo] - v) <= Math.abs(centres[hi] - v) ? lo : hi;
   };
   const lines = cross.filter((l) => !l.mid), mids = cross.filter((l) => l.mid);
   // Old town: of the four 2x2-sector quarters touching the centre, the one with the least terrain.
