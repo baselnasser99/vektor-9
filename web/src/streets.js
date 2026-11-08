@@ -1,36 +1,48 @@
-// Street level: a hierarchy of main streets between sectors (a planted boulevard through the middle, full streets,
-// narrow one-lane streets and pedestrian walks; see STREETS in world.js), raised sidewalks with curbs around every
-// sector, a cross of service alleys and pedestrian lanes through each sector, sodium lamps along the curbs, and the
-// traffic lanes cars drive in. Long flat parts are slabs cut into short pieces, so the city's warp bends them.
+// Street level: a grid of street corridors between blocks of HALF x HALF tiles (cityLayout in city.js): a boulevard
+// through the middle, main streets, local streets (the ring road, the narrow lines and every inner sector's mid
+// street), pedestrian walks, the old town's market lanes and the outer sectors' service alleys (STREETS in world.js).
+// Raised blocks of paving with kerbs and rounded corners sized by the streets that meet there, road markings,
+// crossings, sodium lamps, and the traffic lanes cars drive in. Long flat parts are slabs cut into short pieces, so
+// the city's warp bends them.
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, REPEAT, ring, rng, slab } from './geometry.js';
 import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
-import { ALLEY, BLOCK, CAFES, FOOD, HALF, HUB, STREETS, TILE, WARM, pick } from './world.js';
-
-const LAMP_EVERY = 55;
+import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, pick } from './world.js';
 
 export function buildStreets(kit, layout, root) {
-  const { lines, lo, hi } = layout, rand = rng(31);
+  const { lines, cross, lo, hi } = layout, rand = rng(31);
   const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // wet, but not a mirror
   part(root, slab(hi - lo, 0.1, hi - lo, 8), asphalt, 0, -0.05, 0); // ends at the ring road's outer kerb line
   const hub = lines[lines.length >> 1];
-  sectors(kit, root, layout, rand, hub);
-  // Every main street, once per axis: centre c, width w, kind, and the axis it runs along.
-  const streets = lines.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, side: l.side, kind: l.kind[axis], axis })));
-  const ctx = { kit, root, lines, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [], food: [], parked: [] }; // road paint glows faintly
+  const ctx = { kit, root, layout, lines, cross, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [], food: [], parked: [] }; // road paint glows faintly
+  blocks(ctx, hub);
+  // Every corridor, once per axis: centre c, width w, sidewalk side, kind, the axis it runs along and its corridor.
+  const streets = cross.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, side: l.side, kind: l.kind[axis], axis, line: l })));
   perimeter(ctx);
   for (const s of streets) {
-    if (s.kind === 'walk') walk(ctx, s);
-    else road(ctx, s);
-    lamps(ctx, s);
+    if (s.kind === 'alley') {
+      alley(ctx, s);
+      continue;
+    }
+    const segs = segments(ctx, s);
+    for (const g of segs) {
+      if (g.kind === 'walk') walk(ctx, s, g);
+      else if (g.kind === 'none') { // paved over, kerb to kerb of the streets at its ends
+        const [a, b] = [g.a + kerbOf(g.l0), g.b - kerbOf(g.l1)];
+        lay(ctx, s, b - a, 0.18, 2 * kerbOf(s), kit.concrete(palette.slate), (a + b) / 2, 0, 0.09);
+      }
+      else road(ctx, s, g);
+    }
+    crossings(ctx, s, segs);
+    lamps(ctx, s, segs);
   }
-  for (const s of streets) if (s.kind !== 'walk') kerbside(ctx, s); // after every lamp is placed: shelters keep clear of them
+  for (const s of streets) if (s.kind === 'street' || s.kind === 'boulevard') kerbside(ctx, s); // after every lamp: shelters keep clear of them
   plaza(ctx, hub);
-  return { lanes: streets.flatMap((s) => trafficLanes(s, lo, hi, lines)), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches, food: ctx.food,
-    parked: ctx.parked, // life.js parkedCars: [x, z, heading] in the local streets' bays
+  return { roads: roadNet(ctx, streets), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches, food: ctx.food,
+    parked: ctx.parked, // life.js parkedCars: [x, z, heading] in the ring road's bays
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2, out: RING_OUT } }; // life.js traffic: the roundabout
 }
 
@@ -41,59 +53,82 @@ function lay(ctx, s, len, h, wide, mat, v, off, y, seg = 0) {
   return s.axis === 'x' ? part(ctx.root, geo, mat, v, y, s.c + off) : part(ctx.root, geo, mat, s.c + off, y, v);
 }
 const spot = (s, v, off) => (s.axis === 'x' ? [v, s.c + off] : [s.c + off, v]);
+const lift = ([x, z], y) => [x, y, z];
 
-// Stretches of street s between the crossings, as [from, to] along it.
+// Stretches of a boundary street between the main streets crossing it, as [from, to] along it (the perimeter).
 const stretches = ({ lines }, pad = () => 0) =>
   lines.slice(1).map((l, k) => [lines[k].c + lines[k].w / 2 + pad(lines[k]), l.c - l.w / 2 - pad(l)]);
-const inCrossing = ({ lines }, v, pad) => lines.some((l) => Math.abs(v - l.c) < l.w / 2 + pad);
 // Whether v along street s is inside the tower's roundabout (the boulevards meet there), padded by pad.
 const inRing = (ctx, s, v, pad = 0) => Math.abs(s.c - ctx.hub) < 1 && Math.abs(v - ctx.hub) < RING_OUT + pad;
 
+// The crossings along street s: every corridor across it that is a street on at least one side of s (an alley
+// only meets it; a corridor stopped at the headquarters' campus on both sides is not there). Each: the corridor l
+// and what it is either side of s ([-1 side, +1 side]). Segments: the stretches of s between them, each with its
+// kind there (s itself may be a market lane in the old town, or paved over at the campus): { a, b, l0, l1, kind },
+// a and b at the crossing corridors' centres.
+function crossingsOf(ctx, s) {
+  const across = s.axis === 'x' ? 'z' : 'x', reach = s.w / 2 + 1;
+  return ctx.cross.flatMap((l) => {
+    if (l.kind[across] === 'alley') return [];
+    const sides = [-1, 1].map((d) => ctx.layout.kindAt(l, across, s.c + d * reach));
+    return sides.some((k) => k && k !== 'none') ? [{ l, sides }] : [];
+  });
+}
+function segments(ctx, s) {
+  const xs = crossingsOf(ctx, s);
+  return xs.slice(1).map((x, k) => {
+    const a = xs[k].l.c, b = x.l.c;
+    return { a, b, l0: xs[k].l, l1: x.l, kind: ctx.layout.kindAt(s.line, s.axis, (a + b) / 2) };
+  }).filter((g) => g.kind);
+}
+const carries = (kind) => CARS.has(kind);
+
 // Where things sit along a street, measured from the centre line of the street l it crosses: l's kerb, the zebra
 // (in line with l's sidewalk, so walkers keep straight on across), the stop line just behind it, and where the
-// lane paint ends. people.js and life.js use the same numbers.
+// lane paint ends. people.js and life.js use the same numbers. A crossing is only as big as the two carriageways.
 export const ZEBRA_W = 3;
 export const kerbOf = (l) => l.w / 2 - l.side;
 export const zebraAt = (l) => kerbOf(l) + l.side / 2 + 0.5;
 export const stopAt = (l) => zebraAt(l) + ZEBRA_W / 2 + 1.2; // the stop line's centre (0.45 m wide)
 const SOLID = 15; // lane dividers turn solid this far before a stop line
+const round = (ctx, s, l) => Math.abs(s.c - ctx.hub) < 1 && Math.abs(l.c - ctx.hub) < 1; // the tower's roundabout
+const ends = (ctx, s, l) => (round(ctx, s, l) ? RING_OUT + 0.8 : stopAt(l) + 0.4); // where lane paint stops, from l's centre
 
-// Roadway markings, the same on every stretch so a street reads the same block after block: solid edge lines
-// where the traffic lanes end (local streets keep bays between them and the kerb), lane dividers dashed along the
-// block and solid on the approach, a double centre line (main streets), a dashed one (local) or the boulevard's
-// median, a stop line across the incoming lanes wherever the cars have lights (life.js), and zebra crossings in
-// line with the sidewalks. Nothing is painted inside a crossing.
-function road(ctx, s) {
-  const { kit, lo, hi, paint, lines } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), inner = median / 2;
+// Roadway markings on one segment g of street s, the same on every block so a street reads the same block after
+// block: solid edge lines where the traffic lanes end (the ring road keeps bays between them and the kerb), lane
+// dividers dashed along the block and solid on the approach, a double centre line (main streets), a dashed one
+// (local) or the boulevard's median. Nothing is painted inside a crossing.
+function road(ctx, s, g) {
+  const { paint } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), inner = median / 2;
   const dividers = lanes.length === 1 ? [0] : lanes.slice(1).flatMap((l, k) => [-(l + lanes[k]) / 2, (l + lanes[k]) / 2]);
-  const across = s.axis === 'x' ? 'z' : 'x', right = s.axis === 'x' ? 1 : -1;
-  const round = (l) => Math.abs(s.c - ctx.hub) < 1 && Math.abs(l.c - ctx.hub) < 1; // the tower's roundabout
-  const ends = (l) => (round(l) ? RING_OUT + 0.8 : stopAt(l) + 0.4);
-  for (const [l0, l1] of lines.slice(1).map((l, k) => [lines[k], l])) {
-    const a = l0.c + ends(l0), b = l1.c - ends(l1);
-    if (b <= a) continue;
-    const len = b - a, mid = (a + b) / 2, near = Math.min(SOLID, len / 2);
-    for (const side of [-1, 1]) {
-      lay(ctx, s, len, 0.02, 0.15, paint, mid, side * (edge === R ? R - 0.45 : edge), 0.01); // edge lines
-      if (inner) lay(ctx, s, len, 0.02, 0.15, paint, mid, side * (inner + 0.35), 0.01);
-    }
-    for (const off of dividers) {
-      for (const v of [a + near / 2, b - near / 2]) lay(ctx, s, near, 0.02, 0.15, paint, v, off, 0.01);
-      for (let v = a + near + 3.5; v + 3 < b - near - 3; v += 10) lay(ctx, s, 3, 0.02, 0.15, paint, v + 1.5, off, 0.01);
-    }
-    if (s.kind === 'street') for (const off of [-0.3, 0.3]) lay(ctx, s, len, 0.02, 0.12, paint, mid, off, 0.01);
-    if (inner) medianStrip(ctx, s, inner, l0, l1, round);
-    block(ctx, s, a, b, l0, l1, round);
+  const a = g.a + ends(ctx, s, g.l0), b = g.b - ends(ctx, s, g.l1);
+  if (b <= a) return;
+  const len = b - a, mid = (a + b) / 2, near = Math.min(SOLID, len / 2);
+  for (const side of [-1, 1]) {
+    lay(ctx, s, len, 0.02, 0.15, paint, mid, side * (edge === R ? R - 0.45 : edge), 0.01); // edge lines
+    if (inner) lay(ctx, s, len, 0.02, 0.15, paint, mid, side * (inner + 0.35), 0.01);
   }
-  for (const l of lines) {
-    for (const dir of [1, -1]) {
-      // Stop line across the incoming lanes (traffic keeps right, so cars heading +v use the `right` half).
-      const stop = l.c - dir * (round(l) ? RING_OUT + 0.3 : stopAt(l));
-      if (l.kind[across] !== 'walk' && stop > lo && stop < hi) {
-        lay(ctx, s, 0.45, 0.02, edge - inner - 0.3, paint, stop, dir * right * (inner + 0.15 + (edge - inner - 0.3) / 2), 0.01);
-      }
-      const at = l.c + dir * zebraAt(l);
-      if (round(l) || inRing(ctx, s, at) || at < lo || at > hi) continue; // none on the outside of the city: no one walks there
+  for (const off of dividers) {
+    for (const v of [a + near / 2, b - near / 2]) lay(ctx, s, near, 0.02, 0.15, paint, v, off, 0.01);
+    for (let v = a + near + 3.5; v + 3 < b - near - 3; v += 10) lay(ctx, s, 3, 0.02, 0.15, paint, v + 1.5, off, 0.01);
+  }
+  if (s.kind === 'street') for (const off of [-0.3, 0.3]) lay(ctx, s, len, 0.02, 0.12, paint, mid, off, 0.01);
+  if (inner) medianStrip(ctx, s, inner, g.l0, g.l1);
+  block(ctx, s, a, b, g.l0, g.l1);
+}
+
+// At each crossing along street s: a stop line across the incoming lanes of every segment cars drive on (traffic
+// keeps right, so cars heading +v use the `right` half), and a zebra across s in line with each of the crossing
+// street's sidewalks wherever s carries cars on that side.
+function crossings(ctx, s, segs) {
+  const { paint, lo, hi } = ctx, { edge, median } = STREETS[s.kind], R = kerbOf(s), inner = median / 2, right = s.axis === 'x' ? 1 : -1;
+  for (const g of segs) {
+    if (!carries(g.kind)) continue;
+    for (const [l, dir] of [[g.l1, 1], [g.l0, -1]]) { // dir: the way the cars approaching l on this segment drive
+      const stop = l.c - dir * (round(ctx, s, l) ? RING_OUT + 0.3 : stopAt(l));
+      if (stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, edge - inner - 0.3, paint, stop, dir * right * (inner + 0.15 + (edge - inner - 0.3) / 2), 0.01);
+      const at = l.c - dir * zebraAt(l);
+      if (round(ctx, s, l) || inRing(ctx, s, at) || at < lo || at > hi) continue; // none on the outside of the city: no one walks there
       for (let off = -R + 0.6; off < R; off += 1.2) {
         if (Math.abs(off) < inner + 0.2) continue; // the median is a refuge, not paint
         lay(ctx, s, ZEBRA_W, 0.02, 0.6, paint, at, off, 0.01);
@@ -102,47 +137,47 @@ function road(ctx, s) {
   }
 }
 
-// Along each block of a street (between the lane paint's ends at crossings l0 and l1), the parts that depend on
-// its kind. Approaches: a darker, oilier band down the middle of each lane where cars wait at the light (wear), and
-// on main streets and the boulevard a straight-ahead arrow in each lane (the cars never turn). Local streets: bays
-// between the traffic lanes and the kerb, in runs of four 6 m bays marked off with short lines, then a kerb
-// build-out with a tree; about half the bays hold a parked car facing the traffic. The boulevard: small cold-white
-// studs set into the road along each zebra's edges, lit, so its crossings read from far off.
+// Along each block of a street (between the lane paint's ends a and b at crossings l0 and l1), the parts that
+// depend on its kind. Approaches: a darker, oilier band down the middle of each lane where cars wait at the light
+// (wear), and on main streets and the boulevard an arrow in each lane. The ring road: bays between the traffic lanes
+// and the kerb, in runs of three 6 m bays marked off with short lines, then a kerb build-out with a tree; about half
+// the bays hold a parked car facing the traffic. The boulevard: small cold-white studs set into the road along each
+// zebra's edges, lit, so its crossings read from far off.
 const BAY = 6;
-function block(ctx, s, a, b, l0, l1, round) {
+function block(ctx, s, a, b, l0, l1) {
   const { kit, paint, rand, root } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
   const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = s.kind === 'street' || s.kind === 'boulevard';
   for (const [end, dir, l] of [[b, 1, l1], [a, -1, l0]]) { // dir: the way the cars approaching this end drive
-    if (l.kind[s.axis === 'x' ? 'z' : 'x'] === 'walk' || end < ctx.lo + 1 || end > ctx.hi - 1) continue; // no lights there
-    for (const off of lanes) {
-      const o = dir * right * off;
-      lay(ctx, s, 14, 0.01, 1.3, wear, end - dir * 7, o, 0.005);
-      if (big && !round(l)) arrow(ctx, s, end - dir * 7, o, dir);
-    }
+    if (end < ctx.lo + 1 || end > ctx.hi - 1) continue;
+    lanes.forEach((off, k) => {
+      const o = dir * right * off, len = Math.min(14, b - a);
+      lay(ctx, s, len, 0.01, 1.3, wear, end - dir * len / 2, o, 0.005);
+      if (big && !round(ctx, s, l) && b - a > 16) arrow(ctx, s, end - dir * 7, o, dir, turnOf(s.kind, k, lanes.length));
+    });
   }
-  if (s.kind === 'local') {
+  if (s.kind === 'ring') {
     const curb = kit.concrete(palette.roseGrey), paving = kit.concrete(palette.slate), mid = (edge + R) / 2;
     for (const side of [-1, 1]) {
-      let v = a + 12;
-      while (v + 4 * BAY + 6 < b - 12) {
-        for (let k = 0; k <= 4; k++) lay(ctx, s, 0.12, 0.02, R - edge, paint, v + k * BAY, side * mid, 0.01);
-        for (let k = 0; k < 4; k++) {
+      let v = a + 4;
+      while (v + 3 * BAY + 5 < b - 4) {
+        for (let k = 0; k <= 3; k++) lay(ctx, s, 0.12, 0.02, R - edge, paint, v + k * BAY, side * mid, 0.01);
+        for (let k = 0; k < 3; k++) {
           if (rand() < 0.5) continue;
           const dir = side * right, [x, z] = spot(s, v + (k + 0.5) * BAY, side * mid); // facing its side's traffic
           ctx.parked.push([x, z, s.axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : dir > 0 ? 0 : Math.PI]);
         }
-        const bo = v + 4 * BAY + 3; // the build-out: paving out to the bays' edge, kerbed, with a tree
+        const bo = v + 3 * BAY + 2.5; // the build-out: paving out to the bays' edge, kerbed, with a tree
         lay(ctx, s, 5, 0.18, R - edge, paving, bo, side * mid, 0.09);
         lay(ctx, s, 5, 0.22, 0.35, curb, bo, side * (edge + 0.175), 0.11);
         tree(kit, root, ...spot(s, bo, side * mid), 5.5);
-        v += 4 * BAY + 6;
+        v += 3 * BAY + 5;
       }
     }
   }
   if (s.kind === 'boulevard') {
     const stud = kit.glow(palette.coldWhite, 1.6);
     for (const [l, dir] of [[l0, 1], [l1, -1]]) {
-      if (round(l)) continue;
+      if (round(ctx, s, l)) continue;
       for (const e of [-1, 1]) {
         const v = l.c + dir * (zebraAt(l) + e * (ZEBRA_W / 2 + 0.2));
         for (let off = -R + 0.8; off < R; off += 1.6) if (Math.abs(off) > median / 2 + 0.3) lay(ctx, s, 0.18, 0.03, 0.18, stud, v, off, 0.015);
@@ -151,13 +186,35 @@ function block(ctx, s, a, b, l0, l1, round) {
   }
 }
 
-// A straight-ahead arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s).
-function arrow(ctx, s, v, off, dir) {
+// Which way lane k (0 innermost) of n on a street of `kind` may go at a crossing (life.js turns follow the same
+// rule): the boulevard's inner lane turns left only, its outer lane goes straight or right; on main streets the
+// inner lane goes straight or left, the outer straight or right; one-lane streets anywhere.
+export const turnOf = (kind, k, n) => {
+  if (n === 1) return 'any';
+  if (kind === 'boulevard') return k === 0 ? 'left' : k === n - 1 ? 'right' : 'straight';
+  return k === 0 ? 'left' : 'right';
+};
+
+// An arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s): straight ahead,
+// with a bent arm for its turn (`left`, `right`: straight and that way; `left` alone on the boulevard).
+function arrow(ctx, s, v, off, dir, turn) {
+  const right = s.axis === 'x' ? 1 : -1, side = dir * right; // across, toward the right-hand kerb of these cars
+  const head = (tip, along, across) => { // two strokes meeting at `tip`, pointing (along, across)
+    const L = 1.1, phi = 0.6, [tx, tz] = spot(s, tip[0], tip[1]);
+    for (const t of [-1, 1]) {
+      const ca = Math.cos(phi), sa = Math.sin(phi), [ux, uy] = [along * ca - t * across * sa, across * ca + t * along * sa];
+      const [x, z] = spot(s, tip[0] - (L / 2) * ux, tip[1] - (L / 2) * uy);
+      part(ctx.root, box(0.18, 0.02, L, 0), ctx.paint, x, 0.01, z).rotation.y = Math.atan2(tx - x, tz - z);
+    }
+  };
+  const straight = turn !== 'left' || s.kind !== 'boulevard';
   lay(ctx, s, 3, 0.02, 0.18, ctx.paint, v - dir * 0.6, off, 0.01);
-  const L = 1.1, phi = 0.6, [tx, tz] = spot(s, v + dir * 1.5, off); // the head: two strokes meeting at the tip
-  for (const t of [-1, 1]) {
-    const [x, z] = spot(s, v + dir * (1.5 - (L / 2) * Math.cos(phi)), off + t * (L / 2) * Math.sin(phi));
-    part(ctx.root, box(0.18, 0.02, L, 0), ctx.paint, x, 0.01, z).rotation.y = Math.atan2(tx - x, tz - z); // its length toward the tip
+  if (straight) head([v + dir * 1.5, off], dir, 0);
+  for (const [t, w] of [['left', -1], ['right', 1]]) {
+    if (turn !== t) continue;
+    const base = v - dir * 0.3, out = off + w * side * 1.0;
+    lay(ctx, s, 0.18, 0.02, 1.0, ctx.paint, base, off + w * side * 0.5, 0.01);
+    head([base, out + w * side * 0.1], 0, w * side);
   }
 }
 
@@ -166,36 +223,37 @@ function arrow(ctx, s, v, off, dir) {
 // clear of lamps; the two sides' stops are staggered. A slim steel frame, a back panel of dark glass, a roof with a
 // lit cold-cyan edge, a bench, and a small amber display with the line and the next shuttle.
 function kerbside(ctx, s) {
-  if (s.kind !== 'street' && s.kind !== 'boulevard') return;
-  const { kit, root, lines, lampsAt } = ctx, R = kerbOf(s), r = rng(Math.round(s.c * 3 + (s.axis === 'x' ? 11 : 17)) >>> 0);
+  const { kit, root, lampsAt } = ctx, R = kerbOf(s), r = rng(Math.round(s.c * 3 + (s.axis === 'x' ? 11 : 17)) >>> 0);
   const steel = kit.steel(palette.charcoal, 0.6), glass = kit.veil(palette.smokedGlass, 0.55), edge = kit.glow(palette.neonCyan, 1.2);
-  for (const [l0, l1] of lines.slice(1).map((l, k) => [lines[k], l])) {
-    const a = l0.c + l0.w / 2 + 12, b = l1.c - l1.w / 2 - 12;
-    if (b - a < 40) continue;
+  for (const g of segments(ctx, s)) {
+    const a = g.a + stopAt(g.l0) + 4, b = g.b - stopAt(g.l1) - 4;
+    if (!carries(g.kind) || b - a < 24 || r() < 0.4) continue;
     for (const side of [-1, 1]) {
-      if (r() < 0.25) continue;
-      let v = (a + b) / 2 + side * 12;
+      if (r() < 0.3) continue;
+      let v = (a + b) / 2 + side * 6;
       while (lampsAt.some(([x, z]) => Math.hypot(x - spot(s, v, side * R)[0], z - spot(s, v, side * R)[1]) < 5)) v += 2;
-      const g = new THREE.Group(), [x, z] = spot(s, v, side * (R + 1)), line = pick(r, [3, 7, 9]); // few lines, few display textures
-      g.position.set(x, 0.18, z);
-      g.rotation.y = s.axis === 'z' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : side > 0 ? Math.PI : 0; // open to the street (+z)
-      root.add(g);
-      for (const px of [-1.6, 1.6]) part(g, box(0.08, 2.5, 0.08, 0), steel, px, 1.25, -0.5);
-      part(g, box(3.4, 0.08, 1.5, 1), steel, 0, 2.55, 0.1);
-      part(g, box(3.4, 0.04, 0.04, 0), edge, 0, 2.5, 0.85);
-      part(g, box(3.2, 1.9, 0.04, 0), glass, 0, 1.25, -0.52);
-      part(g, box(2.2, 0.06, 0.4, 1), steel, 0, 0.45, -0.25);
-      part(g, new THREE.PlaneGeometry(0.9, 0.34), kit.display([`LINE ${line}`, `${pick(r, [2, 5])} MIN`], 240, 90), 1.1, 2.15, 0.15);
+      if (v > b) continue;
+      const grp = new THREE.Group(), [x, z] = spot(s, v, side * (R + 1)), line = pick(r, [3, 7, 9]); // few lines, few display textures
+      grp.position.set(x, 0.18, z);
+      grp.rotation.y = s.axis === 'z' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : side > 0 ? Math.PI : 0; // open to the street (+z)
+      root.add(grp);
+      for (const px of [-1.6, 1.6]) part(grp, box(0.08, 2.5, 0.08, 0), steel, px, 1.25, -0.5);
+      part(grp, box(3.4, 0.08, 1.5, 1), steel, 0, 2.55, 0.1);
+      part(grp, box(3.4, 0.04, 0.04, 0), edge, 0, 2.5, 0.85);
+      part(grp, box(3.2, 1.9, 0.04, 0), glass, 0, 1.25, -0.52);
+      part(grp, box(2.2, 0.06, 0.4, 1), steel, 0, 0.45, -0.25);
+      part(grp, new THREE.PlaneGeometry(0.9, 0.34), kit.display([`LINE ${line}`, `${pick(r, [2, 5])} MIN`], 240, 90), 1.1, 2.15, 0.15);
     }
   }
 }
 
 // The boulevard's median between crossings l0 and l1: a kerbed, planted strip running up to each zebra with a
 // rounded nose, the zebra crossing it at grade between two pairs of bollards (a refuge for people waiting halfway),
-// and a few slim dark-leaved trees: the median should read as landscaping, not a forest.
-function medianStrip(ctx, s, inner, l0, l1, round) {
+// and a few slim dark-leaved trees: the median should read as landscaping, not a forest. Short of each stop line
+// it narrows to a nose half a metre wide, leaving the inner lane as a left-turn lane (turnOf).
+function medianStrip(ctx, s, inner, l0, l1) {
   const { kit, root } = ctx, curb = kit.concrete(palette.roseGrey), bed = kit.concrete(palette.oliveGrey), steel = kit.steel(palette.charcoal, 0.6);
-  const end = (l) => (round(l) ? RING_OUT + 2 : zebraAt(l) + ZEBRA_W / 2 + 0.3);
+  const end = (l) => (round(ctx, s, l) ? RING_OUT + 2 : zebraAt(l) + ZEBRA_W / 2 + 0.3);
   const a = l0.c + end(l0), b = l1.c - end(l1);
   if (b - a < 2 * inner) return;
   lay(ctx, s, b - a - 2 * inner, 0.25, 2 * inner, curb, (a + b) / 2, 0, 0.12);
@@ -206,7 +264,7 @@ function medianStrip(ctx, s, inner, l0, l1, round) {
   }
   for (let v = a + 10; v < b - 8; v += 28) tree(kit, root, ...spot(s, v, 0), 6, palette.mistTeal);
   for (const [l, dir] of [[l0, 1], [l1, -1]]) { // the zebras at this stretch's two ends
-    if (round(l)) continue;
+    if (round(ctx, s, l)) continue;
     for (const off of [-inner + 0.3, inner - 0.3]) for (const e of [-1, 1]) {
       const v = l.c + dir * (zebraAt(l) + e * (ZEBRA_W / 2 + 0.15));
       part(root, cyl(0.1, 0.1, 0.9, 8), steel, ...lift(spot(s, v, off), 0.45));
@@ -214,26 +272,25 @@ function medianStrip(ctx, s, inner, l0, l1, round) {
     }
   }
 }
-const lift = ([x, z], y) => [x, y, z];
 
-// Pedestrian street: the roadway paved over between crossings, with trees, planters and benches down the middle,
-// and on most long stretches a food street (food below) in place of them for a while.
-function walk(ctx, s) {
-  const { kit, rand } = ctx, roadway = 2 * kerbOf(s);
+// Pedestrian street on segment g: the roadway paved over between crossings, with trees, planters and benches down
+// the middle, and on most long stretches a food street (food below) in place of them for a while. On a main line
+// (a walk) people sit and buy there (people.js); the old town's market lanes are scenery for now.
+function walk(ctx, s, g) {
+  const { kit, rand } = ctx, roadway = 2 * kerbOf(s), own = !s.line.mid;
   const paving = kit.concrete(palette.roseGrey), planter = kit.concrete(palette.gunmetal), bench = kit.steel(palette.charcoal, 0.8);
-  for (const [a, b] of stretches(ctx)) {
-    lay(ctx, s, b - a, 0.18, roadway, paving, (a + b) / 2, 0, 0.09);
-    const [f0, f1] = food(ctx, s, a, b);
-    for (let v = a + 6; v < b - 4; v += 12) {
-      // Every choice is drawn even where the food street is, so the rest of the planting stays as it was.
-      const side = rand() < 0.5 ? -1 : 1, isTree = rand() < 0.6, h = isTree ? 5 + rand() * 2 : 0, seat = rand() < 0.5;
-      if (v + 4 > f0 && v - 2 < f1) continue;
-      if (isTree) tree(kit, ctx.root, ...spot(s, v, side * 2), h);
-      else lay(ctx, s, 2.4, 0.6, 1.2, planter, v, side * 2, 0.48, 1);
-      if (seat) {
-        lay(ctx, s, 1.8, 0.45, 0.5, bench, v + 3, -side * 2.2, 0.4, 1);
-        ctx.benches.push([...spot(s, v + 3, -side * 2.2), s.axis, -side]); // people.js seats people here, facing away from the trees
-      }
+  const a = g.a + g.l0.w / 2, b = g.b - g.l1.w / 2;
+  lay(ctx, s, b - a, 0.18, roadway, paving, (a + b) / 2, 0, 0.09);
+  const [f0, f1] = food(ctx, s, a, b, own);
+  for (let v = a + 6; v < b - 4; v += 12) {
+    // Every choice is drawn even where the food street is, so the rest of the planting stays as it was.
+    const side = rand() < 0.5 ? -1 : 1, isTree = rand() < 0.6, h = isTree ? 5 + rand() * 2 : 0, seat = rand() < 0.5;
+    if (v + 4 > f0 && v - 2 < f1) continue;
+    if (isTree) tree(kit, ctx.root, ...spot(s, v, side * 2), h);
+    else lay(ctx, s, 2.4, 0.6, 1.2, planter, v, side * 2, 0.48, 1);
+    if (seat) {
+      lay(ctx, s, 1.8, 0.45, 0.5, bench, v + 3, -side * 2.2, 0.4, 1);
+      if (own) ctx.benches.push([...spot(s, v + 3, -side * 2.2), s.axis, -side]); // people.js seats people here, facing away from the trees
     }
   }
 }
@@ -244,10 +301,10 @@ function walk(ctx, s) {
 // light pools on the paving under every stall and table. Returns the part of the stretch it takes, [from, to]
 // ([Infinity, -Infinity] if none). ctx.food gets every stall and stool (people.js puts vendors, customers and
 // diners there).
-function food(ctx, s, a, b) {
+function food(ctx, s, a, b, own = true) {
   const r = rng(Math.round(s.c * 7 + a * 13 + 5) >>> 0);
-  if (b - a < 70 || r() < 0.25) return [Infinity, -Infinity];
-  const len = 34, from = a + 10 + r() * (b - a - len - 20), side = r() < 0.5 ? -1 : 1;
+  if (b - a < 46 || r() < 0.25) return [Infinity, -Infinity];
+  const len = 34, from = a + 6 + r() * (b - a - len - 12), side = r() < 0.5 ? -1 : 1;
   const { kit, root } = ctx, m = {
     steel: kit.steel(palette.gunmetal, 0.6), dark: kit.steel(palette.charcoal, 0.7), cream: kit.steel(palette.cream, 0.5),
     bulbs: kit.glow(palette.warmWindow, 2.2), lantern: kit.glow(palette.neonRed, 1.1) };
@@ -266,7 +323,7 @@ function food(ctx, s, a, b) {
     const vent = stall(kit, g, kinds[k], color, r, m);
     pool(g, 2.4, color, 0, 0.6);
     const [x, z] = spot(s, v, side * 2.8);
-    ctx.food.push({ kind: 'stall', x, z, heading: face(-side), along: s.axis, line: s.c,
+    if (own) ctx.food.push({ kind: 'stall', x, z, heading: face(-side), along: s.axis, line: s.c,
       steam: vent && new THREE.Vector3(...vent).applyMatrix4(g.matrixWorld).toArray() });
   }
   // The terrace.
@@ -294,7 +351,7 @@ function food(ctx, s, a, b) {
       part(g, cyl(0.03, 0.04, 0.4, 6), m.steel, sx, 0.2, sz);
       part(g, cyl(0.07, 0.05, 0.05, 10), m.cream, sx * 0.55, 0.8, sz * 0.55); // a bowl in front of each seat
       const w = new THREE.Vector3(sx, 0, sz).applyMatrix4(g.matrixWorld);
-      ctx.food.push({ kind: 'stool', x: w.x, z: w.z, heading: Math.atan2(tx - w.x, tz - w.z), table: [tx, tz], along: s.axis, line: s.c });
+      if (own) ctx.food.push({ kind: 'stool', x: w.x, z: w.z, heading: Math.atan2(tx - w.x, tz - w.z), table: [tx, tz], along: s.axis, line: s.c });
     }
   }
   return [from, from + len];
@@ -429,82 +486,99 @@ function plaza({ kit, root, paint }, hub) {
   telecomTower(kit, root, c, 0.4, c);
 }
 
-// Sectors: raised paving out to the curb, a curb line with rounded corners, and an alley cross through the middle.
-const CORNER = 2; // corner kerb radius: the zebras' ends meet the kerb where it starts to curve, like kerb ramps
-function sectors(kit, root, { n, pos, inTown, lines }, rand, hub) {
-  const paving = kit.concrete(palette.slate), curb = kit.concrete(palette.roseGrey), alley = kit.mat('aerial_asphalt_01', palette.gunmetal);
-  const planter = kit.concrete(palette.gunmetal), shrub = kit.concrete(palette.teal);
-  for (let by = 0; by < n; by += BLOCK) {
-    for (let bx = 0; bx < n; bx += BLOCK) {
-      // Each side's sidewalk is its street's (STREETS side), so the kerbs follow the street hierarchy.
-      const [w0, w1, s0, s1] = [lines[bx / BLOCK].side, lines[bx / BLOCK + 1].side, lines[by / BLOCK].side, lines[by / BLOCK + 1].side];
-      const [x0, x1] = [pos(bx) - TILE / 2 - w0, pos(bx + BLOCK - 1) + TILE / 2 + w1];
-      const [z0, z1] = [pos(by) - TILE / 2 - s0, pos(by + BLOCK - 1) + TILE / 2 + s1];
-      const [cx, cz, w, d] = [(x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0];
-      // The four sectors at the central crossing give up a corner to the tower's plaza (plaza() paves it).
-      const sx = Math.sign(cx - hub.c), sz = Math.sign(cz - hub.c), reach = hub.w / 2 + HUB * TILE;
-      const touches = Math.min(Math.abs(x0 - hub.c), Math.abs(x1 - hub.c)) < hub.w / 2 &&
-        Math.min(Math.abs(z0 - hub.c), Math.abs(z1 - hub.c)) < hub.w / 2;
-      const [kx, kz] = [hub.c + sx * reach, hub.c + sz * reach]; // the plaza corner's far edges
-      const rect = (a0, a1, b0, b1) => part(root, slab(a1 - a0, 0.18, b1 - b0), paving, (a0 + a1) / 2, 0.09, (b0 + b1) / 2);
-      const kerbX = (a0, a1, z) => part(root, slab(a1 - a0, 0.22, 0.35), curb, (a0 + a1) / 2, 0.11, z);
-      const kerbZ = (b0, b1, x) => part(root, slab(0.35, 0.22, b1 - b0), curb, x, 0.11, (b0 + b1) / 2);
-      if (!touches) { // rounded corners (CORNER): the paving in three strips and a quarter disc in each corner
-        const r = CORNER;
-        rect(x0 + r, x1 - r, z0, z1);
-        for (const [a0, a1] of [[x0, x0 + r], [x1 - r, x1]]) rect(a0, a1, z0 + r, z1 - r);
-        for (const z of [z0, z1]) kerbX(x0 + r, x1 - r, z);
-        for (const x of [x0, x1]) kerbZ(z0 + r, z1 - r, x);
-        for (const [x, z, t] of [[x0 + r, z0 + r, Math.PI], [x1 - r, z0 + r, Math.PI / 2], [x1 - r, z1 - r, 0], [x0 + r, z1 - r, 1.5 * Math.PI]]) {
-          part(root, new THREE.CylinderGeometry(r, r, 0.18, 8, 1, false, t, Math.PI / 2), paving, x, 0.09, z);
-          for (let k = 0; k < 4; k++) { // the kerb round it
-            const a = t + ((k + 0.5) * Math.PI) / 8;
-            part(root, box((r * Math.PI) / 8 + 0.06, 0.22, 0.35, 0), curb, x + Math.sin(a) * r, 0.11, z + Math.cos(a) * r).rotation.y = a;
-          }
-        }
-      } else {
-        const [ox0, ox1] = sx > 0 ? [kx, x1] : [x0, kx], [oz0, oz1] = sz > 0 ? [kz, z1] : [z0, kz];
-        const [pz0, pz1] = sz > 0 ? [z0, kz] : [kz, z1];
-        rect(x0, x1, oz0, oz1); // the rows past the corner, full width
-        rect(ox0, ox1, pz0, pz1); // and the corner's rows, beside it
-        const [hz, fz] = sz > 0 ? [z0, z1] : [z1, z0], [hx, fx] = sx > 0 ? [x0, x1] : [x1, x0];
-        kerbX(x0, x1, fz);
-        kerbX(ox0, ox1, hz);
-        kerbZ(z0, z1, fx);
-        kerbZ(oz0, oz1, hx);
-      }
-      // Each half of the cross is a service alley (asphalt, dumpsters) or a paved pedestrian lane with planters,
-      // so neighbouring sectors do not repeat.
-      const [ax, az] = [pos(bx + HALF) - TILE / 2 - ALLEY / 2, pos(by + HALF) - TILE / 2 - ALLEY / 2];
-      // In the old town each of the four arms is its own passage: through, a dead end walled off short of the
-      // middle, or built over (the gap left as a closed yard).
-      const arms = inTown(bx, by) ? [-1, 1] : [0];
-      for (const [x, z, full, across] of [[ax, (z0 + s0 + z1 - s1) / 2, d - s0 - s1, 'z'], [(x0 + w0 + x1 - w1) / 2, az, w - w0 - w1, 'x']]) for (const arm of arms) {
-        const lane = rand() < 0.4, fate = arm ? rand() : 1;
-        if (fate < 0.15) continue;
-        const along = arm ? (full / 2) * (fate < 0.5 ? 0.55 : 1) : full, mid = arm * (full / 2 - along / 2);
-        const [x1, z1] = across === 'z' ? [x, z + mid] : [x + mid, z];
-        const size = across === 'z' ? [ALLEY, 0.04, along] : [along, 0.04, ALLEY];
-        part(root, slab(...size), lane ? curb : alley, x1, 0.19, z1);
-        if (fate < 0.5) { // dead end: a wall across the inner end
-          const end = mid - (arm * along) / 2, wall = across === 'z' ? [ALLEY, 1.8, 0.4] : [0.4, 1.8, ALLEY];
-          part(root, box(...wall, 0), curb, across === 'z' ? x : x + end, 0.9, across === 'z' ? z + end : z);
-        }
-        for (let k = 0; k < (lane ? 5 : 3) * (along / full); k++) {
-          const s = mid + (rand() - 0.5) * (along - 6), side = rand() < 0.5 ? -1 : 1;
-          const [px, pz] = across === 'z' ? [x + side * 1.6, z + s] : [x + s, z + side * 1.6];
-          const item = lane ? part(root, box(1.4, 0.6, 1.4, 1), planter, px, 0.5, pz)
-            : part(root, box(1.2, 1.3, 1.9, 0), kit.steel(palette.gunmetal, 0.8), px, 0.85, pz);
-          item.rotation.y = across === 'z' ? 0 : Math.PI / 2;
-          if (lane) part(root, box(1.1, 0.25, 1.1, 1), shrub, px, 0.9, pz);
-        }
-      }
+// Blocks: between every two corridors each way, a raised slab of paving out to the kerbs (the sidewalks are its
+// edges), kerbed all round. Each corner is rounded by the smaller radius of the two streets that meet there
+// (STREETS r: wide enough for a car turning out of the outer lane), or kept nearly square beside a service alley.
+// The four blocks at the central crossing give up a corner to the tower's plaza (plaza() paves it). The outline
+// is cut into short edges so the old town's warp bends it with the streets.
+function blocks(ctx, hub) {
+  const { kit, root, cross } = ctx, paving = kit.concrete(palette.slate), curb = kit.concrete(palette.roseGrey);
+  const reach = hub.w / 2 + HUB * TILE;
+  const radius = (x, z) => Math.min(STREETS[x.kind.z].r, STREETS[z.kind.x].r); // x runs along z, z along x
+  for (let j = 0; j + 1 < cross.length; j++) for (let k = 0; k + 1 < cross.length; k++) {
+    const [X0, X1, Z0, Z1] = [cross[j], cross[j + 1], cross[k], cross[k + 1]];
+    const [x0, x1, z0, z1] = [X0.c + kerbOf(X0), X1.c - kerbOf(X1), Z0.c + kerbOf(Z0), Z1.c - kerbOf(Z1)];
+    // Corners counter-clockwise seen from above (x right, z down the page), each with its radius.
+    let pts = [[x0, z0, radius(X0, Z0)], [x1, z0, radius(X1, Z0)], [x1, z1, radius(X1, Z1)], [x0, z1, radius(X0, Z1)]];
+    const sx = Math.sign((x0 + x1) / 2 - hub.c), sz = Math.sign((z0 + z1) / 2 - hub.c);
+    if ([X0, X1].includes(hub) && [Z0, Z1].includes(hub)) { // a plaza block: its corner at the crossing is the plaza's
+      const [kx, kz] = [hub.c + sx * reach, hub.c + sz * reach], at = pts.findIndex(([x, z]) => Math.abs(x - hub.c) < hub.w && Math.abs(z - hub.c) < hub.w);
+      const [cx, cz] = pts[at], before = pts[(at + 3) % 4];
+      // Walk round the notch: along the edge from the previous corner to the plaza, in to its far corner, out again.
+      const viaX = before[0] === cx; // the previous corner shares this corner's x: that edge runs along z
+      const notch = viaX ? [[cx, kz, 0], [kx, kz, 0], [kx, cz, 0]] : [[kx, cz, 0], [kx, kz, 0], [cx, kz, 0]];
+      pts = [...pts.slice(0, at), ...notch, ...pts.slice(at + 1)];
     }
+    slabOutline(kit, root, outline(pts), paving, curb);
   }
 }
 
-// The city's outer edge: the ring road's outer sidewalk, raised and kerbed like the sectors', open only where a
-// street carries on out of town (as a dirt track or a highway). The outer lamps of the ring road stand on it.
+// The outline of a polygon (corners [x, z, r]) with each corner rounded to its radius, as points every few metres.
+function outline(corners) {
+  const n = corners.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const [px, pz, r] = corners[i], [ax, az] = corners[(i + n - 1) % n], [bx, bz] = corners[(i + 1) % n];
+    const d1 = norm(px - ax, pz - az), d2 = norm(bx - px, bz - pz);
+    const convex = d1[0] * d2[1] - d1[1] * d2[0] > 0;
+    if (!r || !convex) {
+      out.push([px, pz]);
+      continue;
+    }
+    const cx = px - d1[0] * r + d2[0] * r, cz = pz - d1[1] * r + d2[1] * r; // the arc's centre
+    for (let k = 0; k <= 4; k++) {
+      const t = (k / 4) * (Math.PI / 2);
+      out.push([cx + r * (-d2[0] * Math.cos(t) + d1[0] * Math.sin(t)), cz + r * (-d2[1] * Math.cos(t) + d1[1] * Math.sin(t))]);
+    }
+  }
+  const fine = []; // long edges cut into pieces, so the warp can bend them
+  out.forEach(([x, z], i) => {
+    const [nx, nz] = out[(i + 1) % out.length], steps = Math.max(1, Math.ceil(Math.hypot(nx - x, nz - z) / 8));
+    for (let k = 0; k < steps; k++) fine.push([x + ((nx - x) * k) / steps, z + ((nz - z) * k) / steps]);
+  });
+  return fine;
+}
+const norm = (x, z) => {
+  const l = Math.hypot(x, z) || 1;
+  return [x / l, z / l];
+};
+
+// Paving inside an outline (0.18 m, textured in metres) and a kerb along it (0.35 m wide, standing 0.04 m proud).
+function slabOutline(kit, root, pts, paving, curb) {
+  const shape = (ring) => ring.map(([x, z]) => new THREE.Vector2(x, -z)); // shape y is -z: rotateX(-90 deg) lays it flat
+  const geo = (s, depth) => {
+    const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 1 });
+    g.rotateX(-Math.PI / 2);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / REPEAT, uv.getY(i) / REPEAT); // metres, as everywhere
+    return g;
+  };
+  part(root, geo(new THREE.Shape(shape(pts)), 0.18), paving, 0, 0, 0);
+  for (let i = 0; i < pts.length; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[(i + 1) % pts.length], len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 0.01) continue;
+    const [nx, nz] = norm(-(z1 - z0), x1 - x0); // inward for a counter-clockwise ring (x right, z down the page)
+    const kerb = part(root, box(len + 0.04, 0.22, 0.35, 0), curb, (x0 + x1) / 2 + nx * 0.175, 0.11, (z0 + z1) / 2 + nz * 0.175);
+    kerb.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+  }
+}
+
+// A service alley (the outer sectors' mid streets): the asphalt between two blocks, with dumpsters and the odd
+// planter along its edges, between the streets that cross it.
+function alley(ctx, s) {
+  const { kit, root, rand } = ctx, steel = kit.steel(palette.gunmetal, 0.8), planter = kit.concrete(palette.gunmetal), shrub = kit.concrete(palette.teal);
+  const xs = crossingsOf(ctx, s);
+  xs.slice(1).forEach((x, k) => {
+    const a = xs[k].l.c + xs[k].l.w / 2 + 3, b = x.l.c - x.l.w / 2 - 3;
+    for (let n = 0; n < 3 && b > a; n++) {
+      const v = a + rand() * (b - a), side = rand() < 0.5 ? -1 : 1, bin = rand() < 0.7;
+      const item = bin ? lay(ctx, s, 1.9, 1.3, 1.2, steel, v, side * 2.2, 0.65, 0) : lay(ctx, s, 1.4, 0.6, 1.4, planter, v, side * 2.2, 0.3, 1);
+      if (!bin) part(root, box(1.1, 0.25, 1.1, 1), shrub, item.position.x, 0.72, item.position.z);
+    }
+  });
+}
+
+// The city's outer edge: the ring road's outer sidewalk, raised and kerbed like the blocks', open only where a
+// main street carries on out of town (as a dirt track or a highway). The outer lamps of the ring road stand on it.
 function perimeter(ctx) {
   const { kit, lo, hi } = ctx, paving = kit.concrete(palette.slate), curb = kit.concrete(palette.roseGrey);
   for (const axis of ['x', 'z']) {
@@ -522,33 +596,91 @@ function perimeter(ctx) {
   }
 }
 
-// Sodium lamps on both curbs, arms over the street, with a soft pool of light under each.
-function lamps(ctx, s) {
-  const { kit, root, lo, hi } = ctx;
+// Sodium lamps along each segment, arms over the street, with a soft pool of light under each: about every 40 m on
+// both kerbs of main streets and the boulevard, staggered from kerb to kerb on narrower ones.
+function lamps(ctx, s, segs) {
+  const { kit, root } = ctx;
   const pools = new THREE.MeshBasicMaterial({ map: radialTexture(128), color: palette.sodium, transparent: true, opacity: 0.16,
     blending: THREE.AdditiveBlending, depthWrite: false });
-  const kerb = kerbOf(s) + 0.6;
-  for (let v = lo + 20; v < hi - 20; v += LAMP_EVERY) {
-    if (inCrossing(ctx, v, 2) || inRing(ctx, s, v, 4)) continue;
-    for (const side of [-1, 1]) {
-      const [x, z] = spot(s, v, side * kerb);
-      const facing = s.axis === 'z' ? (side > 0 ? Math.PI : 0) : side > 0 ? Math.PI / 2 : -Math.PI / 2;
-      const p = streetLamp(kit, root, x, z, facing);
-      ctx.lampsAt.push([x, z]); // so street props (city.js) keep clear
-      part(root, new THREE.CircleGeometry(6, 20), pools, p.x, 0.25, p.z).rotation.x = -Math.PI / 2;
+  const kerb = kerbOf(s) + 0.6, both = s.kind === 'street' || s.kind === 'boulevard';
+  let flip = 1;
+  for (const g of segs) {
+    if (g.kind === 'none') continue;
+    const a = g.a + g.l0.w / 2 + 4, b = g.b - g.l1.w / 2 - 4, count = Math.max(1, Math.round((b - a) / 40));
+    for (let k = 0; k < count; k++) {
+      const v = a + ((k + 0.5) * (b - a)) / count;
+      if (inRing(ctx, s, v, 4)) continue;
+      for (const side of both ? [-1, 1] : [(flip = -flip)]) {
+        const [x, z] = spot(s, v, side * kerb);
+        const facing = s.axis === 'z' ? (side > 0 ? Math.PI : 0) : side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        const p = streetLamp(kit, root, x, z, facing);
+        ctx.lampsAt.push([x, z]); // so street props (city.js) keep clear
+        part(root, new THREE.CircleGeometry(6, 20), pools, p.x, 0.25, p.z).rotation.x = -Math.PI / 2;
+      }
     }
   }
 }
 
-// Traffic lanes of street s, each way, driving on the right (seen from above, +x traffic keeps to +z and +z
-// traffic to -x). A lane runs along `axis` at offset `at`, from `from` to `to`, on the street centred at `c`;
-// stops: the crossings along it as [centre, reach, zebra], where life.js traffic lights hold it.
-function trafficLanes(s, lo, hi, lines) {
-  const { lanes, cars, edge } = STREETS[s.kind], right = s.axis === 'x' ? 1 : -1, across = s.axis === 'x' ? 'z' : 'x';
-  const hub = lines[lines.length >> 1].c, round = (l) => Math.abs(s.c - hub) < 1 && Math.abs(l.c - hub) < 1;
-  // [centre, reach, zebra]: a car's nose stops 0.5 m past reach from the crossing's centre, just behind the stop
-  // line; the zebra's centre is that far from it (null: no zebra, the roundabout).
-  const stops = lines.filter((l) => l.kind[across] !== 'walk').map((l) => (round(l) ? [l.c, RING_OUT + 0.55, null] : [l.c, stopAt(l) + 0.05, zebraAt(l)])); // walks carry no cars
-  const lane = (at, from, to) => ({ axis: s.axis, kind: s.kind, c: s.c, w: s.w, side: s.side, edge, at, from, to, y: 0.65, cars, stops });
-  return lanes.flatMap((off) => [lane(s.c + right * off, lo, hi), lane(s.c - right * off, hi, lo)]);
+// The road graph the cars drive (life.js traffic): a node at every crossing where a car lane starts or ends, and
+// a link for every lane of every segment cars drive on, in each direction, from just past one crossing's far zebra
+// to its stop line at the next. Driving on the right (seen from above, +x traffic keeps to +z and +z traffic to -x).
+// Nodes: { key, x, z (unwarped), kinds: { x, z } of the car streets meeting there, walk (a walk crosses: lights for
+// walkers), type }: 'round' (the tower's roundabout), 'signal' (a main street or the boulevard meets another
+// street, or a walk crosses), 'yield' (local streets only: no lights, cars take turns), and in/out links. Links:
+// { axis, c, at (offset line), off, k (0 innermost), n, kind, dir, from, to (along), start, end (nodes; null out of
+// town), reach (the stop's distance from the end node's centre), zebra (its zebra's, null at the roundabout),
+// mid, out ('sink' or 'source': leaves or enters town, desert.js outOfTown carries it to the edge of the world) }.
+function roadNet(ctx, streets) {
+  const nodes = new Map(), links = [], hubC = ctx.hub;
+  const node = (x, z) => {
+    const key = `${Math.round(x)}|${Math.round(z)}`;
+    if (!nodes.has(key)) nodes.set(key, { key, x, z, kinds: {}, walk: false, ins: [], outs: [] });
+    return nodes.get(key);
+  };
+  const reachOf = (s, l) => (round(ctx, s, l) ? RING_OUT + 0.55 : stopAt(l) + 0.05);
+  for (const s of streets) {
+    if (!carries(s.kind)) continue;
+    const { lanes } = STREETS[s.kind], right = s.axis === 'x' ? 1 : -1, at = (v) => (s.axis === 'x' ? [v, s.c] : [s.c, v]);
+    const add = (o) => {
+      links.push(o);
+      o.start?.outs.push(o);
+      o.end?.ins.push(o);
+    };
+    const lane = (k, dir, extra) => ({ axis: s.axis, c: s.c, w: s.w, side: s.side, kind: s.kind, off: lanes[k], at: s.c + dir * right * lanes[k],
+      k, n: lanes.length, dir, mid: s.line.mid, y: 0.65, ...extra });
+    for (const g of segments(ctx, s)) {
+      if (!carries(g.kind)) continue;
+      const A = node(...at(g.a)), B = node(...at(g.b));
+      for (const N of [A, B]) N.kinds[s.axis] = s.kind;
+      for (let k = 0; k < lanes.length; k++) for (const dir of [1, -1]) {
+        const [n0, n1, l0, l1, a, b] = dir > 0 ? [A, B, g.l0, g.l1, g.a, g.b] : [B, A, g.l1, g.l0, g.b, g.a];
+        add(lane(k, dir, { from: a + dir * reachOf(s, l0), to: b - dir * reachOf(s, l1), start: n0, end: n1, reach: reachOf(s, l1),
+          zebra: round(ctx, s, l1) ? null : zebraAt(l1) }));
+      }
+    }
+    // Main streets carry on out of town as tracks and highways: a lane out from the ring road's crossing and one in.
+    if (!s.line.mid) for (const [ring, out] of [[ctx.cross[0], -1], [ctx.cross.at(-1), 1]]) {
+      const R = node(...at(ring.c)), reach = reachOf(s, ring);
+      R.kinds[s.axis] = s.kind;
+      for (let k = 0; k < lanes.length; k++) {
+        add(lane(k, out, { from: ring.c + out * reach, to: ring.c + out * (reach + 1), start: R, end: null, out: 'sink' }));
+        add(lane(k, -out, { from: ring.c + out * (reach + 1), to: ring.c + out * reach, start: null, end: R, reach, zebra: null, out: 'source' }));
+      }
+    }
+  }
+  for (const s of streets) { // walks crossing a car street: walkers get lights there
+    if (s.kind !== 'walk' && !segments(ctx, s).some((g) => g.kind === 'walk')) continue;
+    for (const g of segments(ctx, s)) {
+      if (g.kind !== 'walk') continue;
+      for (const v of [g.a, g.b]) {
+        const N = nodes.get(`${Math.round(s.axis === 'x' ? v : s.c)}|${Math.round(s.axis === 'x' ? s.c : v)}`);
+        if (N) N.walk = true;
+      }
+    }
+  }
+  for (const N of nodes.values()) {
+    const big = [N.kinds.x, N.kinds.z].some((k) => k === 'street' || k === 'boulevard');
+    N.type = Math.abs(N.x - hubC) < 1 && Math.abs(N.z - hubC) < 1 ? 'round' : big || N.walk ? 'signal' : 'yield';
+  }
+  return { nodes: [...nodes.values()], links };
 }

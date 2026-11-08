@@ -1,6 +1,6 @@
 # ADR-0008: A street hierarchy inside fixed street widths
 
-**Status:** Accepted (2026-11-08)
+**Status:** Superseded by ADR-0009 (2026-11-08): the street widths and grid now change too
 
 ## Context
 Every main street had the same build: 4 m sidewalks and a roadway as wide as the rest of its width allowed, so most streets read as four- or six-lane arterials and crossings as large empty squares. The zebras sat about 4 m past the sidewalks rather than in line with them. Traffic lights existed only as timing in `life.js`, and when they were first drawn there was one head per lane, which read as rows of three.

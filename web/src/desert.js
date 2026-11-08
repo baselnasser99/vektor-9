@@ -32,20 +32,20 @@ export function buildDesert(kit, edge, lines, onFrame) {
   return mergeByMaterial(root);
 }
 
-// The city's traffic lanes carried on out of town to the edge of the world, so cars come and go in the fog rather
-// than appearing at the city edge: the boulevard's up the ramps and along the highways, every other street's along
-// its dirt track, over the ground. Cars per lane grow with its length (fewer out there: nothing holds them up).
-export function outOfTown(lanes, edge) {
+// The main streets' lanes carried on out of town to the edge of the world (streets.js roadNet: links marked out),
+// so cars come and go in the fog rather than at the city edge: the boulevard's up the ramps and along the causeway,
+// the rest along its dirt track, over the ground. Every link gets lift(along), its road height there.
+export function outOfTown(roads, edge) {
   const height = duneHeight(edge), deck = DECK + 0.6;
-  for (const lane of lanes) {
-    const s = Math.sign(lane.to - lane.from), road = Math.abs(lane.c) < 1, base = lane.y;
-    lane.cars = Math.round(lane.cars * (1 + (0.6 * (2 * REACH - Math.abs(lane.to - lane.from))) / Math.abs(lane.to - lane.from)));
-    [lane.from, lane.to] = [-s * REACH, s * REACH];
-    lane.lift = road
+  for (const link of roads.links) {
+    const road = Math.abs(link.c) < 1, base = link.y;
+    if (link.out === 'sink') link.to = link.dir * REACH;
+    if (link.out === 'source') link.from = -link.dir * REACH;
+    link.lift = road
       ? (along) => base + deck * Math.min(1, Math.max(0, (Math.abs(along) - edge) / RAMP))
-      : (along) => base + (Math.abs(along) > edge ? height(...(lane.axis === 'x' ? [along, lane.at] : [lane.at, along])) : 0);
+      : (along) => base + (Math.abs(along) > edge ? height(...(link.axis === 'x' ? [along, link.at] : [link.at, along])) : 0);
   }
-  return lanes;
+  return roads;
 }
 
 // Dune height: flat through the sprawl, rising over 500 m beyond it, flattened along the highway corridors.

@@ -3,18 +3,21 @@ import { palette } from './palette.js';
 
 export const TILE = 14; // metres per tile; buildings take up to 12.5 m of it
 export const BLOCK = 8; // tiles per sector side (sim/rules.py BLOCK)
-// Street kinds between sectors, a hierarchy (STYLE_GUIDE Street level): total width w (fixed: it places every
-// tile, so it never changes), sidewalk `side` each side (inside w), traffic lane centres from the centre line (each
-// way), `edge` where the traffic lanes end (local streets keep parking and loading bays between it and the kerb),
-// median width, and cars per lane (streets.js CORNER rounds every block corner alike). 3.3 to 3.5 m lanes, like real city streets.
+// Street corridors, a hierarchy (STYLE_GUIDE Street level, ADR-0009): total width w, sidewalk `side` each side
+// (inside w), traffic lane centres from the centre line (each way), `edge` where the traffic lanes end (the ring
+// road keeps parking bays between it and the kerb), median width and corner kerb radius r (car density is life.js traffic's). Lanes
+// are 3.25 m. Main streets run between sectors (city.js cityLayout); every sector is split both ways after HALF
+// tiles by a mid street: a local street in the inner sectors, a service alley in the outermost ones.
 export const STREETS = {
-  boulevard: { w: 34, side: 5, lanes: [3.67, 7, 10.33], edge: 12, median: 4, cars: 9 }, // type C: three lanes each way
-  street: { w: 24, side: 5, lanes: [2.125, 5.375], edge: 7, median: 0, cars: 6 }, // type B, main: two each way
-  local: { w: 24, side: 6, lanes: [1.75], edge: 3.5, median: 0, cars: 3 }, // type A: one each way, bays both sides
-  lane: { w: 16, side: 4, lanes: [1.75], edge: 3.5, median: 0, cars: 2 }, // type A, narrow: one each way
-  walk: { w: 16, side: 4, lanes: [], edge: 0, median: 0, cars: 0 }, // pedestrian street: paved, planted, no cars
+  boulevard: { w: 36, side: 6.5, lanes: [3.375, 6.625, 9.875], edge: 11.5, median: 3.5, r: 5 }, // type C: three lanes each way
+  street: { w: 21, side: 3.75, lanes: [1.875, 5.125], edge: 6.75, median: 0, r: 4.5 }, // type B, main: two each way
+  ring: { w: 16, side: 2.5, lanes: [1.625], edge: 3.25, median: 0, r: 3.5 }, // type A, the ring road: one each way, bays both sides
+  lane: { w: 14, side: 3.75, lanes: [1.625], edge: 3.25, median: 0, r: 3.5 }, // type A: one each way
+  local: { w: 13, side: 3.25, lanes: [1.625], edge: 3.25, median: 0, r: 3.5 }, // type A, a mid street: one each way
+  walk: { w: 14, side: 3.75, lanes: [], edge: 0, median: 0, r: 2 }, // pedestrian street: paved, planted, no cars
+  alley: { w: 6, side: 0, lanes: [], edge: 0, median: 0, r: 0.3 }, // service alley: no sidewalks, no through traffic
 };
-export const ALLEY = 5; // service alley through the middle of every sector, after HALF tiles
+export const CARS = new Set(['boulevard', 'street', 'ring', 'lane', 'local']); // the kinds cars drive on
 export const HALF = 4;
 export const HUB = 2; // tiles each way from the central crossing kept as the tower's plaza (sim/rules.py HUB_PLAZA)
 export const F = 3.5; // floor height
