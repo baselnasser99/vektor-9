@@ -11,7 +11,7 @@ steel girders higher up; a concrete transfer ring where the legs and core meet u
 and twelve raking steel columns from it out to the crown's floor. The crown: a louvred service
 level, the main observation level (outward-raked glass, steel mullions, a transom, a lit ceiling),
 a control level, and over it the Reactor Crown: a dark armoured containment crown, wider than
-the deck, round a large recessed crimson reactor chamber, with eight armour segments and a
+the deck, round a large crimson reactor crater, with eight armour segments and a
 short dark mast on one of them. At the foot, a two-level podium round a
 glazed lobby.
 
@@ -74,7 +74,7 @@ from kit import (  # noqa: E402
 )
 
 # Proportions, in metres. Tune here; everything else follows.
-H = 242.0  # mast tip
+H = 262.0  # mast tip (the central spire over the reactor)
 TOP = 224.0  # sets the core's taper (it stops under the reactor chamber)
 CORE = (6.5, 3.4)  # core radius at the ground and at TOP (straight taper)
 JOINT = 12.0  # concrete panel joint spacing on core and legs
@@ -427,7 +427,7 @@ def build_crown():
         64,
     )
     ring("shell", 15.85 * CS, 0.07, f - 0.05, 96, 4)  # trim on the floor slab's lip
-    ring("halo", 15.92 * CS, 0.05, f - 0.45, 96, 4)  # crimson seam round its face
+    ring("rim", 15.92 * CS, 0.06, f - 0.45, 96, 4)  # orange line round its face
     # Service level: set back, louvred.
     s1 = f + SERVICE
     lathe("dark", [(13.6 * CS, f), (13.6 * CS, s1)], 64)
@@ -480,7 +480,7 @@ def build_crown():
     )
     ring("interior", 16.95 * CS, 0.05, m1 - 0.03, 96, 4)
     ring("shell", 16.95 * CS, 0.07, u0 - 0.05, 96, 4)  # trim on its top lip
-    ring("halo", 17.12 * CS, 0.05, (m1 + u0) / 2, 96, 4)  # crimson seam round its face
+    ring("rim", 17.12 * CS, 0.06, (m1 + u0) / 2, 96, 4)  # orange line round its face
     for k in range(48):  # dark panel breaks across its face
         a = k * 2 * math.pi / 48
         bar(
@@ -522,11 +522,11 @@ def build_reactor():
     deck's width over the control level. Steel-blue knee brackets and a dark underside carry it
     out from the control level; a thick graphite containment ring with crimson viewing slots in
     its face; inside, a recessed chamber about 27 m across: a wide glowing ring crossed by dark
-    ribs between concentric containment rings, and in the middle the reactor rising above the
-    armour (a dark foundation, a low wide faceted crimson drum held by dark braces, a bright domed
-    centre). Eight massive bevelled graphite armour segments stand on the ring round it,
-    rising to their inner edge, with crimson seams; glowing power conduits in every other gap
-    between them; cool-grey only on the ring's top edge."""
+    ribs between concentric containment rings, and in the middle the reactor sunk into a
+    crater (glowing terraces stepping down to a molten pool). Eight massive bevelled graphite
+    armour segments stand on the ring round it, rising to their inner edge, with crimson seams;
+    glowing power conduits in every other gap between them;
+    cool-grey only on the ring's top edge."""
     u0, u1 = crown_levels()[3:]
     U = UPPER_R * CS
     R, C = CROWN_OUT, CHAMBER
@@ -583,27 +583,24 @@ def build_reactor():
     for k in range(24):
         a = k * math.pi / 12
         arc("dark", rib, a - 0.018, a + 0.018, 1)
-    # The reactor: low, wide and heavy. A dark graphite foundation wider than the chamber; on it a
-    # faceted crimson chamber about 17 m across, one continuous glowing drum held by eight dark
-    # braces and slate hoops, its shoulder sloping in to the bright domed centre.
-    lathe(
-        "graphite",
-        [(0, u1 + 4.6), (9.0, u1 + 4.6), (9.0, u1 + 6.8), (8.6, u1 + 7.4), (8.3, u1 + 7.4)],
-        48,
-    )
-    ring("mech", 9.05, 0.3, u1 + 5.6, 64, 6)
-    drum = [(8.3, 7.4), (8.4, 13.6), (7.6, 14.2), (4.7, 14.8)]
-    lathe("chamber", [(r, u1 + y) for r, y in drum] + [(0, u1 + 14.8)], 16, smooth_angle=10)
-    brace = [(8.45, 7.4), (8.55, 13.7), (7.7, 14.35), (4.9, 14.95)]
-    brace = [(r, u1 + y) for r, y in brace]
+    # The reactor: a crater sunk into the crown, like looking down into a volcano. Concentric
+    # terraces step down from the chamber ring, risers raked so they show, all in flowing lava
+    # (the renderer's reactor shader, kind 3: crust and bright cracks running in to the vent,
+    # hotter toward the centre), slate lips on each step, eight thin dark ribs across them; at
+    # the bottom a molten pool with an orange-hot collar where the spire rises out of it.
+    steps = [(9.6, 4.8), (7.9, 3.9), (6.2, 3.0), (4.5, 2.1)]
+    for i, (r, y) in enumerate(steps):
+        lathe("lava", [(r, u1 + y), (r - 0.5, u1 + y - 0.9)], 96)  # riser, raked so it shows
+        nxt = steps[i + 1][0] if i + 1 < len(steps) else None
+        if nxt:
+            lathe("lava", [(r - 0.5, u1 + y - 0.9), (nxt, u1 + y - 0.9)], 96)
+        ring("mech", r + 0.05, 0.14, u1 + y + 0.02, 96, 4)  # slate lip on each step
+    lathe("lava", [(4.0, u1 + 1.2), (2.4, u1 + 1.0), (0, u1 + 0.9)], 48)  # the molten pool
+    ring("rim", 2.3, 0.55, u1 + 1.3, 48, 8)
     for k in range(8):
         a = k * math.pi / 4 + math.pi / 8
-        arc("graphite", brace + [(r - 0.5, y) for r, y in reversed(brace)], a - 0.05, a + 0.05, 2)
-    ring("mech", 8.55, 0.25, u1 + 10.5, 64, 6)
-    ring("mech", 8.1, 0.3, u1 + 13.9, 64, 6)
-    ring("mech", 4.8, 0.25, u1 + 14.9, 48, 6)
-    centre = [(4.7, 14.7), (4.5, 15.2), (3.0, 15.6)]
-    lathe("core", [(0, u1 + 14.7)] + [(r, u1 + y) for r, y in centre] + [(0, u1 + 15.8)], 32)
+        beam = [(9.6, u1 + 5.0), (4.4, u1 + 2.25), (4.4, u1 + 2.6), (9.6, u1 + 5.35)]
+        arc("dark", beam, a - 0.012, a + 0.012, 1)
 
     # Power conduits in every other gap between the segments, on the deck from the ring to the
     # chamber's lip, between two slate rails; the renderer runs slow pulses along them inward.
@@ -667,6 +664,43 @@ def build_reactor():
         arc("halo", inner, a - w + 0.02, a + w - 0.02, 4)
     for a in LEG_ANGLES:  # aviation lamps on the ring
         lamp(radial(a + math.pi / 3, R - 0.4, u1 + 9.75), 0.3)
+    # Four horn fins: tall armour blades on alternate segments, leaning out past the ring, an
+    # orange edge up their outer face and a red lamp at the tip.
+    fin = [
+        (R - 6.0, u1 + 10.2),
+        (R - 1.4, u1 + 9.8),
+        (R + 1.2, u1 + 18.0),
+        (R + 0.4, u1 + 21.5),
+        (R - 1.8, u1 + 20.6),
+        (R - 5.0, u1 + 12.6),
+    ]
+    edge = [(R - 1.3, u1 + 10.0), (R + 1.3, u1 + 18.0), (R + 1.1, u1 + 18.2), (R - 1.5, u1 + 10.2)]
+    for k in range(1, SEGMENTS, 2):
+        a = SEG0 + k * 2 * math.pi / SEGMENTS
+        arc("graphite", fin, a - 0.1, a + 0.1, 4, smooth_angle=20)
+        arc("rim", edge, a - 0.012, a + 0.012, 1)
+        lamp(radial(a, R + 0.4, u1 + 21.7), 0.3)
+    # The halo: a thin orange ring floating clear of the crown's face, on slender radial arms.
+    hr, hy = R + 3.2, u1 + 7.0
+    ring("rim", hr, 0.2, hy, 128, 6)
+    for k in range(SEGMENTS):
+        a = SEG0 + k * 2 * math.pi / SEGMENTS
+        bar("mech", radial(a, R - 0.2, hy), radial(a, hr - 0.15, hy), 0.18, 0.18, a)
+
+
+def build_bands():
+    """Light on the shaft: thin orange bands round the core every two panel lifts, clear of the
+    plant nodes, and narrow white light slits up the core either side of each lift and conduit."""
+    for y in range(int(WEB[2]) + 10, int(RING[0]) - 4, int(2 * JOINT)):
+        if all(abs(y - n) > 8 for n in NODES):
+            ring("rim", core_r(y) + 0.08, 0.1, y, 48, 4)
+    spans = [(WEB[2] + 6, NODES[1] - 8), (NODES[1] + 10, NODES[2] - 6)]
+    for g in gaps():
+        for side in (-0.42, 0.42):
+            a = g + side
+            for y0, y1 in spans:
+                foot, head = radial(a, core_r(y0) + 0.04, y0), radial(a, core_r(y1) + 0.04, y1)
+                bar("white", foot, head, 0.3, 0.08, a)
 
 
 def build_command():
@@ -736,22 +770,26 @@ def build_command():
 
 
 def build_mast():
-    """A short dark communications mast on one armour segment's slope (not over the core):
-    a tapered graphite pole, a compact sensor housing, two panel antennas, red lamps."""
+    """An antenna cluster rising out of the reactor crater's molten pool: a tall tapered graphite
+    spire with a sensor housing, ringed by six thinner upright masts of differing heights tied to
+    it by two collars, red lamps on every tip."""
     u1 = crown_levels()[4]
-    a = SEG0 + 2 * math.pi / SEGMENTS * 2
-    x, _, z = radial(a, CROWN_OUT - 5.5, 0)
-    y0 = u1 + 10.6
-    pole = [(1.6, y0 - 0.6), (1.6, y0 + 0.6), (0.9, y0 + 1.2), (0.3, H - 1.0), (0, H - 1.0)]
-    lathe("graphite", pole, 16, center=(x, z))
-    lathe("steel", [(0.12, H - 1.0), (0.12, H), (0, H)], 8, center=(x, z))
-    sensor = [(1.0, H - 12.0), (1.4, H - 11.6), (1.4, H - 10.2), (0.9, H - 9.8), (0, H - 9.8)]
-    lathe("mech", sensor, 16, center=(x, z))
-    for side in (-1, 1):
-        b = a + side * math.pi / 2
-        block("steel", 0.25, 2.4, 0.7, at(facing(b), *offset((x, H - 16.0, z), a, side * 0.9)))
-    lamp((x, H + 0.15, z), 0.28)
-    lamp((x, H - 9.6, z), 0.22)
+    y0 = u1 + 0.9
+    pole = [(1.3, y0), (1.3, y0 + 1.8), (0.8, y0 + 2.6), (0.22, H - 1.0), (0, H - 1.0)]
+    lathe("graphite", pole, 16)
+    lathe("steel", [(0.1, H - 1.0), (0.1, H), (0, H)], 8)
+    sensor = [(0.9, H - 14.0), (1.2, H - 13.6), (1.2, H - 12.2), (0.8, H - 11.8), (0, H - 11.8)]
+    lathe("mech", sensor, 16)
+    lamp((0, H + 0.15, 0), 0.28)
+    lamp((0, H - 11.6, 0), 0.22)
+    tops = (H - 9.0, H - 17.0, H - 12.0, H - 20.0, H - 14.0, H - 18.0)
+    for k, top in enumerate(tops):
+        a = k * math.pi / 3 + 0.3
+        foot, head = radial(a, 2.2, y0), radial(a, 2.2, top)
+        tube("graphite", foot, head, 0.22, seg=8)
+        lamp((head[0], top + 0.15, head[2]), 0.2)
+    for y in (y0 + 18.0, y0 + 26.0):  # collars tying the masts to the spire, above the armour
+        ring("mech", 2.2, 0.12, y, 32, 4)
 
 
 def build_base():
@@ -869,6 +907,7 @@ def build(lod=0):
         build_lifts,
         build_nodes,
         build_transfer,
+        build_bands,
         build_crown,
         build_command,
         build_reactor,
