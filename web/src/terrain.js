@@ -18,6 +18,13 @@ export function railGround(kit) {
   return g;
 }
 
+// The interchange's land (interchange.js builds the ramps over it): rough dark verge, kerbed by the block round it.
+export function verge(kit) {
+  const g = new THREE.Group();
+  part(g, box(TILE, 0.24, TILE, 1), kit.concrete(palette.oliveGrey), 0, 0.12, 0);
+  return g;
+}
+
 // Park: dark lawn, a path across it, a few trees, and a lamp when the park has power.
 export function park(kit, rand, lit) {
   const g = new THREE.Group();

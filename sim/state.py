@@ -114,9 +114,19 @@ def hub_plaza():
     return [y * R.SIZE + x for y in range(c - h, c + h) for x in range(c - h, c + h)]
 
 
+def interchange():
+    """Tile indices of the land kept for the highway interchange: the four blocks round the
+    crossing of the central street along x (between rows c - 1 and c) with the outermost cross
+    street on the +x side (between columns e - 1 and e), where the renderer brings the highway in
+    on a viaduct and loops its ramps down to the streets. Clear of the core, the plaza and every
+    railway the seed can lay (its rows sit 8 to 12 tiles off the center)."""
+    c, e, b = R.SIZE // 2, R.SIZE - R.BLOCK, R.INTERCHANGE_BLOCK
+    return [y * R.SIZE + x for y in range(c - b, c + b) for x in range(e - b, e + b)]
+
+
 def lay_terrain(seed):
-    """Tile index -> terrain kind: the hub plaza, a railway in from one edge, a few parks, an old
-    industrial site.
+    """Tile index -> terrain kind: the hub plaza, a railway in from one edge, the interchange's
+    land, a few parks, an old industrial site.
 
     Everything but the plaza stays clear of the starting core, so the city grows around it.
     Integer math only.
@@ -126,6 +136,7 @@ def lay_terrain(seed):
     clear = [chebyshev(*xy(i), c, c) <= R.START_RADIUS + 1 for i in range(R.SIZE * R.SIZE)]
     terrain = lay_rail(rng, clear)
     terrain.update(dict.fromkeys(hub_plaza(), "park"))
+    terrain.update(dict.fromkeys(interchange(), "road"))
     rails = [xy(i) for i, k in terrain.items() if k == "rail"]
     lay_parks(rng, clear, terrain, rails)
     lay_works(rng, clear, terrain, rails)
@@ -221,8 +232,8 @@ def lay_works(rng, clear, terrain, rails):
 
 def new_city(seed):
     """A small core around the center: one plant just off the hub plaza, a couple of markets, a
-    few low houses, and the terrain (hub plaza, railway, parks, industrial site) the city will
-    grow around."""
+    few low houses, and the terrain (hub plaza, railway, interchange, parks, industrial site) the
+    city will grow around."""
     rng = random.Random(seed)
     terrain = lay_terrain(seed)
     c = R.SIZE // 2

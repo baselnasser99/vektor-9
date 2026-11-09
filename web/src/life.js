@@ -90,6 +90,10 @@ function paths(roads, warp, hub) {
   };
   const heightAt = (L, along) => (L.lift ? L.lift(along) : L.y);
   for (const L of links) {
+    if (L.pts) { // a ramp (interchange.js): its own points
+      L.edge = edge(L.pts.map(([x, y, z]) => pt(x, z, y)), { link: L });
+      continue;
+    }
     const n = Math.max(1, Math.ceil(Math.abs(L.to - L.from) / 8)), pts = [];
     for (let k = 0; k <= n; k++) {
       const along = L.from + ((L.to - L.from) * k) / n;
@@ -143,7 +147,7 @@ function paths(roads, warp, hub) {
   // A street that stops short (at a walk, or at the headquarters' campus) is a dead end: its lanes carry no
   // traffic either way, and neither do lanes that only lead into one.
   for (let dead = [null]; dead.length;) {
-    dead = links.filter((L) => L.end && !L.end.outs.some((O) => moveOf(L, O)));
+    dead = links.filter((L) => L.end && !L.end.outs.some((O) => L.end.type === 'free' || moveOf(L, O)));
     const gone = new Set(dead.flatMap((L) => [L, ...links.filter((O) => O.start === L.end && O.end === L.start && O.axis === L.axis)]));
     for (const L of gone) {
       links.splice(links.indexOf(L), 1);
@@ -152,6 +156,10 @@ function paths(roads, warp, hub) {
     }
   }
   for (const N of nodes) for (const I of N.ins) {
+    if (N.type === 'free') { // the interchange: on along the road or onto a ramp, joined end to end, no stopping
+      I.moves = N.outs.map((O) => ({ move: O.ramp ? 'right' : 'straight', out: O, edge: edge([I.edge.pts.at(-1), O.edge.pts[0]], { node: N, from: I, next: O.edge }) }));
+      continue;
+    }
     const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left'));
     let ok = options.filter(({ O, m }) => lanesMay(I.kind, I.k, I.n).includes(m) && fits(I, O, m));
     if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === Math.min(I.k, O.n - 1)); // where the boulevard narrows, its outer lane merges
@@ -177,13 +185,13 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     registry.set(N.key, N);
     N.box = new Set(); // cars on its connectors now
     N.holder = null; // at a crossing without lights: the one car allowed in
-    if (N.type !== 'yield') control(N);
+    if (N.type !== 'yield' && N.type !== 'free') control(N);
   }
   paths(roads, warp, hub);
-  const sources = links.filter((L) => L.out === 'source');
+  const sources = links.filter((L) => L.out === 'source' || L.through);
   const choose = (L) => {
     if (!L.moves?.length) return null;
-    const w = L.moves.map((mv) => (mv.move === 'straight' ? 3 : 1)), total = w.reduce((a, b) => a + b, 0);
+    const w = L.moves.map((mv) => mv.out.share ?? (mv.move === 'straight' ? 3 : 1)), total = w.reduce((a, b) => a + b, 0);
     let r = rand() * total;
     return L.moves.find((mv, i) => (r -= w[i]) < 0) ?? L.moves[0];
   };
@@ -246,6 +254,7 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     if (!mv) return false;
     const last = mv.out.edge.cars.at(-1), inBox = mv.edge.cars.at(-1);
     if ((last && last.d < CAR + 4) || (inBox && inBox.d < CAR + 3)) return false; // no room beyond: never block the crossing
+    if (N.type === 'free') return true; // a split or merge on the highway
     if (mv.move !== 'straight' && t - (zebraUse.get(`${N.key}|${mv.out.axis}`) ?? -1e9) < 0.6) return false; // walkers on the zebra it turns across
     if (N.type === 'yield') {
       if (c.stopped < 0.8 || N.holder || N.box.size) return false; // stop, look, one at a time
@@ -365,7 +374,7 @@ function signals(kit, roads, warp, onFrame, clock) {
     return [x + shift[0], y, z + shift[1]];
   };
   for (const N of roads.nodes) {
-    if (N.type === 'yield') continue;
+    if (N.type === 'yield' || N.type === 'free') continue;
     const groups = new Map();
     for (const I of N.ins) {
       const key = `${I.axis}${I.dir}`;

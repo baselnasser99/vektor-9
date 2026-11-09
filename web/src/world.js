@@ -25,7 +25,7 @@ export const HALF = 4;
 export const HUB = 2; // tiles each way from the central crossing kept as the tower's plaza (sim/rules.py HUB_PLAZA)
 export const F = 3.5; // floor height
 export const TALL = 20; // floors; towers this tall get a crown (sim/rules.py TALL)
-export const TERRAIN = ['rail', 'park', 'works']; // laid out by the sim, never built on (sim/rules.py TERRAIN)
+export const TERRAIN = ['rail', 'park', 'works', 'road']; // laid out by the sim, never built on (sim/rules.py TERRAIN)
 
 // Market tiles are cybernetics shops: each gets a name (roof sign) and a short mark (corner sign), all invented.
 export const SHOPS = [['KUROTECH', 'KURO'], ['ZENKO TECH', 'ZENKO'], ['NEXA PARTS', 'NEXA'], ['TOKU WORKS', 'TOKU'],

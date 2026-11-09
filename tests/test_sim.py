@@ -13,6 +13,7 @@ from sim.state import (
     chebyshev,
     counter,
     hub_plaza,
+    interchange,
     load,
     new_city,
     new_tile,
@@ -329,3 +330,24 @@ def test_hub_plaza_stays_open_round_the_central_crossing(seed):
     for _ in range(100):
         state, _ = step(state, [], tick_rng(state))
     assert all(state["tiles"][i]["k"] == "park" for i in plaza)
+
+
+@settings(max_examples=20, deadline=None)
+@given(seeds)
+def test_interchange_land_is_four_whole_blocks_kept_for_the_highway(seed):
+    # The renderer loops the highway's ramps down to the streets here (ADR-0011): four whole blocks
+    # of its street grid round one crossing, all of it road, for every seed (so the rail never takes
+    # any), and road nowhere else. Nothing is ever built on it.
+    state = new_city(seed)
+    c, e, b = R.SIZE // 2, R.SIZE - R.BLOCK, R.INTERCHANGE_BLOCK
+    land = set(interchange())
+    assert len(land) == (2 * b) ** 2
+    assert {xy(i) for i in land} == {
+        (x, y) for x in range(e - b, e + b) for y in range(c - b, c + b)
+    }
+    assert R.BLOCK % b == 0 and e % b == 0 and c % b == 0  # its edges are street lines
+    road = {i for i, t in enumerate(state["tiles"]) if t["k"] == "road"}
+    assert road == land
+    for _ in range(50):
+        state, _ = step(state, [], tick_rng(state))
+    assert {i for i, t in enumerate(state["tiles"]) if t["k"] == "road"} == land

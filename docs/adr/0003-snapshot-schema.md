@@ -10,7 +10,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 
 ```json
 {
-  "schema": 3,
+  "schema": 4,
   "tick": 288,
   "seed": 7,
   "size": 48,
@@ -22,7 +22,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 ```
 
 - **tiles:** row-major, index `y * size + x`. Every tile has exactly these keys:
-  - `k`: `lot` | `build` | `house` | `market` | `plant`, or terrain: `rail` | `park` | `works`. Terrain is laid out by `new_city` from the seed (a railway from one edge to a terminus beside the core, a couple of parks, an old industrial site, all clear of the starting core) and never changes; nothing is built on it.
+  - `k`: `lot` | `build` | `house` | `market` | `plant`, or terrain: `rail` | `park` | `works` | `road`. Terrain is laid out by `new_city` from the seed (a railway from one edge to a terminus beside the core, a couple of parks, an old industrial site, and the land of the highway interchange, all clear of the starting core) and never changes; nothing is built on it.
   - `f`: floors (built so far for `build`, current for `house`; 0 otherwise)
   - `t`: target floors (`build`, `house`; 0 otherwise); `f <= t` always
   - `p`: residents (houses only; 0 otherwise)
@@ -38,6 +38,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 
 ## Versions
 - **1** (2026-11-02): first version.
+- **4** (2026-11-09): adds terrain kind `road`, the land of the highway interchange (ADR-0011): four blocks round one crossing on the +x side, on every seed.
 - **3** (2026-11-03): adds terrain kinds `rail`, `park`, `works` and the per-tile `b` (built at tick). A sector's built share for decline and redevelopment now counts only its buildable (non-terrain) tiles.
 - **2** (2026-11-02): adds the `plant_opened` event kind; `power.supplied` now counts an overloaded plant as supplying its capacity instead of nothing, since overload no longer cuts power. Blackout schedule and district waves are derived from `seed` and `tick`, so no new fields.
 
