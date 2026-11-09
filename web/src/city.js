@@ -33,12 +33,17 @@ export function cityLayout(snap) {
     if (Math.abs(k - mid) % 2 === 0) return { x: 'street', z: 'street' };
     return { x: rand() < 0.5 ? 'walk' : 'lane', z: rand() < 0.5 ? 'walk' : 'lane' };
   });
-  const midKind = (k) => (k === 0 || k === sectors - 1 ? 'alley' : 'local');
+  // Inner mid streets (ADR-0010), per axis: a two-way local street or a one-way pair of lanes, one-way neighbours
+  // running opposite ways (flow: +1 or -1 along the axis). Their own seed, so the rest of the plan stays as it was.
+  const mixer = rng(snap.seed * 17 + 3), midKind = (k) => (k === 0 || k === sectors - 1 ? 'alley' : mixer() < 0.45 ? 'oneway' : 'local');
   const cross = [];
   for (let k = 0; k <= sectors; k++) {
     cross.push({ kind: kinds[k], mid: false, k });
-    if (k < sectors) cross.push({ kind: { x: midKind(k), z: midKind(k) }, mid: true, k });
+    if (k < sectors) cross.push({ kind: { x: midKind(k), z: midKind(k) }, flow: { x: k % 2 ? 1 : -1, z: k % 2 ? -1 : 1 }, mid: true, k });
   }
+  cross.forEach((l, j) => (l.j = j));
+  // A fixed draw in [0, 1) for each set of integer keys (a junction, an arm), the same in every builder.
+  const chance = (...keys) => rng(keys.reduce((h, v) => Math.imul(h ^ v, 16777619) >>> 0, Math.imul(snap.seed + 1, 2166136261) >>> 0))();
   for (const l of cross) Object.assign(l, { w: STREETS[l.kind.x].w, side: STREETS[l.kind.x].side }); // both axes' kinds share a width
   const span = n * TILE + cross.reduce((sum, l) => sum + l.w, 0), centres = [];
   let at = -span / 2;
@@ -69,14 +74,23 @@ export function cityLayout(snap) {
   const town = quarters.sort((p, q) => p[0] - q[0])[0][1];
   const inTown = (col, row) => within(col, row, town);
   const lo = cross[0].c - cross[0].w / 2, hi = at;
-  const layout = { n, span, pos, tileAt, lines, mids, cross, town, inTown, lo, hi, cut: () => false };
+  const layout = { n, span, pos, tileAt, lines, mids, cross, town, inTown, lo, hi, chance, cut: () => false };
+  // A two-way mid street is built over for half a sector in about one sector in three (inner sectors only), so its
+  // crossings there become T-junctions or bends. One half at most per sector, so no stretch is left a dead end.
+  const closed = (l, axis, t) => {
+    const s = Math.floor(t / BLOCK), axisKey = axis === 'x' ? 0 : 1;
+    if (l.kind[axis] !== 'local' || s === 0 || s === sectors - 1 || chance(l.j, axisKey, s, 0) > 0.3) return false;
+    return Math.floor(t / HALF) % 2 === (chance(l.j, axisKey, s, 1) < 0.5 ? 0 : 1);
+  };
   layout.kindAt = (l, axis, v) => {
     if (v < lo || v > hi) return null;
     const k = l.kind[axis];
+    // The boulevard narrows to an avenue in the second sector out from the centre each way (ADR-0010).
+    if (k === 'boulevard' && [mid - 2, mid + 1].includes(Math.floor(tileAt(v) / BLOCK))) return 'avenue';
     if (!l.mid || k === 'alley') return k;
     const t = tileAt(v), side = l.k * BLOCK + HALF; // a tile beside l, in l's sector
     if (axis === 'z' ? inTown(side, t) : inTown(t, side)) return 'walk'; // the old town's mid streets: market lanes, no cars
-    return layout.cut(l, axis, v) ? 'none' : k;
+    return layout.cut(l, axis, v) || closed(l, axis, t) ? 'none' : k;
   };
   return layout;
 }

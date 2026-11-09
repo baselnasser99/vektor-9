@@ -10,14 +10,16 @@ export const BLOCK = 8; // tiles per sector side (sim/rules.py BLOCK)
 // tiles by a mid street: a local street in the inner sectors, a service alley in the outermost ones.
 export const STREETS = {
   boulevard: { w: 36, side: 6.5, lanes: [3.375, 6.625, 9.875], edge: 11.5, median: 3.5, r: 5 }, // type C: three lanes each way
+  avenue: { w: 36, side: 6.5, lanes: [6.625, 9.875], edge: 11.5, median: 10, r: 5 }, // the boulevard's middle stretch: two lanes each way, a wide median
   street: { w: 21, side: 3.75, lanes: [1.875, 5.125], edge: 6.75, median: 0, r: 4.5 }, // type B, main: two each way
   ring: { w: 16, side: 2.5, lanes: [1.625], edge: 3.25, median: 0, r: 3.5 }, // type A, the ring road: one each way, bays both sides
   lane: { w: 14, side: 3.75, lanes: [1.625], edge: 3.25, median: 0, r: 3.5 }, // type A: one each way
   local: { w: 13, side: 3.25, lanes: [1.625], edge: 3.25, median: 0, r: 3.5 }, // type A, a mid street: one each way
+  oneway: { w: 13, side: 3.25, lanes: [-1.625, 1.625], edge: 3.25, median: 0, r: 3.5 }, // a mid street: two lanes, one way (l.flow)
   walk: { w: 14, side: 3.75, lanes: [], edge: 0, median: 0, r: 2 }, // pedestrian street: paved, planted, no cars
   alley: { w: 6, side: 0, lanes: [], edge: 0, median: 0, r: 0.3 }, // service alley: no sidewalks, no through traffic
 };
-export const CARS = new Set(['boulevard', 'street', 'ring', 'lane', 'local']); // the kinds cars drive on
+export const CARS = new Set(['boulevard', 'avenue', 'street', 'ring', 'lane', 'local', 'oneway']); // the kinds cars drive on
 export const HALF = 4;
 export const HUB = 2; // tiles each way from the central crossing kept as the tower's plaza (sim/rules.py HUB_PLAZA)
 export const F = 3.5; // floor height
