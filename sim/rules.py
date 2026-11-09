@@ -1,11 +1,11 @@
 """Constants for the simulation. Tuning these changes behavior, not the snapshot schema."""
 
-SCHEMA = 3
+SCHEMA = 4
 SIZE = 48
 BLOCK = 8  # sectors are BLOCK x BLOCK tiles; streets run between them and are renderer-only
 TICKS_PER_DAY = 288  # one tick every 5 minutes
 
-TERRAIN = ("rail", "park", "works")  # laid out by new_city; never built on, never changed
+TERRAIN = ("rail", "park", "works", "road")  # laid out by new_city; never built on, never changed
 KINDS = ("lot", "build", "house", "market", "plant", *TERRAIN)
 EVENT_KINDS = (
     "commissioned",
@@ -36,6 +36,10 @@ START_FLOORS = (2, 4)
 RAIL_LENGTH = BLOCK  # tiles in from the edge: the outer sectors only, never the center
 RAIL_OFFSET = (8, 12)  # the line passes this many tiles from the center
 HUB_PLAZA = 2  # tiles each side of the central crossing kept as the tower's plaza (park terrain)
+# Land for the highway interchange (road terrain): the four blocks round the crossing of the
+# central street along x with the outermost cross street on the +x side, where the renderer brings
+# the highway in. Tiles a side of each block, a block of the renderer's street grid.
+INTERCHANGE_BLOCK = 4
 PARKS = 2
 PARK_RADIUS = (2, 3)  # half-axes of each park's two overlapping ellipses
 PARK_DISTANCE = (9, 17)  # Chebyshev distance of a park's center from the city center

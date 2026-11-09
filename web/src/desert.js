@@ -1,6 +1,7 @@
 // Beyond the simulated grid: the city ends at a wasteland of packed dirt fading into sand and dunes, with boulders,
 // scrub, abandoned cars, scrapyards and half-buried containers. Streets carry on as dirt tracks; four highways ramp
-// up from the city edge onto causeways across the desert. Dead pylons break up the dunes, and past them the
+// up from the city edge onto causeways across the desert (the +x one comes out of town already up, off the
+// expressway, interchange.js). Dead pylons break up the dunes, and past them the
 // megacity goes on (farSprawl).
 // Decoration only: nothing here is simulated or stored (ADR-0002).
 import * as THREE from 'three';
@@ -12,6 +13,7 @@ import { mergeByMaterial } from './merge.js';
 import { radialTexture } from './textures.js';
 import { glslColor } from './atmosphere.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { HIGH, interchangeLanes } from './interchange.js';
 
 export const REACH = 1900; // metres from the centre to the end of the dunes; fog hides everything past ~1.5 km
 const SPRAWL = 420; // depth of the flat ring of packed dirt around the city, before the dunes rise
@@ -19,14 +21,15 @@ const DECK = 6; // causeway height
 const RAMP = 60; // length of the climb from street level to the causeway
 const ROAD = 40; // half-width of the flat corridor kept around each highway
 
-// edge: distance from the centre to the outer side of the city's ring road. lines: street centre lines.
-export function buildDesert(kit, edge, lines, onFrame) {
+// edge: distance from the centre to the outer side of the city's ring road. lines: street centre lines. layout:
+// the city's (city.js cityLayout); with an expressway, the +x highway runs out level with it.
+export function buildDesert(kit, edge, lines, onFrame, layout) {
   const root = new THREE.Group(), rand = rng(9001);
   const height = duneHeight(edge);
   ground(kit, root, edge, height);
   sandDrifts(root, edge, rand);
   dirtTracks(kit, root, edge, lines);
-  highways(kit, root, edge);
+  highways(kit, root, edge, layout?.expressway);
   wastes(kit, root, edge, lines, height, rand);
   pylons(kit, root, edge, height);
   return mergeByMaterial(root);
@@ -35,7 +38,7 @@ export function buildDesert(kit, edge, lines, onFrame) {
 // The main streets' lanes carried on out of town to the edge of the world (streets.js roadNet: links marked out),
 // so cars come and go in the fog rather than at the city edge: the boulevard's up the ramps and along the causeway,
 // the rest along its dirt track, over the ground. Every link gets lift(along), its road height there.
-export function outOfTown(roads, edge) {
+export function outOfTown(roads, edge, layout) {
   const height = duneHeight(edge), deck = DECK + 0.6;
   for (const link of roads.links) {
     const road = Math.abs(link.c) < 1, base = link.y;
@@ -45,7 +48,7 @@ export function outOfTown(roads, edge) {
       ? (along) => base + deck * Math.min(1, Math.max(0, (Math.abs(along) - edge) / RAMP))
       : (along) => base + (Math.abs(along) > edge ? height(...(link.axis === 'x' ? [along, link.at] : [link.at, along])) : 0);
   }
-  return roads;
+  return layout?.expressway ? interchangeLanes(roads, layout, REACH) : roads; // the +x highway's lanes, off the expressway
 }
 
 // Dune height: flat through the sprawl, rising over 500 m beyond it, flattened along the highway corridors.
@@ -119,23 +122,26 @@ function dirtTracks(kit, root, edge, lines) {
 // Highways climb from the city's ring road onto causeways and run to the horizon, with lamps every 150 m. They
 // carry the boulevard's three lanes each way (outOfTown).
 const WIDE = 30;
-function highways(kit, root, edge) {
+function highways(kit, root, edge, expressway) {
   const concrete = kit.concrete(palette.gunmetal), slope = Math.atan2(DECK, RAMP);
   for (const [ax, sign] of [['z', 1], ['z', -1], ['x', 1], ['x', -1]]) {
-    const start = edge + RAMP, len = REACH - start, mid = sign * (start + len / 2);
+    const level = expressway && ax === 'x' && sign > 0, high = level ? HIGH : DECK; // off the expressway: no climb
+    const start = level ? edge : edge + RAMP, len = REACH - start, mid = sign * (start + len / 2);
     const along = (v) => (ax === 'z' ? [0, v] : [v, 0]);
-    const [rx, rz] = along(sign * (edge + RAMP / 2));
-    const ramp = part(root, box(ax === 'z' ? WIDE : RAMP + 1, 1.2, ax === 'z' ? RAMP + 1 : WIDE, 0), concrete, rx, DECK / 2 - 0.3, rz);
-    if (ax === 'z') ramp.rotation.x = -sign * slope;
-    else ramp.rotation.z = sign * slope;
+    if (!level) {
+      const [rx, rz] = along(sign * (edge + RAMP / 2));
+      const ramp = part(root, box(ax === 'z' ? WIDE : RAMP + 1, 1.2, ax === 'z' ? RAMP + 1 : WIDE, 0), concrete, rx, DECK / 2 - 0.3, rz);
+      if (ax === 'z') ramp.rotation.x = -sign * slope;
+      else ramp.rotation.z = sign * slope;
+    }
     const [x, z] = along(mid);
-    part(root, box(ax === 'z' ? WIDE : len, 1.2, ax === 'z' ? len : WIDE, 0), concrete, x, DECK, z);
+    part(root, box(ax === 'z' ? WIDE : len, 1.2, ax === 'z' ? len : WIDE, 0), concrete, x, high, z);
     const deck = new THREE.Group();
-    deck.position.y = DECK + 0.6;
+    deck.position.y = high + 0.6;
     root.add(deck);
     for (let t = 25; t < len; t += 50) {
       const [px, pz] = along(sign * (start + t));
-      part(root, box(3, DECK, 3, 0), kit.concrete(palette.slate), px, DECK / 2, pz);
+      part(root, box(3, high, 3, 0), kit.concrete(palette.slate), px, high / 2, pz);
       if (t % 150 !== 25) continue;
       for (const off of [-WIDE / 2, WIDE / 2]) {
         const [lx, lz] = ax === 'z' ? [off, pz] : [px, off];

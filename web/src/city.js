@@ -9,7 +9,8 @@ import { mergeByMaterial } from './merge.js';
 import { LOOK_STEP, lightingIdentity } from './facade.js';
 import { buildStreets } from './streets.js';
 import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
-import { park, railGround, railLine, railway, works } from './terrain.js';
+import { park, railGround, railLine, railway, verge, works } from './terrain.js';
+import { buildInterchange, hasInterchange } from './interchange.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite } from './headquarters.js';
 import { BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
@@ -70,11 +71,12 @@ export function cityLayout(snap) {
   // Old town: of the four 2x2-sector quarters touching the centre, the one with the least terrain.
   const within = (col, row, [sx, sz]) => [col / BLOCK - sx, row / BLOCK - sz].every((v) => v >= 0 && v < 2);
   const terrain = (q) => snap.tiles.filter((t, i) => TERRAIN.includes(t.k) && within(i % n, Math.floor(i / n), q)).length;
-  const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].map((q) => [terrain(q) + rand(), q]);
+  const road = (q) => snap.tiles.some((t, i) => t.k === 'road' && within(i % n, Math.floor(i / n), q)); // the interchange stays out of the old town
+  const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].filter((q) => !road(q)).map((q) => [terrain(q) + rand(), q]);
   const town = quarters.sort((p, q) => p[0] - q[0])[0][1];
   const inTown = (col, row) => within(col, row, town);
   const lo = cross[0].c - cross[0].w / 2, hi = at;
-  const layout = { n, span, pos, tileAt, lines, mids, cross, town, inTown, lo, hi, chance, cut: () => false };
+  const layout = { n, span, pos, tileAt, lines, mids, cross, town, inTown, lo, hi, chance, cut: () => false, expressway: hasInterchange(snap) };
   // A two-way mid street is built over for half a sector in about one sector in three (inner sectors only), so its
   // crossings there become T-junctions or bends. One half at most per sector, so no stretch is left a dead end.
   const closed = (l, axis, t) => {
@@ -137,6 +139,7 @@ export function buildCity(kit, snap) {
   const hq = hqSite(snap, layout, new Set(crossing(snap).corners)), hqTiles = hq?.tiles ?? new Set();
   if (hq) layout.cut = hqCut(layout, hq);
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
+  if (layout.expressway) buildInterchange(kit, root, layout, snap); // the highway in on a viaduct, its ramps on the road land
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
   let flag = flagshipTower(snap, layout, signature, heavy); // -1 if none, or if it has no shaft to dress
@@ -157,7 +160,7 @@ export function buildCity(kit, snap) {
     const family = t.k === 'house' && familyOf(t, near[i], !concrete);
     const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row, signature.has(i)), build: () => construction(kit, t.f, rand, t.on, fw),
       market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit), lot: () => plaza(kit, rand, t.on),
-      rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on) }[t.k]();
+      rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit) }[t.k]();
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
     // and each quarter-block keeps a courtyard behind; inner lots sit anywhere on theirs.
     const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;

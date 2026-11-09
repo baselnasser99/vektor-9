@@ -11,6 +11,7 @@ import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
 import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
+import { onRamp } from './interchange.js';
 
 export function buildStreets(kit, layout, root) {
   const { lines, cross, lo, hi } = layout, rand = rng(31);
@@ -215,6 +216,9 @@ export const lanesMay = (kind, k, n) => {
   if (WIDE.has(kind)) return k === 0 ? ['left'] : k === n - 1 ? ['straight', 'right'] : ['straight'];
   return k === 0 ? ['straight', 'left'] : ['straight', 'right'];
 };
+// Whether the highway out of town past this end of street s is reached by the expressway, not from the street
+// (interchange.js): the boulevard along x, heading +x.
+const viaExpressway = (layout, s, dir) => layout.expressway && WIDE.has(s.kind) && s.axis === 'x' && dir > 0;
 // Which ways a car in lane k heading dir along street s can really leave its crossing with corridor l, so arrows
 // never point at a street that is not there: straight on if s goes on beyond l with a lane k (or out of town, for a
 // main street at the ring road; merge: it goes on with fewer lanes), left or right if l carries cars that way.
@@ -225,7 +229,7 @@ function exits(ctx, s, l, dir, k) {
     const kind = layout.kindAt(l, across, s.c + d * (s.w / 2 + 1));
     return carries(kind) && (kind !== 'oneway' || l.flow[across] === d);
   };
-  const edge = !s.line.mid && (l === ctx.cross[0] || l === ctx.cross.at(-1));
+  const edge = !s.line.mid && (l === ctx.cross[0] || l === ctx.cross.at(-1)) && !viaExpressway(ctx.layout, s, dir);
   return { straight: edge || (carries(beyond) && STREETS[beyond].lanes.length > k), merge: carries(beyond), right: side(r), left: side(-r) };
 }
 
@@ -268,7 +272,7 @@ function kerbside(ctx, s) {
       if (r() < 0.3) continue;
       let v = (a + b) / 2 + side * 6;
       while (lampsAt.some(([x, z]) => Math.hypot(x - spot(s, v, side * R)[0], z - spot(s, v, side * R)[1]) < 5)) v += 2;
-      if (v > b) continue;
+      if (v > b || (ctx.layout.expressway && onRamp(ctx.layout, ...spot(s, v, side * R)))) continue;
       const grp = new THREE.Group(), [x, z] = spot(s, v, side * (R + 1)), line = pick(r, [3, 7, 9]); // few lines, few display textures
       grp.position.set(x, 0.18, z);
       grp.rotation.y = s.axis === 'z' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : side > 0 ? Math.PI : 0; // open to the street (+z)
@@ -649,6 +653,7 @@ function lamps(ctx, s, segs) {
       if (inRing(ctx, s, v, 4)) continue;
       for (const side of both ? [-1, 1] : [(flip = -flip)]) {
         const [x, z] = spot(s, v, side * kerb);
+        if (ctx.layout.expressway && onRamp(ctx.layout, x, z)) continue; // a ramp comes down here
         const facing = s.axis === 'z' ? (side > 0 ? Math.PI : 0) : side > 0 ? Math.PI / 2 : -Math.PI / 2;
         const p = streetLamp(kit, root, x, z, facing);
         ctx.lampsAt.push([x, z]); // so street props (city.js) keep clear
@@ -700,6 +705,7 @@ function roadNet(ctx, streets) {
     }
     // Main streets carry on out of town as tracks and highways: a lane out from the ring road's crossing and one in.
     if (!s.line.mid) for (const [ring, out] of [[ctx.cross[0], -1], [ctx.cross.at(-1), 1]]) {
+      if (viaExpressway(ctx.layout, s, out)) continue; // interchange.js joins the expressway to it
       const R = node(...at(ring.c)), reach = reachOf(s, ring);
       R.kinds[s.axis] = s.kind;
       for (let k = 0; k < STREETS[s.kind].lanes.length; k++) {

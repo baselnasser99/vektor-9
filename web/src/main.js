@@ -15,7 +15,7 @@ import { people } from './people.js';
 import { airships, cloudDeck, districtGlows, horizon, moon, rain, rainAmount, stars } from './atmosphere.js';
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
-const SCHEMA = 3;
+const SCHEMA = 4;
 
 const params = new URLSearchParams(location.search);
 const snapUrl = params.get('snap') ?? '../snapshots/004032.json';
@@ -50,8 +50,8 @@ onFrame(() => {
   const { x, y, z } = camera.position;
   for (const { group, at } of details) group.visible = (x - at[0]) ** 2 + y * y * 0.5 + (z - at[1]) ** 2 < DETAIL * DETAIL;
 });
-const desert = buildDesert(kit, edge, lines, onFrame);
-const cars = traffic(kit, outOfTown(roads, edge), onFrame, warp, hub, parked);
+const desert = buildDesert(kit, edge, lines, onFrame, layout);
+const cars = traffic(kit, outOfTown(roads, edge, layout), onFrame, warp, hub, parked);
 scene.add(city, desert, farSprawl(edge), cars);
 // People on the sidewalks, crossing with the cars' lights (P shows the crowd settings).
 scene.add(steam(food, warp, onFrame));
