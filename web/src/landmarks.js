@@ -6,7 +6,8 @@ import { box, cyl, part } from './geometry.js';
 import { pipe } from './parts.js';
 import { F } from './world.js';
 import { glslColor } from './atmosphere.js';
-import { facadeMaterial } from './facade.js';
+import { facadeMaterial, facadeTime } from './facade.js';
+import { REACTOR_PULSE } from './materials.js';
 
 // The city's telecom tower, in the middle of the plaza where the boulevards meet (streets.js). Modelled in Blender by
 // tools/blender/telecom_tower.py (its proportions live there) and loaded as a glTF: an old concrete frame (tapered
@@ -27,7 +28,7 @@ export function telecomTower(kit, root, x, y, z) {
   };
   // The curved display on the control level: still the operator's ad, but in the reactor's scarlet and a warm gold
   // rather than magenta and cyan, and a little dimmer than a street billboard, so the core stays the brightest thing.
-  const ad = kit.billboard('NEON NOODLES', palette.coreScarlet, palette.warmWindow).clone();
+  const ad = kit.billboard('V9 RELAY', palette.coreScarlet, palette.warmWindow).clone();
   ad.emissiveIntensity *= 0.7;
   ad.emissiveMap = ad.emissiveMap.clone(); // the curved panel's UVs run bottom to top: flip it so the text reads upright
   ad.emissiveMap.repeat.y = -1;
@@ -49,14 +50,53 @@ export function telecomTower(kit, root, x, y, z) {
     graphite: kit.steel(palette.graphite, 0.5), shell: kit.steel(palette.crownWhite, 0.4),
     // The observation and control drum under it: a dark gunmetal, between the crown and the steel-blue struts.
     deck: kit.steel(palette.drumGunmetal, 0.4),
-    core: kit.core(2), chamber: kit.core(1), corering: kit.core(0), conduit: kit.conduit(),
+    core: kit.core(2), chamber: kit.core(1), corering: kit.core(0), conduit: kit.conduit(), lava: kit.core(3),
     halo: kit.glow(palette.coreCrimson, 0.9),
+    // The floating halo round the crown, the horn fins' edges and the bands on the shaft: steady neon orange.
+    rim: kit.glow(palette.neonOrange, 1.6),
   };
   const g = kit.model('telecom_tower', roles);
   g.getObjectByName('detail').userData.lod = 'tower';
+  g.add(reactorGlow());
   g.userData.rigid = true; // placed whole at the hub, where the warp is zero anyway: skip it for every vertex
   g.position.set(x, y, z);
   root.add(g);
+}
+
+// The reactor's glow column: light rising out of the crater (tools/blender/telecom_tower.py build_reactor, its pool
+// about 216 m up) past the armour and fins: a wide soft cone and a narrow hot core round the spire, both flaring out, so the reactor reads from the side as well as from above. An open cone,
+// additive, brightest face-on and soft at its edges, gold-orange at the foot fading through scarlet to nothing, faint
+// bands drifting up; it breathes with the crater (REACTOR_PULSE). No flashing; still under reduced motion.
+function reactorGlow() {
+  const c = (v) => ({ value: new THREE.Color(v) });
+  const m = new THREE.ShaderMaterial({
+    uniforms: { time: facadeTime, gold: c(palette.sodium), orange: c(palette.neonOrange), scarlet: c(palette.coreScarlet) },
+    vertexShader: `varying vec2 vUv; varying vec3 vN, vV;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vUv = uv; vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `uniform float time; uniform vec3 gold, orange, scarlet; varying vec2 vUv; varying vec3 vN, vV;
+      ${REACTOR_PULSE}
+      void main() {
+        float v = clamp(vUv.y, 0.0, 1.0); // 0 at the crater, 1 at the top (clamped: pow of a negative is NaN)
+        float face = pow(abs(dot(vN, vV)), 1.2);
+        float fade = pow(1.0 - v, 1.4) * smoothstep(0.0, 0.05, v);
+        float band = 0.8 + 0.2 * sin(v * 9.0 - time * 1.8);
+        vec3 col = mix(mix(gold, orange, smoothstep(0.0, 0.25, v)), scarlet, smoothstep(0.2, 0.7, v));
+        gl_FragColor = vec4(col * face * fade * band * reactorPulse(time) * 2.2, 1.0);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  // A wide soft cone round the crater and a narrow hot core round the spire, one material so they merge.
+  const g = new THREE.Group();
+  for (const [top, foot, h] of [[23.0, 10.0, 30], [8.0, 3.2, 38]]) { // flaring out as they rise
+    const geo = new THREE.CylinderGeometry(top, foot, h, 48, 1, true);
+    geo.translate(0, 217 + h / 2, 0);
+    g.add(new THREE.Mesh(geo, m));
+  }
+  return g;
 }
 
 // The railway terminus (terrain.js railway), modelled in Blender by tools/blender/train_station.py (its proportions

@@ -74,8 +74,10 @@ ROLES = {
         1,
         None,
     ),  # reactor core (animated in the renderer)
+    "rim": (0x2A1A14, 0.0, 0.5, 0xFF8A2A, 6.0, 1, None),  # the tower's orange halo and bands
     "halo": (0x161C29, 0.0, 0.5, 0x5A0E16, 4.0, 1, None),  # the core's soft crimson spill
     "corering": (0x161C29, 0.0, 0.35, 0x8E1020, 8.0, 1, None),  # reactor ring, dimmer
+    "lava": (0x161C29, 0.0, 0.35, 0xFF5A1E, 12.0, 1, None),  # the tower's crater (animated lava)
     "chamber": (0x161C29, 0.0, 0.35, 0xB3122A, 11.0, 1, None),  # the reactor drum
     "conduit": (0x161C29, 0.0, 0.4, 0xB3122A, 6.0, 1, None),  # pulsing power conduits
 }

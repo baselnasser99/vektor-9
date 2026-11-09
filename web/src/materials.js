@@ -97,28 +97,37 @@ const lit = (map, intensity = NEON) => new THREE.MeshStandardMaterial({ color: 0
 // reactor (its phase from its place, so neighbours are out of step); a landmark's (kind 1) is stronger and now and
 // then surges slowly. No flashing: the field drifts about a fifth of a metre a second and a breath takes fourteen
 // seconds; with reduced motion the time never advances. Kind 2 (the telecom tower's core spindle) is a landmark's
-// whose field also turns slowly about the model's vertical axis, once in about eighty seconds. The red is
+// whose field also turns slowly about the model's vertical axis, once in about eighty seconds. Kind 3 is the telecom
+// tower's crater: a reactor glowing in lava's colours, gold-white at the vent through orange and scarlet to crimson
+// at the rim, soft energy rings running out from the core about every four seconds, a slow breath over the whole
+// (reactorPulse, shared with the glow column in landmarks.js), a faint shimmer; nothing flashes, and with reduced
+// motion it stands still. The red is
 // corrected for AgX as the windows' are (facade.js fDeep), or it turns salmon. One material per kind, so every
 // chamber in the city draws in one call.
+// The telecom tower's reactor breath, in GLSL: a slow swell (about six seconds) with a softer second beat, never
+// below 0.75; the crater and its glow column (landmarks.js) share it so they pulse together.
+export const REACTOR_PULSE = 'float reactorPulse(float t) { return 0.75 + 0.2 * (0.5 + 0.5 * sin(t * 1.05)) + 0.05 * sin(t * 2.3); }';
 function coreMaterial(kind) {
   const m = new THREE.MeshStandardMaterial({ color: palette.deepNavy, roughness: 0.35, metalness: 0, emissive: 0xffffff,
-    emissiveIntensity: NEON * [1.7, 2.6, 3.6][kind] }); // recessed behind ribs and bars, so brighter than a sign
+    emissiveIntensity: NEON * [1.7, 2.6, 3.6, 2.4][kind] }); // recessed behind ribs and bars, so brighter than a sign
   const c = (v) => ({ value: new THREE.Color(v) });
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, { cTime: facadeTime, cKind: { value: kind }, cBlood: c(palette.coreBlood),
-      cCrimson: c(palette.coreCrimson), cScarlet: c(palette.coreScarlet), cCoral: c(palette.coreCoral) });
+      cCrimson: c(palette.coreCrimson), cScarlet: c(palette.coreScarlet), cCoral: c(palette.coreCoral),
+      cOrange: c(palette.neonOrange), cGold: c(palette.sodium) });
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vCoreW, vCoreL;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvCoreW = (modelMatrix * vec4(transformed, 1.0)).xyz; vCoreL = transformed;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vCoreW, vCoreL; uniform float cTime, cKind; uniform vec3 cBlood, cCrimson, cScarlet, cCoral;
+        varying vec3 vCoreW, vCoreL; uniform float cTime, cKind; uniform vec3 cBlood, cCrimson, cScarlet, cCoral, cOrange, cGold;
         float cH(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
         float cN(vec3 p) { // smooth value noise
           vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(mix(cH(i), cH(i + vec3(1, 0, 0)), f.x), mix(cH(i + vec3(0, 1, 0)), cH(i + vec3(1, 1, 0)), f.x), f.y),
             mix(mix(cH(i + vec3(0, 0, 1)), cH(i + vec3(1, 0, 1)), f.x), mix(cH(i + vec3(0, 1, 1)), cH(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-        }`)
+        }
+        ${REACTOR_PULSE}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float cPh = fract(sin(dot(floor(vCoreW.xz / 16.0), vec2(127.1, 311.7))) * 43758.5453);
         float cT = cTime + cPh * 60.0;
@@ -133,6 +142,17 @@ function coreMaterial(kind) {
         cE = mix(cE, cScarlet, smoothstep(0.45, 0.8, cV) * 0.8);
         cE = mix(cE, cCoral, smoothstep(0.78, 0.95, cV) * (0.35 + 0.65 * cSurge));
         cE -= vec3(0.0, 0.13, 0.07) * cE.r * 0.8;
+        if (cKind > 2.5) { // reactor glow, hottest at the vent, rings running outward
+          float lr = length(vCoreL.xz);
+          float wave = 0.5 + 0.5 * sin(lr * 0.9 - cTime * 1.6);
+          float h = 1.0 - smoothstep(0.5, 10.0, lr);
+          h = clamp(0.85 * h + 0.25 * wave * (1.0 - 0.6 * h) + 0.08 * cN(vec3(vCoreL.xz * 0.6, cTime * 0.5)), 0.0, 1.0);
+          vec3 cL = mix(cCrimson, cScarlet, smoothstep(0.1, 0.4, h));
+          cL = mix(cL, cOrange, smoothstep(0.4, 0.7, h));
+          cL = mix(cL, cGold, smoothstep(0.75, 1.0, h));
+          cL -= vec3(0.0, 0.13, 0.07) * cL.r * 0.8 * (1.0 - smoothstep(0.4, 0.7, h)); // keep the reds deep under AgX
+          cE = cL * reactorPulse(cTime); cBreath = 1.0; cSurge = 0.0;
+        }
         totalEmissiveRadiance *= cE * (cBreath + 0.45 * cSurge);`);
   };
   m.customProgramCacheKey = () => 'core';
