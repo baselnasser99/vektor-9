@@ -10,7 +10,7 @@ import { box, cyl, part, REPEAT, ring, rng, slab } from './geometry.js';
 import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
-import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, pick } from './world.js';
+import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
 
 export function buildStreets(kit, layout, root) {
   const { lines, cross, lo, hi } = layout, rand = rng(31);
@@ -163,7 +163,7 @@ function crossings(ctx, s, segs) {
 const BAY = 6;
 function block(ctx, s, a, b, l0, l1) {
   const { kit, paint, rand, root } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
-  const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = ['street', 'boulevard', 'avenue', 'oneway'].includes(s.kind);
+  const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = WIDE.has(s.kind) || s.kind === 'street' || s.kind === 'oneway';
   for (const [end, dir, l] of [[b, 1, l1], [a, -1, l0]]) { // dir: the way the cars approaching this end drive
     if (end < ctx.lo + 1 || end > ctx.hi - 1 || (s.kind === 'oneway' && dir !== s.line.flow[s.axis])) continue; // one way: arrows show which
     lanes.forEach((off, k) => {
@@ -212,7 +212,7 @@ function block(ctx, s, a, b, l0, l1) {
 // streets anywhere.
 export const lanesMay = (kind, k, n) => {
   if (n === 1) return ['straight', 'left', 'right'];
-  if (kind === 'boulevard' || kind === 'avenue') return k === 0 ? ['left'] : k === n - 1 ? ['straight', 'right'] : ['straight'];
+  if (WIDE.has(kind)) return k === 0 ? ['left'] : k === n - 1 ? ['straight', 'right'] : ['straight'];
   return k === 0 ? ['straight', 'left'] : ['straight', 'right'];
 };
 // Which ways a car in lane k heading dir along street s can really leave its crossing with corridor l, so arrows
@@ -719,7 +719,7 @@ function roadNet(ctx, streets) {
     }
   }
   for (const N of nodes.values()) {
-    const big = [N.kinds.x, N.kinds.z].some((k) => k === 'street' || k === 'boulevard' || k === 'avenue');
+    const big = [N.kinds.x, N.kinds.z].some((k) => k === 'street' || WIDE.has(k));
     N.type = Math.abs(N.x - hubC) < 1 && Math.abs(N.z - hubC) < 1 ? 'round' : big || N.walk ? 'signal' : 'yield';
   }
   return { nodes: [...nodes.values()], links };

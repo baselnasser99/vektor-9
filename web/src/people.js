@@ -25,7 +25,7 @@ import { css, ui } from './palette.js';
 import { rng } from './geometry.js';
 import { crossing } from './city.js';
 import { walkLight, zebraUse } from './life.js';
-import { BLOCK, CARS, STREETS, TILE } from './world.js';
+import { BLOCK, CARS, STREETS, TILE, WIDE } from './world.js';
 import { ZEBRA_W, hasZebra, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
 import { ENTRANCE, HQ, entranceRise, siteFrame } from './headquarters.js';
@@ -218,7 +218,7 @@ function network(layout) {
     const [kind, off, along] = lx ? [layout.kindAt(lx, 'z', z), x - lx.c, z] : [layout.kindAt(lz, 'x', x), z - lz.c, x];
     if (kind === 'walk' || kind === 'none') return 0.18; // paved: a walk, a market lane, the headquarters' campus
     const nearCrossing = layout.cross.some((m) => Math.abs(along - m.c) < zebraAt(m) + ZEBRA_W / 2 + 0.3); // the median stops short of each zebra
-    return (kind === 'boulevard' || kind === 'avenue') && Math.abs(off) < STREETS[kind].median / 2 && !nearCrossing ? 0.28 : 0;
+    return WIDE.has(kind) && Math.abs(off) < STREETS[kind].median / 2 && !nearCrossing ? 0.28 : 0;
   };
   return { S, G, N, h, hub, e0, e1, at, node, removed, adj, dist, next, ground };
 }

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { palette } from './palette.js';
 import { box, cyl, part, rng } from './geometry.js';
-import { CAR_COLORS, STREETS, pick } from './world.js';
+import { CAR_COLORS, STREETS, WIDE, pick } from './world.js';
 import { ZEBRA_W, lanesMay } from './streets.js';
 
 const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the move than parked
@@ -20,7 +20,7 @@ const fract = (v) => v - Math.floor(v);
 // not all change together. Opposing approaches always share a phase; crossing streets never go together.
 const set = (...m) => new Set(m);
 function control(N) {
-  const prot = N.type === 'signal' && [N.kinds.x, N.kinds.z].some((k) => k === 'boulevard' || k === 'avenue');
+  const prot = N.type === 'signal' && [N.kinds.x, N.kinds.z].some((k) => WIDE.has(k));
   N.phases = ['x', 'z'].flatMap((axis) => {
     if (!N.kinds[axis]) return [{ axis, moves: set(), green: 12 }]; // walkers cross the car street
     if (N.type === 'round') return [{ axis, moves: set('straight', 'right'), green: 32 }];
@@ -374,7 +374,7 @@ function signals(kit, roads, warp, onFrame, clock) {
     }
     for (const ls of groups.values()) {
       const L = ls[0], { axis, c, dir, kind } = L, right = Math.sign(L.at - c), kerb = L.w / 2 - L.side, centre = axis === 'x' ? N.x : N.z;
-      const wide = kind === 'boulevard' || kind === 'avenue', big = wide || kind === 'street', offs = ls.map((l) => l.off), inner = Math.min(...offs), outer = Math.max(...offs);
+      const wide = WIDE.has(kind), big = wide || kind === 'street', offs = ls.map((l) => l.off), inner = Math.min(...offs), outer = Math.max(...offs);
       const along = centre - dir * (L.zebra ? L.zebra + ZEBRA_W / 2 + 0.5 : L.reach); // just behind the zebra (the roundabout: by the stop line)
       const ground = (L.lift ? L.lift(along) : L.y) - 0.65;
       if (ground > 0.5) continue; // out on a highway ramp: no kerb to stand on

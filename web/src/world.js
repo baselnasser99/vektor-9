@@ -20,6 +20,7 @@ export const STREETS = {
   alley: { w: 6, side: 0, lanes: [], edge: 0, median: 0, r: 0.3 }, // service alley: no sidewalks, no through traffic
 };
 export const CARS = new Set(['boulevard', 'avenue', 'street', 'ring', 'lane', 'local', 'oneway']); // the kinds cars drive on
+export const WIDE = new Set(['boulevard', 'avenue']); // the boulevard either way: a median, a left-turn lane, protected lefts
 export const HALF = 4;
 export const HUB = 2; // tiles each way from the central crossing kept as the tower's plaza (sim/rules.py HUB_PLAZA)
 export const F = 3.5; // floor height
