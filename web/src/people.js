@@ -25,8 +25,8 @@ import { css, ui } from './palette.js';
 import { rng } from './geometry.js';
 import { crossing } from './city.js';
 import { walkLight, zebraUse } from './life.js';
-import { BLOCK, CARS, STREETS, TILE } from './world.js';
-import { ZEBRA_W, kerbOf, zebraAt } from './streets.js';
+import { BLOCK, CARS, STREETS, TILE, WIDE } from './world.js';
+import { ZEBRA_W, hasZebra, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
 import { ENTRANCE, HQ, entranceRise, siteFrame } from './headquarters.js';
 
@@ -158,6 +158,7 @@ function network(layout) {
       const v = K & 1 ? e1[K >> 1] - ZEBRA(lines[M]) : e0[K >> 1] + ZEBRA(lines[M]);
       const light = street !== 'walk' && (axis === 'x' ? { x: lines[L].c, z: lines[M].c, axis: 'z' } : { x: lines[M].c, z: lines[L].c, axis: 'x' });
       const median = street === 'boulevard' ? lines[L].c : null;
+      if (CARS.has(street) && !hasZebra(layout, axis === 'x' ? 'z' : 'x', lines[L], lines[M], K & 1 ? -1 : 1)) continue; // no zebra on this arm: walkers go round
       link(a, b, 'cross', cross(axis, e1[L - 1], e0[L], v, light, median));
       link(b, a, 'cross', cross(axis, e0[L], e1[L - 1], v, light, median));
     }
@@ -217,7 +218,7 @@ function network(layout) {
     const [kind, off, along] = lx ? [layout.kindAt(lx, 'z', z), x - lx.c, z] : [layout.kindAt(lz, 'x', x), z - lz.c, x];
     if (kind === 'walk' || kind === 'none') return 0.18; // paved: a walk, a market lane, the headquarters' campus
     const nearCrossing = layout.cross.some((m) => Math.abs(along - m.c) < zebraAt(m) + ZEBRA_W / 2 + 0.3); // the median stops short of each zebra
-    return kind === 'boulevard' && Math.abs(off) < STREETS.boulevard.median / 2 && !nearCrossing ? 0.28 : 0;
+    return WIDE.has(kind) && Math.abs(off) < STREETS[kind].median / 2 && !nearCrossing ? 0.28 : 0;
   };
   return { S, G, N, h, hub, e0, e1, at, node, removed, adj, dist, next, ground };
 }

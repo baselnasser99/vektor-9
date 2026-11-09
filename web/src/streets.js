@@ -10,7 +10,7 @@ import { box, cyl, part, REPEAT, ring, rng, slab } from './geometry.js';
 import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
-import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, pick } from './world.js';
+import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
 
 export function buildStreets(kit, layout, root) {
   const { lines, cross, lo, hi } = layout, rand = rng(31);
@@ -33,8 +33,9 @@ export function buildStreets(kit, layout, root) {
       else if (g.kind === 'none') { // paved over, kerb to kerb of the streets at its ends
         const [a, b] = [g.a + kerbOf(g.l0), g.b - kerbOf(g.l1)];
         lay(ctx, s, b - a, 0.18, 2 * kerbOf(s), kit.concrete(palette.slate), (a + b) / 2, 0, 0.09);
+        if (!layout.cut(s.line, s.axis, (a + b) / 2)) for (const f of [0.3, 0.7]) tree(kit, root, ...spot(s, a + f * (b - a), 0), 5.5); // a built-over stretch (T-junctions): a pocket square
       }
-      else road(ctx, s, g);
+      else road(ctx, g.kind === s.kind ? s : { ...s, kind: g.kind }, g); // the boulevard's avenue stretches
     }
     crossings(ctx, s, segs);
     lamps(ctx, s, segs);
@@ -92,6 +93,17 @@ export const ZEBRA_W = 3;
 export const kerbOf = (l) => l.w / 2 - l.side;
 export const zebraAt = (l) => kerbOf(l) + l.side / 2 + 0.5;
 export const stopAt = (l) => zebraAt(l) + ZEBRA_W / 2 + 1.2; // the stop line's centre (0.45 m wide)
+// Whether street s (corridor `line`, running along `axis`) has a zebra across it on side `side` (-1 or +1 along
+// it) of corridor l, which crosses it (ADR-0010). Where two main lines meet (the boulevard is one), all four arms
+// or all but one (walkers cross there, people.js network). Across a mid street beside a main street, about three in
+// five; across a main street beside a mid street, or where two mid streets meet, rarely.
+export function hasZebra(layout, axis, line, l, side) {
+  const [jx, jz] = axis === 'x' ? [l.j, line.j] : [line.j, l.j], arm = (axis === 'x' ? 0 : 2) + (side > 0 ? 1 : 0);
+  const draw = layout.chance(jx, jz, arm + 2);
+  if (!line.mid && !l.mid) return layout.chance(jx, jz, 0) > 0.55 || Math.floor(layout.chance(jx, jz, 1) * 4) !== arm;
+  if (line.mid && !l.mid) return draw < 0.6;
+  return draw < (l.mid ? 0.1 : 0.12);
+}
 const SOLID = 15; // lane dividers turn solid this far before a stop line
 const round = (ctx, s, l) => Math.abs(s.c - ctx.hub) < 1 && Math.abs(l.c - ctx.hub) < 1; // the tower's roundabout
 const ends = (ctx, s, l) => (round(ctx, s, l) ? RING_OUT + 0.8 : stopAt(l) + 0.4); // where lane paint stops, from l's centre
@@ -102,7 +114,7 @@ const ends = (ctx, s, l) => (round(ctx, s, l) ? RING_OUT + 0.8 : stopAt(l) + 0.4
 // (local) or the boulevard's median. Nothing is painted inside a crossing.
 function road(ctx, s, g) {
   const { paint } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), inner = median / 2;
-  const dividers = lanes.length === 1 ? [0] : lanes.slice(1).flatMap((l, k) => [-(l + lanes[k]) / 2, (l + lanes[k]) / 2]);
+  const dividers = lanes.length === 1 || s.kind === 'oneway' ? [0] : lanes.slice(1).flatMap((l, k) => [-(l + lanes[k]) / 2, (l + lanes[k]) / 2]);
   const a = g.a + ends(ctx, s, g.l0), b = g.b - ends(ctx, s, g.l1);
   if (b <= a) return;
   const len = b - a, mid = (a + b) / 2, near = Math.min(SOLID, len / 2);
@@ -123,14 +135,17 @@ function road(ctx, s, g) {
 // keeps right, so cars heading +v use the `right` half), and a zebra across s in line with each of the crossing
 // street's sidewalks wherever s carries cars on that side.
 function crossings(ctx, s, segs) {
-  const { paint, lo, hi } = ctx, { edge, median } = STREETS[s.kind], R = kerbOf(s), inner = median / 2, right = s.axis === 'x' ? 1 : -1;
+  const { paint, lo, hi } = ctx, R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
   for (const g of segs) {
     if (!carries(g.kind)) continue;
+    const { edge, median } = STREETS[g.kind], inner = median / 2;
     for (const [l, dir] of [[g.l1, 1], [g.l0, -1]]) { // dir: the way the cars approaching l on this segment drive
-      const stop = l.c - dir * (round(ctx, s, l) ? RING_OUT + 0.3 : stopAt(l));
-      if (stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, edge - inner - 0.3, paint, stop, dir * right * (inner + 0.15 + (edge - inner - 0.3) / 2), 0.01);
+      const stop = l.c - dir * (round(ctx, s, l) ? RING_OUT + 0.3 : stopAt(l)), flow = s.line.flow?.[s.axis];
+      if (g.kind === 'oneway') { if (dir === flow && stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, 2 * edge - 0.3, paint, stop, 0, 0.01); } // all its lanes come in
+      else if (stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, edge - inner - 0.3, paint, stop, dir * right * (inner + 0.15 + (edge - inner - 0.3) / 2), 0.01);
       const at = l.c - dir * zebraAt(l);
       if (round(ctx, s, l) || inRing(ctx, s, at) || at < lo || at > hi) continue; // none on the outside of the city: no one walks there
+      if (!hasZebra(ctx.layout, s.axis, s.line, l, -dir)) continue;
       for (let off = -R + 0.6; off < R; off += 1.2) {
         if (Math.abs(off) < inner + 0.2) continue; // the median is a refuge, not paint
         lay(ctx, s, ZEBRA_W, 0.02, 0.6, paint, at, off, 0.01);
@@ -148,13 +163,16 @@ function crossings(ctx, s, segs) {
 const BAY = 6;
 function block(ctx, s, a, b, l0, l1) {
   const { kit, paint, rand, root } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
-  const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = s.kind === 'street' || s.kind === 'boulevard';
+  const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = WIDE.has(s.kind) || s.kind === 'street' || s.kind === 'oneway';
   for (const [end, dir, l] of [[b, 1, l1], [a, -1, l0]]) { // dir: the way the cars approaching this end drive
-    if (end < ctx.lo + 1 || end > ctx.hi - 1) continue;
+    if (end < ctx.lo + 1 || end > ctx.hi - 1 || (s.kind === 'oneway' && dir !== s.line.flow[s.axis])) continue; // one way: arrows show which
     lanes.forEach((off, k) => {
       const o = dir * right * off, len = Math.min(14, b - a);
       lay(ctx, s, len, 0.01, 1.3, wear, end - dir * len / 2, o, 0.005);
-      if (big && !round(ctx, s, l) && b - a > 16) arrow(ctx, s, end - dir * 7, o, dir, turnOf(s.kind, k, lanes.length));
+      if (!big || round(ctx, s, l) || b - a <= 16) return;
+      const can = exits(ctx, s, l, dir, k), moves = lanesMay(s.kind, k, lanes.length).filter((m) => can[m]);
+      if (!moves.length && can.merge) moves.push('straight'); // nothing else open: it merges straight on (life.js)
+      if (moves.length) arrow(ctx, s, end - dir * 7, o, dir, moves);
     });
   }
   if (s.kind === 'ring') {
@@ -179,7 +197,7 @@ function block(ctx, s, a, b, l0, l1) {
   if (s.kind === 'boulevard') {
     const stud = kit.glow(palette.coldWhite, 1.6);
     for (const [l, dir] of [[l0, 1], [l1, -1]]) {
-      if (round(ctx, s, l)) continue;
+      if (round(ctx, s, l) || !hasZebra(ctx.layout, s.axis, s.line, l, dir)) continue;
       for (const e of [-1, 1]) {
         const v = l.c + dir * (zebraAt(l) + e * (ZEBRA_W / 2 + 0.2));
         for (let off = -R + 0.8; off < R; off += 1.6) if (Math.abs(off) > median / 2 + 0.3) lay(ctx, s, 0.18, 0.03, 0.18, stud, v, off, 0.015);
@@ -188,35 +206,51 @@ function block(ctx, s, a, b, l0, l1) {
   }
 }
 
-// Which way lane k (0 innermost) of n on a street of `kind` may go at a crossing (life.js turns follow the same
-// rule): the boulevard's inner lane turns left only, its outer lane goes straight or right; on main streets the
-// inner lane goes straight or left, the outer straight or right; one-lane streets anywhere.
-export const turnOf = (kind, k, n) => {
-  if (n === 1) return 'any';
-  if (kind === 'boulevard') return k === 0 ? 'left' : k === n - 1 ? 'right' : 'straight';
-  return k === 0 ? 'left' : 'right';
+// Which ways lane k (0 innermost) of n on a street of `kind` may go at a crossing (life.js turns follow the same
+// rule): on the boulevard and its avenue the inner lane turns left only, the outer goes straight or right, any
+// between straight on; on other streets the inner lane goes straight or left, the outer straight or right; one-lane
+// streets anywhere.
+export const lanesMay = (kind, k, n) => {
+  if (n === 1) return ['straight', 'left', 'right'];
+  if (WIDE.has(kind)) return k === 0 ? ['left'] : k === n - 1 ? ['straight', 'right'] : ['straight'];
+  return k === 0 ? ['straight', 'left'] : ['straight', 'right'];
 };
+// Which ways a car in lane k heading dir along street s can really leave its crossing with corridor l, so arrows
+// never point at a street that is not there: straight on if s goes on beyond l with a lane k (or out of town, for a
+// main street at the ring road; merge: it goes on with fewer lanes), left or right if l carries cars that way.
+function exits(ctx, s, l, dir, k) {
+  const { layout } = ctx, across = s.axis === 'x' ? 'z' : 'x', r = dir * (s.axis === 'x' ? 1 : -1);
+  const beyond = layout.kindAt(s.line, s.axis, l.c + dir * (l.w / 2 + 1));
+  const side = (d) => {
+    const kind = layout.kindAt(l, across, s.c + d * (s.w / 2 + 1));
+    return carries(kind) && (kind !== 'oneway' || l.flow[across] === d);
+  };
+  const edge = !s.line.mid && (l === ctx.cross[0] || l === ctx.cross.at(-1));
+  return { straight: edge || (carries(beyond) && STREETS[beyond].lanes.length > k), merge: carries(beyond), right: side(r), left: side(-r) };
+}
 
-// An arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s): straight ahead,
-// with a bent arm for its turn (`left`, `right`: straight and that way; `left` alone on the boulevard).
-function arrow(ctx, s, v, off, dir, turn) {
+// An arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s): a head straight
+// ahead and a bent arm for each turn, one for each of its moves.
+function arrow(ctx, s, v, off, dir, moves) {
   const right = s.axis === 'x' ? 1 : -1, side = dir * right; // across, toward the right-hand kerb of these cars
-  const head = (tip, along, across) => { // two strokes meeting at `tip`, pointing (along, across)
-    const L = 1.1, phi = 0.6, [tx, tz] = spot(s, tip[0], tip[1]);
+  const stroke = (p, q) => { // a painted stroke from p to q, each [along, across]
+    const [x0, z0] = spot(s, ...p), [x1, z1] = spot(s, ...q);
+    part(ctx.root, box(0.18, 0.02, Math.hypot(x1 - x0, z1 - z0), 0), ctx.paint, (x0 + x1) / 2, 0.01, (z0 + z1) / 2).rotation.y = Math.atan2(x1 - x0, z1 - z0);
+  };
+  const head = (tip, along, across, L = 1.1) => { // two strokes meeting at `tip`, pointing (along, across), a unit vector
     for (const t of [-1, 1]) {
-      const ca = Math.cos(phi), sa = Math.sin(phi), [ux, uy] = [along * ca - t * across * sa, across * ca + t * along * sa];
-      const [x, z] = spot(s, tip[0] - (L / 2) * ux, tip[1] - (L / 2) * uy);
-      part(ctx.root, box(0.18, 0.02, L, 0), ctx.paint, x, 0.01, z).rotation.y = Math.atan2(tx - x, tz - z);
+      const ca = Math.cos(0.6), sa = Math.sin(0.6), [ux, uy] = [along * ca - t * across * sa, across * ca + t * along * sa];
+      stroke([tip[0] - L * ux, tip[1] - L * uy], tip);
     }
   };
-  const straight = turn !== 'left' || s.kind !== 'boulevard';
-  lay(ctx, s, 3, 0.02, 0.18, ctx.paint, v - dir * 0.6, off, 0.01);
+  const straight = moves.includes('straight'), top = straight ? 0.9 : -0.9; // a turn-only arrow's shaft stops where its arm leaves
+  stroke([v - dir * 2.1, off], [v + dir * top, off]);
   if (straight) head([v + dir * 1.5, off], dir, 0);
-  for (const [t, w] of [['left', -1], ['right', 1]]) {
-    if (turn !== t) continue;
-    const base = v - dir * 0.3, out = off + w * side * 1.0;
-    lay(ctx, s, 0.18, 0.02, 1.0, ctx.paint, base, off + w * side * 0.5, 0.01);
-    head([base, out + w * side * 0.1], 0, w * side);
+  for (const [t, w] of [['left', -1], ['right', 1]]) { // each turn: an arm branching low off the shaft, out and forward, its head clear of the straight one
+    if (!moves.includes(t)) continue;
+    const tip = [v + dir * 0.2, off + w * side * 1.05];
+    stroke([v - dir * 0.9, off], tip);
+    head(tip, dir * 0.45, w * side * 0.89, 0.7);
   }
 }
 
@@ -252,7 +286,7 @@ function kerbside(ctx, s) {
 // The boulevard's median between crossings l0 and l1: a kerbed, planted strip running up to each zebra with a
 // rounded nose, the zebra crossing it at grade between two pairs of bollards (a refuge for people waiting halfway),
 // and a few slim dark-leaved trees: the median should read as landscaping, not a forest. Short of each stop line
-// it narrows to a nose half a metre wide, leaving the inner lane as a left-turn lane (turnOf).
+// it narrows to a nose half a metre wide, leaving the inner lane as a left-turn lane (lanesMay).
 function medianStrip(ctx, s, inner, l0, l1) {
   const { kit, root } = ctx, curb = kit.concrete(palette.roseGrey), bed = kit.concrete(palette.oliveGrey), steel = kit.steel(palette.charcoal, 0.6);
   const end = (l) => (round(ctx, s, l) ? RING_OUT + 2 : zebraAt(l) + ZEBRA_W / 2 + 0.3);
@@ -264,9 +298,9 @@ function medianStrip(ctx, s, inner, l0, l1) {
     part(root, cyl(inner, inner, 0.25, 16), curb, ...lift(spot(s, v, 0), 0.12));
     part(root, cyl(inner - 0.35, inner - 0.35, 0.04, 16), bed, ...lift(spot(s, v, 0), 0.26));
   }
-  for (let v = a + 10; v < b - 8; v += 28) tree(kit, root, ...spot(s, v, 0), 6, palette.mistTeal);
+  for (let v = a + 10; v < b - 8; v += s.kind === 'avenue' ? 14 : 28) tree(kit, root, ...spot(s, v, 0), 6, palette.mistTeal); // the avenue's wide median: a closer row
   for (const [l, dir] of [[l0, 1], [l1, -1]]) { // the zebras at this stretch's two ends
-    if (round(ctx, s, l)) continue;
+    if (round(ctx, s, l) || !hasZebra(ctx.layout, s.axis, s.line, l, dir)) continue;
     for (const off of [-inner + 0.3, inner - 0.3]) for (const e of [-1, 1]) {
       const v = l.c + dir * (zebraAt(l) + e * (ZEBRA_W / 2 + 0.15));
       part(root, cyl(0.1, 0.1, 0.9, 8), steel, ...lift(spot(s, v, off), 0.45));
@@ -643,29 +677,32 @@ function roadNet(ctx, streets) {
   const reachOf = (s, l) => (round(ctx, s, l) ? RING_OUT + 0.55 : stopAt(l) + 0.05);
   for (const s of streets) {
     if (!carries(s.kind)) continue;
-    const { lanes } = STREETS[s.kind], right = s.axis === 'x' ? 1 : -1, at = (v) => (s.axis === 'x' ? [v, s.c] : [s.c, v]);
+    const right = s.axis === 'x' ? 1 : -1, at = (v) => (s.axis === 'x' ? [v, s.c] : [s.c, v]);
     const add = (o) => {
       links.push(o);
       o.start?.outs.push(o);
       o.end?.ins.push(o);
     };
-    const lane = (k, dir, extra) => ({ axis: s.axis, c: s.c, w: s.w, side: s.side, kind: s.kind, off: lanes[k], at: s.c + dir * right * lanes[k],
-      k, n: lanes.length, dir, mid: s.line.mid, y: 0.65, ...extra });
+    const lane = (k, dir, extra, kind = s.kind) => {
+      const { lanes } = STREETS[kind]; // per stretch: the boulevard's avenue stretches have fewer lanes
+      return { axis: s.axis, c: s.c, w: s.w, side: s.side, kind, off: lanes[k], at: s.c + dir * right * lanes[k], k, n: lanes.length, dir,
+        mid: s.line.mid, y: 0.65, ...extra };
+    };
     for (const g of segments(ctx, s)) {
       if (!carries(g.kind)) continue;
       const A = node(...at(g.a)), B = node(...at(g.b));
-      for (const N of [A, B]) N.kinds[s.axis] = s.kind;
-      for (let k = 0; k < lanes.length; k++) for (const dir of [1, -1]) {
+      for (const N of [A, B]) N.kinds[s.axis] = N.kinds[s.axis] === 'boulevard' ? 'boulevard' : g.kind; // where it narrows, the boulevard's lights
+      for (let k = 0; k < STREETS[g.kind].lanes.length; k++) for (const dir of g.kind === 'oneway' ? [s.line.flow[s.axis]] : [1, -1]) {
         const [n0, n1, l0, l1, a, b] = dir > 0 ? [A, B, g.l0, g.l1, g.a, g.b] : [B, A, g.l1, g.l0, g.b, g.a];
         add(lane(k, dir, { from: a + dir * reachOf(s, l0), to: b - dir * reachOf(s, l1), start: n0, end: n1, reach: reachOf(s, l1),
-          zebra: round(ctx, s, l1) ? null : zebraAt(l1) }));
+          zebra: round(ctx, s, l1) || !hasZebra(ctx.layout, s.axis, s.line, l1, -dir) ? null : zebraAt(l1) }, g.kind));
       }
     }
     // Main streets carry on out of town as tracks and highways: a lane out from the ring road's crossing and one in.
     if (!s.line.mid) for (const [ring, out] of [[ctx.cross[0], -1], [ctx.cross.at(-1), 1]]) {
       const R = node(...at(ring.c)), reach = reachOf(s, ring);
       R.kinds[s.axis] = s.kind;
-      for (let k = 0; k < lanes.length; k++) {
+      for (let k = 0; k < STREETS[s.kind].lanes.length; k++) {
         add(lane(k, out, { from: ring.c + out * reach, to: ring.c + out * (reach + 1), start: R, end: null, out: 'sink' }));
         add(lane(k, -out, { from: ring.c + out * (reach + 1), to: ring.c + out * reach, start: null, end: R, reach, zebra: null, out: 'source' }));
       }
@@ -682,7 +719,7 @@ function roadNet(ctx, streets) {
     }
   }
   for (const N of nodes.values()) {
-    const big = [N.kinds.x, N.kinds.z].some((k) => k === 'street' || k === 'boulevard');
+    const big = [N.kinds.x, N.kinds.z].some((k) => k === 'street' || WIDE.has(k));
     N.type = Math.abs(N.x - hubC) < 1 && Math.abs(N.z - hubC) < 1 ? 'round' : big || N.walk ? 'signal' : 'yield';
   }
   return { nodes: [...nodes.values()], links };

@@ -1,6 +1,6 @@
 # ADR-0009: A street network of blocks, corridors and a lane graph
 
-**Status:** Accepted (2026-11-08). Supersedes ADR-0008.
+**Status:** Accepted (2026-11-08). Supersedes ADR-0008. Amended by ADR-0010 (one-way and built-over mid streets, crossings per arm).
 
 ## Context
 ADR-0008 gave the streets a hierarchy but kept every street's total width, so the city remained seven wide streets each way around 112 m blocks. Local streets stayed as wide as avenues, and crossings stayed large. Cars drove straight lines from one edge of the city to the other and never turned.

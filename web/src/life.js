@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { palette } from './palette.js';
 import { box, cyl, part, rng } from './geometry.js';
-import { CAR_COLORS, pick } from './world.js';
-import { ZEBRA_W, turnOf } from './streets.js';
+import { CAR_COLORS, STREETS, WIDE, pick } from './world.js';
+import { ZEBRA_W, lanesMay } from './streets.js';
 
 const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the move than parked
 const CAR = 4.4; // car length
@@ -20,7 +20,7 @@ const fract = (v) => v - Math.floor(v);
 // not all change together. Opposing approaches always share a phase; crossing streets never go together.
 const set = (...m) => new Set(m);
 function control(N) {
-  const prot = N.type === 'signal' && (N.kinds.x === 'boulevard' || N.kinds.z === 'boulevard');
+  const prot = N.type === 'signal' && [N.kinds.x, N.kinds.z].some((k) => WIDE.has(k));
   N.phases = ['x', 'z'].flatMap((axis) => {
     if (!N.kinds[axis]) return [{ axis, moves: set(), green: 12 }]; // walkers cross the car street
     if (N.type === 'round') return [{ axis, moves: set('straight', 'right'), green: 32 }];
@@ -75,7 +75,7 @@ function carParts() {
 // and at each crossing a connector for every move a car in that lane may make (I.moves): straight on, a right turn
 // from the outer lane into the cross street's outer lane, a left turn from the inner lane into its inner lane, both
 // smooth curves through the crossing; at the roundabout, round the island on the car's own ring. Lane rules
-// (streets.js turnOf) say which lane may go where. Dead-end lanes are dropped first.
+// (streets.js lanesMay) say which lane may go where. Dead-end lanes are dropped first.
 function paths(roads, warp, hub) {
   const { nodes, links } = roads, shift = [0, 0];
   const lineOf = (L, along) => (L.axis === 'x' ? [along, L.at] : [L.at, along]);
@@ -104,8 +104,6 @@ function paths(roads, warp, hub) {
     if (cross === 0) return ix === ox && iz === oz ? 'straight' : null; // never a u-turn
     return cross > 0 ? 'right' : 'left';
   };
-  const lanesMay = (I) => ({ any: ['straight', 'right', 'left'], left: I.kind === 'boulevard' ? ['left'] : ['straight', 'left'],
-    right: ['straight', 'right'], straight: ['straight'] })[turnOf(I.kind, I.k, I.n)];
   const fits = (I, O, m) => (m === 'straight' ? O.k === I.k : m === 'right' ? O.k === O.n - 1 : O.k === 0);
   const curve = (N, I, O, m) => {
     const a = lineOf(I, I.to), b = lineOf(O, O.from), y0 = heightAt(I, I.to), y1 = heightAt(O, O.from), pts = [];
@@ -155,8 +153,8 @@ function paths(roads, warp, hub) {
   }
   for (const N of nodes) for (const I of N.ins) {
     const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left'));
-    let ok = options.filter(({ O, m }) => lanesMay(I).includes(m) && fits(I, O, m));
-    if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === I.k);
+    let ok = options.filter(({ O, m }) => lanesMay(I.kind, I.k, I.n).includes(m) && fits(I, O, m));
+    if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === Math.min(I.k, O.n - 1)); // where the boulevard narrows, its outer lane merges
     if (!ok.length) ok = options.filter(({ O, m }) => m !== 'straight' && fits(I, O, m));
     I.moves = ok.map(({ O, m }) => ({ move: m, out: O, edge: edge(curve(N, I, O, m), { node: N, from: I, next: O.edge }) }));
   }
@@ -190,7 +188,7 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     return L.moves.find((mv, i) => (r -= w[i]) < 0) ?? L.moves[0];
   };
   // Cars: about one every so many metres of lane, by street kind, thinner out of town.
-  const EVERY = { boulevard: 90, street: 115, ring: 150, lane: 170, local: 170 };
+  const EVERY = { boulevard: 90, avenue: 100, street: 115, ring: 150, lane: 170, local: 170, oneway: 150 };
   const cars = [];
   for (const L of links) {
     const n = Math.floor(L.edge.len / (EVERY[L.kind] * (L.out ? 1.6 : 1)) + rand());
@@ -376,7 +374,7 @@ function signals(kit, roads, warp, onFrame, clock) {
     }
     for (const ls of groups.values()) {
       const L = ls[0], { axis, c, dir, kind } = L, right = Math.sign(L.at - c), kerb = L.w / 2 - L.side, centre = axis === 'x' ? N.x : N.z;
-      const big = kind === 'boulevard' || kind === 'street', offs = ls.map((l) => l.off), inner = Math.min(...offs), outer = Math.max(...offs);
+      const wide = WIDE.has(kind), big = wide || kind === 'street', offs = ls.map((l) => l.off), inner = Math.min(...offs), outer = Math.max(...offs);
       const along = centre - dir * (L.zebra ? L.zebra + ZEBRA_W / 2 + 0.5 : L.reach); // just behind the zebra (the roundabout: by the stop line)
       const ground = (L.lift ? L.lift(along) : L.y) - 0.65;
       if (ground > 0.5) continue; // out on a highway ramp: no kerb to stand on
@@ -387,11 +385,11 @@ function signals(kit, roads, warp, onFrame, clock) {
       if (big) {
         const span = kerb + 0.6 - (inner - 1.6); // from the pole out over the innermost lane
         arms.push({ p: at(axis, c + right * (kerb + 0.6 - span / 2), along, ground + top - 0.1), axis, span });
-        const over = kind === 'boulevard' ? [[inner, protectedLeft ? 'left' : 'straight'], [(inner + outer) / 2 + 1.6, 'straight']] : [[(inner + outer) / 2, 'straight']];
+        const over = wide ? [[inner, protectedLeft ? 'left' : 'straight'], [(inner + outer) / 2 + 1.6, 'straight']] : [[(inner + outer) / 2, 'straight']];
         for (const [o, move] of over) heads.push({ p: at(axis, c + right * o, along, ground + HEAD.arm), face, N, axis, move });
       }
-      if (kind === 'boulevard' && L.zebra) { // on the median's nose, for the left-turn lane
-        const nose = c + right * 0.9;
+      if (wide && L.zebra) { // on the median's nose, for the left-turn lane
+        const nose = c + right * (STREETS[kind].median / 2 - 0.85);
         posts.push([...at(axis, nose, along, ground + 0.12 + (HEAD.y + 0.8) / 2), HEAD.y + 0.8]);
         heads.push({ p: at(axis, nose - right * 0.25, along, ground + HEAD.y + 0.12), face, N, axis, move: protectedLeft ? 'left' : 'straight' });
       }
