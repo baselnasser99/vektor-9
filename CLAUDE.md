@@ -1,6 +1,6 @@
 # CLAUDE.md | Vektor-9
 
-Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5 minutes on AWS (serverless), rendered in the browser as a 3D bird's-eye city with Three.js in a bright daylight anime style. Python simulation and Lambdas, AWS CDK in Python, static HTML/CSS/JS with vendored Three.js. Full plan: `PROJECT_PLAN.md`. Visual source of truth: `docs/STYLE_GUIDE.md`.
+Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5 minutes on AWS (serverless), rendered in the browser as a 3D bird's-eye city with Three.js as a richly detailed neon cyberpunk night. Python simulation and Lambdas, AWS CDK in Python, static HTML/CSS/JS with vendored Three.js. Full plan: `PROJECT_PLAN.md`. Visual source of truth: `docs/STYLE_GUIDE.md`.
 
 ## Start of every session
 
