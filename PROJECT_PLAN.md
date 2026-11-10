@@ -11,7 +11,7 @@
 
 > Vektor-9 is a city that never sleeps, because it runs in the cloud. Every five minutes it grows, decays, and rebuilds itself. Drop in to see what changed, scrub back through its history, and leave your mark: one building or one sign a day.
 
-**The 20-second visit:** you open the site and see the city in 3D, bright and hazy, with a crane swinging over a half-built tower, a monorail sliding past, and people smoking on rooftops. A district to the east is dark: a blackout started 40 minutes ago. You drag the timeline back a week and watch that tower rise from an empty lot. You hang a sign on a rooftop. It appears at the next tick, for everyone.
+**The 20-second visit:** you open the site and see the city in 3D, a neon-lit night under a crimson sunset, with a crane swinging over a half-built tower, a monorail sliding past, and people smoking on rooftops. A district to the east is dark: a blackout started 40 minutes ago. You drag the timeline back a week and watch that tower rise from an empty lot. You hang a sign on a rooftop. It appears at the next tick, for everyone.
 
 ## 2. What a visitor sees
 
@@ -137,7 +137,7 @@ Every non-obvious choice gets a short ADR in `docs/adr/`, written the way an exa
 
 ## 6. Art direction
 
-See **`docs/STYLE_GUIDE.md`**: bright daylight anime cyberpunk, a sampled palette, cel shading, soft outlines, heavy atmospheric haze, detailed painted-looking facades, and lots of ambient life. The style guide is the source of truth for every visual decision.
+See **`docs/STYLE_GUIDE.md`**: a richly detailed neon cyberpunk night, dark gunmetal and charcoal structure lit by warm sodium lamps, lit windows and red and pink neon (cyan and violet only as accents), a crimson sunset sky behind a cold blue haze, wet streets, physically based materials, and lots of ambient life. The style guide is the source of truth for every visual decision.
 
 ## 7. Milestones
 

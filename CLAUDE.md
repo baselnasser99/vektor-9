@@ -1,6 +1,6 @@
 # CLAUDE.md | Vektor-9
 
-Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5 minutes on AWS (serverless), rendered in the browser as a 3D bird's-eye city with Three.js in a bright daylight anime style. Python simulation and Lambdas, AWS CDK in Python, static HTML/CSS/JS with vendored Three.js. Full plan: `PROJECT_PLAN.md`. Visual source of truth: `docs/STYLE_GUIDE.md`.
+Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5 minutes on AWS (serverless), rendered in the browser as a 3D bird's-eye city with Three.js as a richly detailed neon cyberpunk night. Python simulation and Lambdas, AWS CDK in Python, static HTML/CSS/JS with vendored Three.js. Full plan: `PROJECT_PLAN.md`. Visual source of truth: `docs/STYLE_GUIDE.md`.
 
 ## Start of every session
 
@@ -23,7 +23,7 @@ Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5
 <!-- Fill in during M0a and keep accurate. -->
 - Install: `uv sync`
 - Run the simulation locally (N ticks → snapshots): `uv run python -m sim --ticks 288 --seed 7 --out snapshots`
-- Serve the site locally: `uv run python tools/serve.py` from the repo root (caching off), then open `http://localhost:8000/web/` (needs `snapshots/004032.json`; `web/sample.html` shows two buildings up close; add `?bench` to log frame time, `?rain=0..1` to preview rain, `?view=x,y,z,tx,ty,tz` to set the camera, `?crowd` to open the crowd settings (or press P), `?crowd=off` to hide people)
+- Serve the site locally: `uv run python tools/serve.py` from the repo root (caching off), then open `http://localhost:8000/web/` (needs `snapshots/004032.json`; `web/sample.html` shows two buildings up close; add `?bench` to log frame time (`?bench=1000x625` pins the canvas to that many pixels so runs compare), `?rain=0..1` to preview rain, `?view=x,y,z,tx,ty,tz` to set the camera, `?crowd` to open the crowd settings (or press P), `?crowd=off` to hide people)
 - Tests: `uv run pytest`
 - Lint/format: `uv run ruff check .` and `uv run ruff format .` (CI runs `ruff format --check .`)
 - CDK synth / diff: not yet
