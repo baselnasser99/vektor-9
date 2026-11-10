@@ -351,21 +351,30 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
 }
 
 // Parked cars: in the ring road's bays (streets.js block) and on the plazas (tiles.js plaza). The moving cars'
-// model, unlit, one instanced mesh per material. parked: [x, z, heading, y, colour] in the world (city.js); y
-// defaults to the road's, colour to one of CAR_COLORS.
+// model, unlit, one instanced mesh per material in each CHUNK-metre cell, each with its own bounds, so cells out of
+// view are culled (one city-wide mesh was never culled). parked: [x, z, heading, y, colour] in the world (city.js);
+// y defaults to the road's, colour to one of CAR_COLORS.
+const CHUNK = 300;
 function parkedCars(kit, geo, parked) {
   const rand = rng(91), g = new THREE.Group(), m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-  const body = new THREE.InstancedMesh(geo.paint, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }), Math.max(1, parked.length));
-  const parts = [body, new THREE.InstancedMesh(geo.glass, kit.glass(palette.charcoal), body.count), new THREE.InstancedMesh(geo.tyres, kit.steel(palette.graphite, 0.8), body.count)];
+  const mats = [new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }), kit.glass(palette.charcoal), kit.steel(palette.graphite, 0.8)];
   const color = new THREE.Color(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-  parked.forEach(([x, z, heading, y = 0.65, paint], i) => {
-    m.compose(p.set(x, y, z), q.setFromAxisAngle(up, heading), one);
-    for (const part of parts) part.setMatrixAt(i, m);
-    const c = pick(rand, CAR_COLORS); // drawn either way, so the bays keep their colours
-    body.setColorAt(i, color.set(paint ?? c));
+  const paints = parked.map((car) => { // drawn either way, so the bays keep their colours
+    const c = pick(rand, CAR_COLORS);
+    return car[4] ?? c;
   });
-  for (const part of parts) part.count = parked.length;
-  g.add(...parts);
+  const cells = Map.groupBy(parked.map((car, i) => i), (i) => `${Math.floor(parked[i][0] / CHUNK)},${Math.floor(parked[i][1] / CHUNK)}`);
+  for (const ids of cells.values()) {
+    const parts = [geo.paint, geo.glass, geo.tyres].map((geom, k) => new THREE.InstancedMesh(geom, mats[k], ids.length));
+    ids.forEach((i, j) => {
+      const [x, z, heading, y = 0.65] = parked[i];
+      m.compose(p.set(x, y, z), q.setFromAxisAngle(up, heading), one);
+      for (const part of parts) part.setMatrixAt(j, m);
+      parts[0].setColorAt(j, color.set(paints[i]));
+    });
+    for (const part of parts) part.computeBoundingSphere();
+    g.add(...parts);
+  }
   return g;
 }
 
