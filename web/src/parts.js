@@ -82,9 +82,12 @@ export function streetLamp(kit, parent, x, z, facing = 0) {
 
 // Tree: a slim trunk and a low-poly crown, `h` metres tall, its leaves `leaf`.
 export function tree(kit, parent, x, z, h = 6, leaf = palette.teal) {
-  part(parent, cyl(0.12, 0.18, h * 0.55, 6), kit.steel(palette.charcoal, 0.8), x, h * 0.275, z);
-  const crown = part(parent, new THREE.IcosahedronGeometry(h * 0.28, 0), kit.concrete(leaf), x, h * 0.7, z);
+  const g = new THREE.Group(); // one piece, so the old town's warp moves it whole (city.js settleProps)
+  g.position.set(x, 0, z);
+  part(g, cyl(0.12, 0.18, h * 0.55, 6), kit.steel(palette.charcoal, 0.8), 0, h * 0.275, 0);
+  const crown = part(g, new THREE.IcosahedronGeometry(h * 0.28, 0), kit.concrete(leaf), 0, h * 0.7, 0);
   crown.scale.set(1, 0.8, 1);
+  parent.add(g);
 }
 
 export function dronePad(kit, parent, r, x, y, z) {

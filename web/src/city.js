@@ -122,13 +122,57 @@ function cityWarp(snap, layout, rail) {
   };
 }
 
-// Moves and turns a tile's group with the warp at its centre, as a whole, so its buildings never bend.
+// Moves and turns a tile's group (or a street prop) with the warp at its origin, as a whole, so it never bends.
+const UP = new THREE.Vector3(0, 1, 0), yaw = new THREE.Quaternion();
+const turnAt = (warp, x, z) => {
+  const [dx, dz] = warp(x, z, []), [ex, ez] = warp(x + 1, z, []);
+  return [dx, dz, -Math.atan2(ez - dz, 1 + ex - dx)];
+};
 function settle(g, warp) {
-  const { x, z } = g.position, [dx, dz] = warp(x, z, []), [ex, ez] = warp(x + 1, z, []);
-  g.rotation.y -= Math.atan2(ez - dz, 1 + ex - dx);
+  const [dx, dz, a] = turnAt(warp, g.position.x, g.position.z);
+  g.quaternion.premultiply(yaw.setFromAxisAngle(UP, a));
   g.position.x += dx;
   g.position.z += dz;
   g.userData.rigid = true; // mergeByMaterial leaves it unwarped
+}
+
+// The street's props (trees, lamps, benches, planters, bollards, stalls, cafe tables, corner props) are settled
+// whole like the lots, so the old town's warp moves them with the street without squashing them, and so are the
+// zebras' stripes (marked userData.whole), so they stay rectangles; other paint, kerbs and
+// paving (under 0.3 m tall) and anything over 12 m across still bend with it. Food places (streets.js food) are
+// moved to match: for each, place(x, z) gives the point the warp carries to where its settled prop now puts (x, z),
+// and turn how far the prop turned (benches get the same), so people.js (which warps everyone point by point) puts people on its stools,
+// behind its counter and in its queue.
+function settleProps(root, warp, food, benches) {
+  const bounds = new THREE.Box3(), size = new THREE.Vector3(), shift = [0, 0];
+  for (const o of root.children) {
+    if (o.userData.rigid) continue;
+    bounds.setFromObject(o).getSize(size);
+    if (o.userData.whole || (size.y >= 0.3 && Math.max(size.x, size.z) <= 12)) settle(o, warp);
+  }
+  const placer = (cx, cz) => { // for a prop settled at (cx, cz): [place, turn]
+    const [dx, dz, a] = turnAt(warp, cx, cz), c = Math.cos(a), s = Math.sin(a);
+    return [(x, z) => {
+      const u = x - cx, v = z - cz, tx = cx + dx + u * c + v * s, tz = cz + dz - u * s + v * c;
+      let qx = tx, qz = tz; // solve q + warp(q) = t; converges since the warp's slope stays under 1
+      for (let k = 0; k < 8; k++) {
+        warp(qx, qz, shift);
+        qx = tx - shift[0];
+        qz = tz - shift[1];
+      }
+      return [qx, qz];
+    }, a];
+  };
+  for (const b of benches) [b.place, b.turn] = placer(b[0], b[1]); // a bench: its middle
+  for (const f of food) {
+    [f.place, f.turn] = placer(...(f.table ?? [f.x, f.z])); // a stool's prop is its table; a stall is its own
+    const a = f.turn;
+    if (f.kind === 'stool') {
+      [f.x, f.z] = f.place(f.x, f.z);
+      f.heading += a;
+    }
+    if (f.steam) [f.steam[0], f.steam[2]] = f.place(f.steam[0], f.steam[2]);
+  }
 }
 
 export function buildCity(kit, snap) {
@@ -243,6 +287,7 @@ export function buildCity(kit, snap) {
     settle(lot, warp);
   }
   detail.set('tower', [streets.hub.c, streets.hub.c]); // the tower's small parts (landmarks.js)
+  settleProps(root, warp, streets.food, streets.benches);
   const city = mergeByMaterial(root, warp);
   // Depth first: the facades are drawn once more, before everything, writing only depth (nudged back a hair so
   // the real pass still meets it), so the facade shader and every part behind a wall only run where they show.
