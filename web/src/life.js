@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { palette } from './palette.js';
 import { box, cyl, part, rng } from './geometry.js';
-import { CAR_COLORS, STREETS, WIDE, pick } from './world.js';
+import { CAR_COLORS, WIDE, pick } from './world.js';
 import { ZEBRA_W, lanesMay } from './streets.js';
 
 const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the move than parked
@@ -108,7 +108,9 @@ function paths(roads, warp, hub) {
     if (cross === 0) return ix === ox && iz === oz ? 'straight' : null; // never a u-turn
     return cross > 0 ? 'right' : 'left';
   };
-  const fits = (I, O, m) => (m === 'straight' ? O.k === I.k : m === 'right' ? O.k === O.n - 1 : O.k === 0);
+  // Straight on into the same lane; where a crossing has its own lane rules (I.may, interchange.js turnsAt) into the
+  // lane in the same place across the road, as the number of lanes changes there.
+  const fits = (I, O, m) => (m === 'straight' ? (I.may ? Math.abs(O.off - I.off) < 0.1 : O.k === I.k) : m === 'right' ? O.k === O.n - 1 : O.k === 0);
   const curve = (N, I, O, m) => {
     const a = lineOf(I, I.to), b = lineOf(O, O.from), y0 = heightAt(I, I.to), y1 = heightAt(O, O.from), pts = [];
     if (N.type === 'round') {
@@ -160,13 +162,16 @@ function paths(roads, warp, hub) {
       I.moves = N.outs.map((O) => ({ move: O.ramp ? 'right' : 'straight', out: O, edge: edge([I.edge.pts.at(-1), O.edge.pts[0]], { node: N, from: I, next: O.edge }) }));
       continue;
     }
-    const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left'));
-    let ok = options.filter(({ O, m }) => lanesMay(I.kind, I.k, I.n).includes(m) && fits(I, O, m));
+    const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left') && (!I.may || I.may.includes(m)));
+    let ok = options.filter(({ O, m }) => (I.may ?? lanesMay(I.kind, I.k, I.n)).includes(m) && fits(I, O, m));
     if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === Math.min(I.k, O.n - 1)); // where the boulevard narrows, its outer lane merges
     if (!ok.length) ok = options.filter(({ O, m }) => m !== 'straight' && fits(I, O, m));
     I.moves = ok.map(({ O, m }) => ({ move: m, out: O, edge: edge(curve(N, I, O, m), { node: N, from: I, next: O.edge }) }));
   }
-  // Self-check: every lane into a crossing has somewhere to go, or its cars would queue there for good.
+  // Self-checks: every lane into a crossing has somewhere to go, and no way through one is zero long (a car can never
+  // get past the end of one), or cars would queue there for good.
+  const zero = links.flatMap((L) => (L.moves ?? []).filter((mv) => mv.edge.len < 0.5).map(() => L));
+  console.assert(!zero.length, `traffic: ${zero.length} zero-length ways through crossings: ${zero.map((L) => L.end.key).join(', ')}`);
   const stuck = links.filter((L) => L.end && !L.moves.length);
   console.assert(!stuck.length, `traffic: ${stuck.length} lanes end with nowhere to go: ${stuck.map((L) => `${L.kind} along ${L.axis} at ${L.at.toFixed(1)} into ${L.end.key} (${L.end.type})`).join('; ')}`);
 }
@@ -185,7 +190,7 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     registry.set(N.key, N);
     N.box = new Set(); // cars on its connectors now
     N.holder = null; // at a crossing without lights: the one car allowed in
-    if (N.type !== 'yield' && N.type !== 'free') control(N);
+    if (!['yield', 'free', 'priority'].includes(N.type)) control(N);
   }
   paths(roads, warp, hub);
   const sources = links.filter((L) => L.out === 'source' || L.through);
@@ -256,6 +261,11 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     if ((last && last.d < CAR + 4) || (inBox && inBox.d < CAR + 3)) return false; // no room beyond: never block the crossing
     if (N.type === 'free') return true; // a split or merge on the highway
     if (mv.move !== 'straight' && t - (zebraUse.get(`${N.key}|${mv.out.axis}`) ?? -1e9) < 0.6) return false; // walkers on the zebra it turns across
+    if (N.type === 'priority') { // under the median ramps: the avenue goes on; the side street waits for a gap in it
+      if (WIDE.has(L.kind)) return true;
+      // Only the lanes it turns into matter, and only cars still coming: a queue standing there lets it in.
+      return [...N.box].every((b) => b.edge.next.link.dir !== mv.out.dir) && N.ins.every((O) => O.dir !== mv.out.dir || O.axis === L.axis || O.edge.cars.every((f) => f.v < 1 || O.edge.len - f.d > 30));
+    }
     if (N.type === 'yield') {
       if (c.stopped < 0.8 || N.holder || N.box.size) return false; // stop, look, one at a time
       N.holder = c;
@@ -374,7 +384,7 @@ function signals(kit, roads, warp, onFrame, clock) {
     return [x + shift[0], y, z + shift[1]];
   };
   for (const N of roads.nodes) {
-    if (N.type === 'yield' || N.type === 'free') continue;
+    if (['yield', 'free', 'priority'].includes(N.type)) continue;
     const groups = new Map();
     for (const I of N.ins) {
       const key = `${I.axis}${I.dir}`;
@@ -398,7 +408,7 @@ function signals(kit, roads, warp, onFrame, clock) {
         for (const [o, move] of over) heads.push({ p: at(axis, c + right * o, along, ground + HEAD.arm), face, N, axis, move });
       }
       if (wide && L.zebra) { // on the median's nose, for the left-turn lane
-        const nose = c + right * (STREETS[kind].median / 2 - 0.85);
+        const nose = c + right * (inner - 1.625 - 0.85); // half a lane in from the inner lane's centre: the median's edge
         posts.push([...at(axis, nose, along, ground + 0.12 + (HEAD.y + 0.8) / 2), HEAD.y + 0.8]);
         heads.push({ p: at(axis, nose - right * 0.25, along, ground + HEAD.y + 0.12), face, N, axis, move: protectedLeft ? 'left' : 'straight' });
       }
@@ -479,7 +489,7 @@ export function walkLight(x, z, axis, t) {
   return walkAt(registry.get(`${Math.round(x)}|${Math.round(z)}`), axis, t);
 }
 function walkAt(N, axis, t) {
-  if (!N || N.type === 'yield') return 99;
+  if (!N || N.type === 'yield' || N.type === 'priority') return 99;
   if (N.type === 'round') return 0;
   const { phase, into } = phaseAt(N, t);
   return phase.axis !== axis && !phase.left ? phase.green + AMBER - into - 1 : 0;
