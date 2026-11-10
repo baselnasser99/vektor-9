@@ -11,7 +11,7 @@ import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
 import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
-import { onRamp } from './interchange.js';
+import { onRamp, plan, turnsAt, underRamps } from './interchange.js';
 
 export function buildStreets(kit, layout, root) {
   const { lines, cross, lo, hi } = layout, rand = rng(31);
@@ -99,6 +99,7 @@ export const stopAt = (l) => zebraAt(l) + ZEBRA_W / 2 + 1.2; // the stop line's 
 // or all but one (walkers cross there, people.js network). Across a mid street beside a main street, about three in
 // five; across a main street beside a mid street, or where two mid streets meet, rarely.
 export function hasZebra(layout, axis, line, l, side) {
+  if (layout.expressway && axis === 'x' && underRamps(layout, { axis, c: line.c }, l)) return false; // under the median ramps, no lights: nobody crosses the avenue there
   const [jx, jz] = axis === 'x' ? [l.j, line.j] : [line.j, l.j], arm = (axis === 'x' ? 0 : 2) + (side > 0 ? 1 : 0);
   const draw = layout.chance(jx, jz, arm + 2);
   if (!line.mid && !l.mid) return layout.chance(jx, jz, 0) > 0.55 || Math.floor(layout.chance(jx, jz, 1) * 4) !== arm;
@@ -139,10 +140,11 @@ function crossings(ctx, s, segs) {
   const { paint, lo, hi } = ctx, R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
   for (const g of segs) {
     if (!carries(g.kind)) continue;
-    const { edge, median } = STREETS[g.kind], inner = median / 2;
+    const { edge } = STREETS[g.kind];
     for (const [l, dir] of [[g.l1, 1], [g.l0, -1]]) { // dir: the way the cars approaching l on this segment drive
-      const stop = l.c - dir * (round(ctx, s, l) ? RING_OUT + 0.3 : stopAt(l)), flow = s.line.flow?.[s.axis];
-      if (g.kind === 'oneway') { if (dir === flow && stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, 2 * edge - 0.3, paint, stop, 0, 0.01); } // all its lanes come in
+      const stop = l.c - dir * (round(ctx, s, l) ? RING_OUT + 0.3 : stopAt(l)), flow = s.line.flow?.[s.axis], inner = medianHalf(ctx, s, g.kind, l);
+      if (ctx.layout.expressway && WIDE.has(g.kind) && underRamps(ctx.layout, s, l)) { /* the avenue has priority there: no stop line */ }
+      else if (g.kind === 'oneway') { if (dir === flow && stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, 2 * edge - 0.3, paint, stop, 0, 0.01); } // all its lanes come in
       else if (stop > lo && stop < hi) lay(ctx, s, 0.45, 0.02, edge - inner - 0.3, paint, stop, dir * right * (inner + 0.15 + (edge - inner - 0.3) / 2), 0.01);
       const at = l.c - dir * zebraAt(l);
       if (round(ctx, s, l) || inRing(ctx, s, at) || at < lo || at > hi) continue; // none on the outside of the city: no one walks there
@@ -171,7 +173,8 @@ function block(ctx, s, a, b, l0, l1) {
       const o = dir * right * off, len = Math.min(14, b - a);
       lay(ctx, s, len, 0.01, 1.3, wear, end - dir * len / 2, o, 0.005);
       if (!big || round(ctx, s, l) || b - a <= 16) return;
-      const can = exits(ctx, s, l, dir, k), moves = lanesMay(s.kind, k, lanes.length).filter((m) => can[m]);
+      const may = (ctx.layout.expressway && turnsAt(ctx.layout, s.axis, s.c, l.c, dir, k, s.kind)) || lanesMay(s.kind, k, lanes.length);
+      const can = exits(ctx, s, l, dir, k), moves = may.filter((m) => can[m]);
       if (!moves.length && can.merge) moves.push('straight'); // nothing else open: it merges straight on (life.js)
       if (moves.length) arrow(ctx, s, end - dir * 7, o, dir, moves);
     });
@@ -290,27 +293,46 @@ function kerbside(ctx, s) {
 // The boulevard's median between crossings l0 and l1: a kerbed, planted strip running up to each zebra with a
 // rounded nose, the zebra crossing it at grade between two pairs of bollards (a refuge for people waiting halfway),
 // and a few slim dark-leaved trees: the median should read as landscaping, not a forest. Short of each stop line
-// it narrows to a nose half a metre wide, leaving the inner lane as a left-turn lane (lanesMay).
+// it narrows to a nose half a metre wide, leaving the inner lane as a left-turn lane (lanesMay). Where the
+// expressway's median ramps run in the avenue's median (interchange.js), no trees under them; it stays narrow
+// (medianHalf) between them until they lift off its level, and runs on unbroken across the crossing under them.
 function medianStrip(ctx, s, inner, l0, l1) {
-  const { kit, root } = ctx, curb = kit.concrete(palette.roseGrey), bed = kit.concrete(palette.oliveGrey), steel = kit.steel(palette.charcoal, 0.6);
-  const end = (l) => (round(ctx, s, l) ? RING_OUT + 2 : zebraAt(l) + ZEBRA_W / 2 + 0.3);
-  const a = l0.c + end(l0), b = l1.c - end(l1);
-  if (b - a < 2 * inner) return;
-  lay(ctx, s, b - a - 2 * inner, 0.25, 2 * inner, curb, (a + b) / 2, 0, 0.12);
-  lay(ctx, s, b - a - 2 * inner, 0.04, 2 * inner - 0.7, bed, (a + b) / 2, 0, 0.26);
-  for (const v of [a + inner, b - inner]) { // the rounded noses
-    part(root, cyl(inner, inner, 0.25, 16), curb, ...lift(spot(s, v, 0), 0.12));
-    part(root, cyl(inner - 0.35, inner - 0.35, 0.04, 16), bed, ...lift(spot(s, v, 0), 0.26));
-  }
-  for (let v = a + 10; v < b - 8; v += s.kind === 'avenue' ? 14 : 28) tree(kit, root, ...spot(s, v, 0), 6, palette.mistTeal); // the avenue's wide median: a closer row
+  const { kit, root, layout } = ctx, curb = kit.concrete(palette.roseGrey), bed = kit.concrete(palette.oliveGrey), steel = kit.steel(palette.charcoal, 0.6);
+  const ix = layout.expressway && s.kind === 'avenue' && medianHalf(ctx, s, s.kind, l0) !== inner, shut = (l) => layout.expressway && underRamps(layout, s, l);
+  const end = (l) => (shut(l) ? 0 : round(ctx, s, l) ? RING_OUT + 2 : zebraAt(l) + ZEBRA_W / 2 + 0.3);
+  const strip = (a, b, r, roundA, roundB) => { // from a to b, r either side, rounded at either end
+    const [u, v] = [roundA ? a + r : a, roundB ? b - r : b];
+    if (v - u < 0.5) return;
+    lay(ctx, s, v - u, 0.25, 2 * r, curb, (u + v) / 2, 0, 0.12);
+    lay(ctx, s, v - u, 0.04, 2 * r - 0.7, bed, (u + v) / 2, 0, 0.26);
+    for (const [on, c] of [[roundA, u], [roundB, v]]) {
+      if (!on) continue;
+      part(root, cyl(r, r, 0.25, 16), curb, ...lift(spot(s, c, 0), 0.12));
+      part(root, cyl(r - 0.35, r - 0.35, 0.04, 16), bed, ...lift(spot(s, c, 0), 0.26));
+    }
+  };
+  const a = l0.c + end(l0), b = l1.c - end(l1), lifted = ix ? l0.c + 40 : a; // where the median ramps clear the strip's kerb
+  if (ix) strip(a, lifted + 0.3, medianHalf(ctx, s, s.kind, l0), true, false); // into the wide strip's nose
+  strip(lifted, b, inner, !shut(l0), !shut(l1));
+  const bare = (v) => layout.expressway && Math.abs(s.c - plan(layout).z0) < 1 && v > plan(layout).west.c && v < plan(layout).x0; // under the median ramps
+  for (let v = a + 10; v < b - 8; v += s.kind === 'avenue' ? 14 : 28) if (!bare(v)) tree(kit, root, ...spot(s, v, 0), 6, palette.mistTeal); // the avenue's wide median: a closer row
   for (const [l, dir] of [[l0, 1], [l1, -1]]) { // the zebras at this stretch's two ends
     if (round(ctx, s, l) || !hasZebra(ctx.layout, s.axis, s.line, l, dir)) continue;
-    for (const off of [-inner + 0.3, inner - 0.3]) for (const e of [-1, 1]) {
+    const r = medianHalf(ctx, s, s.kind, l);
+    for (const off of [-r + 0.3, r - 0.3]) for (const e of [-1, 1]) {
       const v = l.c + dir * (zebraAt(l) + e * (ZEBRA_W / 2 + 0.15));
       part(root, cyl(0.1, 0.1, 0.9, 8), steel, ...lift(spot(s, v, off), 0.45));
       part(root, cyl(0.105, 0.105, 0.08, 8), ctx.paint, ...lift(spot(s, v, off), 0.82)); // a reflective band
     }
   }
+}
+// Half the median's width on a stretch of `kind` of street s next to its crossing with l: as STREETS has it, but
+// where the median ramps come down beside it at the crossing they meet the boulevard at, a narrow strip between them.
+function medianHalf(ctx, s, kind, l) {
+  const { layout } = ctx, half = STREETS[kind].median / 2;
+  if (!layout.expressway || kind !== 'avenue' || s.axis !== 'x') return half;
+  const { z0, west } = plan(layout);
+  return Math.abs(s.c - z0) < 1 && Math.abs(l.c - west.c) < 1 ? 1.5 : half;
 }
 
 // Pedestrian street on segment g: the roadway paved over between crossings, with trees, planters and benches down
