@@ -85,15 +85,20 @@ function projector(kit, g, kind, [name, line, mark, ink, color], x, y, z, turn) 
   return m;
 }
 
-// Empty lot as a small plaza: paving, parked cars (some of them taxis), sometimes a kiosk with a sign.
+// Empty lot as a small plaza: paving, parked cars (some of them taxis), sometimes a kiosk with a sign. The cars are
+// drawn with the street's parked cars (life.js parkedCars); g.userData.parked holds them as [x, z, colour], facing +z.
 export function plaza(kit, rand, lit) {
   const g = new THREE.Group();
+  g.userData.parked = [];
   part(g, box(12.6, 0.2, 12.6, 1), kit.concrete(palette.slate), 0, 0.1, 0);
+  const spots = new Map(); // two rows of three spots, 4.4 m cars with room between; a spot drawn twice holds one car
   for (let k = Math.floor(2 + rand() * 4); k > 0; k--) {
-    const [x, z] = [-3.5 + Math.floor(rand() * 3) * 3.5, -4 + Math.floor(rand() * 3) * 4];
-    parkedCar(kit, g, x, z, rand);
+    const [x, z] = [-3.5 + Math.floor(rand() * 3) * 3.5, [-3.3, 2.3, 2.3][Math.floor(rand() * 3)]];
+    spots.set(`${x},${z}`, [x, z, pick(rand, CAR_COLORS)]);
   }
-  if (rand() < 0.5) {
+  const kiosk = rand() < 0.5;
+  for (const [key, car] of spots) if (!(kiosk && key === '3.5,2.3')) g.userData.parked.push(car); // the kiosk's corner
+  if (kiosk) {
     const warm = pick(rand, WARM);
     part(g, box(3, 2.6, 2.4, 1), kit.steel(palette.charcoal), 4, 1.5, 4);
     if (lit) {
@@ -102,11 +107,6 @@ export function plaza(kit, rand, lit) {
     }
   }
   return g;
-}
-
-function parkedCar(kit, g, x, z, rand) {
-  part(g, box(1.9, 1.1, 4.4, 1), kit.steel(pick(rand, CAR_COLORS), 0.5), x, 0.85, z);
-  part(g, box(1.7, 0.6, 2.4, 1), kit.glass(palette.charcoal), x, 1.7, z - 0.2);
 }
 
 // Construction site: bare concrete core in scaffolding, hoarding at street level, work lights, sometimes a tower crane.

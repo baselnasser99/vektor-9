@@ -142,6 +142,11 @@ export function buildCity(kit, snap) {
   if (layout.expressway) buildInterchange(kit, root, layout, snap); // the highway in on a viaduct, its ramps on the road land
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
 
+  // Parked cars for life.js parkedCars, in the world: the ring road's bays moved with the street, then the plazas'.
+  const parked = streets.parked.map(([x, z, heading]) => {
+    const [dx, dz] = warp(x, z, []);
+    return [x + dx, z + dz, heading];
+  });
   let flag = flagshipTower(snap, layout, signature, heavy); // -1 if none, or if it has no shaft to dress
   for (const i of hqTiles) {
     signature.delete(i);
@@ -203,6 +208,11 @@ export function buildCity(kit, snap) {
     lot.traverse((o) => { if (o.name === 'detail') small = o.userData.lod = sector; });
     if (small !== false && !detail.has(sector)) detail.set(sector, [pos(Math.floor(col / BLOCK) * BLOCK + BLOCK / 2), pos(Math.floor(row / BLOCK) * BLOCK + BLOCK / 2)]);
     settle(lot, warp);
+    for (const [x, z, color] of g.userData.parked ?? []) { // a plaza's cars, placed where the settled lot puts them
+      lot.updateMatrixWorld(true);
+      const at = g.localToWorld(new THREE.Vector3(x, 0.85, z)); // on its paving, 0.65 m up like the street's
+      parked.push([at.x, at.z, lot.rotation.y + g.rotation.y, at.y, color]);
+    }
     // Skybridge to the east neighbour in the same block when both are tall enough.
     const east = snap.tiles[i + 1];
     const linked = family === 'mega' && east?.f >= 16 ? 0.45 : 0.12; // megastructures link up more often
@@ -244,7 +254,7 @@ export function buildCity(kit, snap) {
     city.add(first);
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
-  return { city, details, warp, rail, hub: streets.hub, roads: streets.roads, parked: streets.parked, lines: streets.lines, edge: streets.hi,
+  return { city, details, warp, rail, hub: streets.hub, roads: streets.roads, parked, lines: streets.lines, edge: streets.hi,
     benches: streets.benches, lamps: streets.lamps, food: streets.food, hq: hq && { x: hq.x, z: hq.z, heading: hq.heading, sector: hq.sector, street: hq.street } };
 }
 
