@@ -363,7 +363,12 @@ function parkedCars(kit, geo, parked) {
     const c = pick(rand, CAR_COLORS);
     return car[4] ?? c;
   });
-  const cells = Map.groupBy(parked.map((car, i) => i), (i) => `${Math.floor(parked[i][0] / CHUNK)},${Math.floor(parked[i][1] / CHUNK)}`);
+  const cells = new Map(); // cell -> indices into parked, in order (Map keeps the cells in first-seen order)
+  parked.forEach(([x, z], i) => {
+    const key = `${Math.floor(x / CHUNK)},${Math.floor(z / CHUNK)}`;
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push(i);
+  });
   for (const ids of cells.values()) {
     const parts = [geo.paint, geo.glass, geo.tyres].map((geom, k) => new THREE.InstancedMesh(geom, mats[k], ids.length));
     ids.forEach((i, j) => {
