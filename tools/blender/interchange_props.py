@@ -47,7 +47,7 @@ def gantry():
     for y in (h - 0.15, h - 1.15):  # the truss's two chords
         for z in (-0.35, 0.35):
             block("steel", 2 * span + 0.5, 0.14, 0.14, at(ID, 0, y, z))
-    for k in range(-15, 16):  # verticals
+    for k in range(-7, 8):  # verticals, all on the truss (chords end at +-15.65)
         block("steel", 0.08, 1.0, 0.08, at(ID, k * 2.0, h - 0.65, 0.35), True)
         block("steel", 0.08, 1.0, 0.08, at(ID, k * 2.0, h - 0.65, -0.35), True)
     block("steel", 2 * span, 0.05, 1.2, at(ID, 0, h - 1.25, 0.9), True)  # walkway
@@ -84,7 +84,7 @@ def depot():
         block("titanium", 3.6, 3.7, 0.08, at(ID, x, 2.15, d / 2 + 0.12))
         for y in (0.9, 1.7, 2.5, 3.3):
             block("dark", 3.6, 0.04, 0.03, at(ID, x, y, d / 2 + 0.17), True)
-        block("lamp", 0.5, 0.12, 0.25, at(ID, x, 4.6, d / 2 + 0.25))  # work lamp
+        block("lamp", 0.5, 0.12, 0.25, at(ID, x, 4.765, d / 2 + 0.125))  # work lamp on the wall
     block("steel", w + 1.0, 0.15, 2.0, at(ID, 0, 4.9, d / 2 + 1.0))  # canopy
     block("interior", 0.9, 1.0, 0.05, at(ID, 5.4, 3.6, d / 2 + 0.03))  # office window
     block("dark", 0.9, 2.0, 0.06, at(ID, -5.4, 1.3, d / 2 + 0.03))  # side door
@@ -120,11 +120,12 @@ def monument():
         rings = [[(s * c + u * w, y, v * d) for u, v in diamond] for y, c, w, d in levels]
         loft("graphite", rings, smooth_angle=0)
         for (y0, c0, w0, _), (y1, c1, w1, _) in zip(levels, levels[1:], strict=False):
-            a, b = (s * (c0 - w0 + 0.02), y0, 0), (s * (c1 - w1 + 0.02), y1, 0)
+            # stop 1 cm under the tip, so the seam's cap is not coplanar with the top
+            a, b = (s * (c0 - w0 + 0.02), y0, 0), (s * (c1 - w1 + 0.02), min(y1, top - 0.01), 0)
             tube("glow_cyan", a, b, 0.05, False, 6)  # the seam up its inner edge
-        block("red", 0.18, 0.18, 0.18, at(ID, s * 0.75, top + 0.1, 0))
+        block("red", 0.18, 0.18, 0.18, at(ID, s * 0.75, top + 0.09, 0))  # sits on the tip
     block("titanium", 1.5, 0.14, 0.4, at(ID, 0, 9.0, 0))  # a tie across the gap
-    block("glow_cyan", 0.16, 0.6, 0.16, at(ID, 0, 8.55, 0))  # a light hung under it
+    block("glow_cyan", 0.16, 0.6, 0.16, at(ID, 0, 8.63, 0))  # a light hung from it
 
 
 PROPS = {"gantry": gantry, "wall": wall, "depot": depot, "stock": stock, "monument": monument}

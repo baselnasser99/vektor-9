@@ -236,10 +236,10 @@
 		{
 			"bufferView":4,
 			"componentType":5126,
-			"count":612,
+			"count":616,
 			"max":[
 				3.75,
-				22,
+				21.989999771118164,
 				3.75
 			],
 			"min":[
@@ -252,13 +252,13 @@
 		{
 			"bufferView":5,
 			"componentType":5126,
-			"count":612,
+			"count":616,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":6,
 			"componentType":5126,
-			"count":612,
+			"count":616,
 			"type":"VEC2"
 		},
 		{
@@ -307,12 +307,12 @@
 			"count":48,
 			"max":[
 				0.8400000333786011,
-				22.190000534057617,
+				22.18000030517578,
 				0.089998759329319
 			],
 			"min":[
 				-0.8400000333786011,
-				16.510000228881836,
+				16.5,
 				-0.090001679956913
 			],
 			"type":"VEC3"
@@ -397,104 +397,104 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":7344,
+			"byteLength":7392,
 			"byteOffset":9248,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":7344,
-			"byteOffset":16592,
+			"byteLength":7392,
+			"byteOffset":16640,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":4896,
-			"byteOffset":23936,
+			"byteLength":4928,
+			"byteOffset":24032,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":2856,
-			"byteOffset":28832,
+			"byteOffset":28960,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":3300,
-			"byteOffset":31688,
+			"byteOffset":31816,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":3300,
-			"byteOffset":34988,
+			"byteOffset":35116,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":2200,
-			"byteOffset":38288,
+			"byteOffset":38416,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1104,
-			"byteOffset":40488,
+			"byteOffset":40616,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":576,
-			"byteOffset":41592,
+			"byteOffset":41720,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":576,
-			"byteOffset":42168,
+			"byteOffset":42296,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":384,
-			"byteOffset":42744,
+			"byteOffset":42872,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":144,
-			"byteOffset":43128,
+			"byteOffset":43256,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":288,
-			"byteOffset":43272,
+			"byteOffset":43400,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":288,
-			"byteOffset":43560,
+			"byteOffset":43688,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":192,
-			"byteOffset":43848,
+			"byteOffset":43976,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":72,
-			"byteOffset":44040,
+			"byteOffset":44168,
 			"target":34963
 		}
 	],
 	"buffers":[
 		{
-			"byteLength":44112,
+			"byteLength":44240,
 			"uri":"ix_monument.bin"
 		}
 	]
