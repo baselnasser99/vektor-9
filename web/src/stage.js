@@ -89,13 +89,15 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
     controls.addEventListener('change', render);
     addEventListener('keydown', () => move(0.05)); // no frame loop: step once per key repeat
   } else updates.push((dt, t, raw) => move(Math.min(raw, 0.25))); // keys keep their pace on slow frames
-  addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
+  const resize = (w = innerWidth, h = innerHeight, ratio) => {
+    if (ratio) renderer.setPixelRatio(ratio), composer.setPixelRatio(ratio);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    composer.setSize(innerWidth, innerHeight);
+    renderer.setSize(w, h);
+    composer.setSize(w, h);
     render();
-  });
+  };
+  addEventListener('resize', () => resize());
 
   return {
     renderer, scene, camera, controls, render, still, far,
@@ -118,7 +120,7 @@ export function createStage({ span, fog, camera: [cx, cy, cz], target: [tx, ty, 
       scene.environment = pmrem.fromScene(scene, 0.02, 0.5, far, { position: new THREE.Vector3(...at) }).texture;
       scene.environmentIntensity = 0.6;
     },
-    bench: () => bench(renderer, scene, render, updates),
+    bench: () => bench(renderer, scene, render, updates, resize),
   };
 }
 
@@ -290,27 +292,41 @@ const GRADE = `vec3 grade(vec3 c, vec2 uv) {
   return g * (1.0 - 0.2 * pow(length(uv - 0.5) * 1.25, 2.0));
 }`;
 
-// ?bench in the URL: time 30 frames, log draw calls and triangles for one whole frame (scene, shadows and post
-// passes), which materials hold the most triangles, and what the per-frame updates cost on the CPU.
-function bench(renderer, scene, render, updates) {
-  if (!new URLSearchParams(location.search).has('bench')) return;
+// ?bench in the URL: draw calls and triangles for the startup frame (which also draws the shadows, once) and for a
+// steady frame (scene and post passes), then the median and p90 of 120 timed steady frames, the canvas size and
+// pixel ratio, which materials hold the most triangles, and what the per-frame updates cost on the CPU.
+// ?bench=800x500 draws exactly that many pixels (pixel ratio 1) instead of the window's, so runs in a pane that
+// changes width or pixel ratio compare.
+function bench(renderer, scene, render, updates, resize) {
+  const arg = new URLSearchParams(location.search).get('bench');
+  if (arg === null) return;
+  const pin = arg.match(/^(\d+)x(\d+)$/);
+  if (pin) resize(+pin[1], +pin[2], 1);
   const gl = renderer.getContext();
-  renderer.info.autoReset = false;
-  renderer.info.reset();
-  renderer.shadowMap.needsUpdate = true;
-  render();
-  const { calls, triangles } = renderer.info.render;
-  renderer.info.autoReset = true;
   // Reading a pixel back waits for the GPU to finish the frame; gl.finish() returns early on ANGLE (Windows), which
   // made the bench report a fraction of the real frame time.
   const px = new Uint8Array(4), wait = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-  wait();
-  const t0 = performance.now();
-  for (let i = 0; i < 30; i++) {
+  const count = (shadows) => {
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    renderer.shadowMap.needsUpdate = shadows;
     render();
     wait();
+    renderer.info.autoReset = true;
+    return `${renderer.info.render.calls} draw calls, ${(renderer.info.render.triangles / 1e6).toFixed(2)}M triangles`;
+  };
+  const startup = count(true), steady = count(false);
+  for (let i = 0; i < 10; i++) render(), wait(); // warm-up: late shader compiles, caches
+  const ms = [];
+  for (let i = 0; i < 120; i++) {
+    const t0 = performance.now();
+    render();
+    wait();
+    ms.push(performance.now() - t0);
   }
-  console.info(`bench: ${((performance.now() - t0) / 30).toFixed(1)} ms/frame, ${calls} draw calls, ${triangles} triangles per frame`);
+  ms.sort((a, b) => a - b);
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  console.info(`bench: median ${ms[60].toFixed(1)} ms, p90 ${ms[108].toFixed(1)} ms over 120 frames at ${size.x}x${size.y} (pixel ratio ${renderer.getPixelRatio()}); steady frame ${steady}; startup frame with shadows ${startup}`);
   const byMat = new Map();
   scene.traverse((o) => {
     if (!o.isMesh) return;
