@@ -499,7 +499,7 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
       if (!free.length || m?.seat?.taken) return null; // out of room, or a walker sat there first
       const look = dress(rand, weights);
       const p = { id: free.pop(), look, home: s, rand, ux: 0, uz: 0, y: 0.18, heading: 0, phase: rand() * 6.28, walk: 0, v: 0,
-        dev: 0, talk: 0, sit: 0, yaw: 0, pitch: 0, fwd: 0, recline: 0, cross: 0, tap: 0, pose: [0, 0, 0, 0], eat: 0, work: 0, lean: (rand() - 0.5) * 0.04, lat: 0, dirx: 0, dirz: 1,
+        dev: 0, talk: 0, sit: 0, yaw: 0, pitch: 0, fwd: 0, recline: 0, cross: 0, tap: 0, pose: [0, 0, 0, 0], eat: 0, work: 0, lean: (rand() - 0.5) * 0.04, lat: 0, latV: 0, dirx: 0, dirz: 1,
         fade: still ? 1 : 0, fadeTo: 1, mode: 'idle', act: 'stand', timer: 0, actTimer: 0, yawT: 0, pitchT: 0, talkT: 0,
         pts: [], k: 0, tail: -1, goal: -1, lane: 1.9 + rand() * 1.1, jit: (rand() - 0.5) * 2.4, back: rand() * 1.8,
         speed: look.speed, place: slot.spot, dist: 0, acc: 0 };
@@ -874,9 +874,17 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
     return err;
   }
 
-  // Walkers make room: oncoming people pass on their right, standing ones are walked round.
+  // Walkers make room: oncoming people pass on their right, standing ones are walked round. Each walker has a sideways
+  // offset it wants (lat's target: aside as someone comes near ahead, held while level with them, back to 0 once
+  // past) and eases toward it on a damped spring, quicker going aside than coming back, so nobody jumps.
   const grid = new Map(), cell = (x, z) => Math.floor(x / 2.5) * 73856093 ^ Math.floor(z / 2.5) * 19349663;
+  const AWAY = 0.6; // how far aside, m
+  const spring = (p, want, k, dt) => { // critically damped: no overshoot
+    p.latV += ((want - p.lat) * k - p.latV * 2 * Math.sqrt(k)) * dt;
+    p.lat += p.latV * dt;
+  };
   function avoid(dt) {
+    dt = Math.min(dt, 0.1); // the spring stays stable after a stall
     for (const list of grid.values()) list.length = 0; // the cells' lists are kept and refilled
     for (const p of live) {
       if (p.dist > 160) continue;
@@ -889,29 +897,36 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
     if (grid.size > 4000) grid.clear(); // after a long flight, forget empty cells
     for (const p of live) {
       if (p.dist > 160 || (p.mode !== 'walk' && p.mode !== 'wait')) continue;
-      if (p.approach) {
-        p.lat -= Math.sign(p.lat) * Math.min(Math.abs(p.lat), dt);
+      if (p.approach) { // into a seat or a door: back onto the line
+        spring(p, 0, 6, dt);
         continue;
       }
-      let push = 0;
+      let push = 0, near = 0;
       for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
-        const near = grid.get(cell(p.rx + i * 2.5, p.rz + j * 2.5));
-        if (near) for (const q of near) {
+        const list = grid.get(cell(p.rx + i * 2.5, p.rz + j * 2.5));
+        if (list) for (const q of list) {
           if (q === p) continue;
-          const dx = q.rx - p.rx, dz = q.rz - p.rz, ahead = dx * p.dirx + dz * p.dirz, side = -dx * p.dirz + dz * p.dirx;
+          const dx = q.rx - p.rx, dz = q.rz - p.rz;
           if (p.mode === 'wait') { // at the kerb: shuffle sideways off anyone too close
-            if (dx * dx + dz * dz < 0.42) push += side > 0 ? -1 : 1;
+            if (dx * dx + dz * dz < 0.42) push += -dx * p.dirz + dz * p.dirx > 0 ? -1 : 1;
             continue;
           }
-          if (ahead <= 0 || ahead > 2.6 || Math.abs(side) > 0.75) continue;
+          // Against the walker's own line, not where it stands now, so stepping aside does not lose sight of them.
+          const ux = q.rx - p.ux, uz = q.rz - p.uz, ahead = ux * p.dirx + uz * p.dirz, side = -ux * p.dirz + uz * p.dirx;
+          if (ahead <= -0.8 || ahead > 3 || Math.abs(side) > 0.9) continue;
           const oncoming = q.mode === 'walk' && q.dirx * p.dirx + q.dirz * p.dirz < -0.3;
-          push += oncoming ? 1 : side > 0 ? -1 : 1;
-          if (!oncoming && q.mode === 'walk' && ahead < 1.2) p.v = Math.min(p.v, q.v + 0.1); // no walking through
+          const w = Math.min(1, (3 - ahead) / 1.6); // 0 at 3 m ahead, full from 1.4 m to level
+          push += (oncoming || side - p.lat < 0.1 ? 1 : -1) * w; // round them on the side it is already on (none yet: right)
+          near = Math.max(near, w);
+          if (!oncoming && q.mode === 'walk' && ahead > 0 && ahead < 1.2) p.v = Math.min(p.v, q.v + 0.1); // no walking through
         }
       }
-      const most = p.mode === 'wait' ? 1.1 : 0.7; // walkers keep clear of the lamps and the walls
-      if (push) p.lat = Math.max(-most, Math.min(most, p.lat + Math.sign(push) * 0.9 * dt));
-      else if (p.mode === 'walk') p.lat -= Math.sign(p.lat) * Math.min(Math.abs(p.lat), 0.25 * dt);
+      if (p.mode === 'wait') {
+        p.latV = 0;
+        if (push) p.lat = Math.max(-1.1, Math.min(1.1, p.lat + Math.sign(push) * 0.9 * dt));
+        continue;
+      }
+      spring(p, push ? Math.sign(push) * AWAY * near : 0, push ? 7 : 1.5, dt); // never past AWAY: clear of lamps and walls
     }
   }
 
@@ -1004,7 +1019,7 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
       p.dist = Math.sqrt((x - c.x) ** 2 + (p.y + 0.9 - c.y) ** 2 + (z - c.z) ** 2);
       if (p.dist > CROWD.distance || p.fade <= 0) continue;
       let o = p.id * TEXELS * 4; // the shader's numbers (figures.js POSE), seven texels a person
-      arr[o++] = x; arr[o++] = p.y; arr[o++] = z; arr[o++] = p.heading;
+      arr[o++] = x; arr[o++] = p.y; arr[o++] = z; arr[o++] = p.heading - (p.v > 0.3 ? 0.6 * Math.atan(p.latV / p.v) : 0); // turned a little into a step aside
       arr[o++] = p.phase; arr[o++] = p.walk; arr[o++] = L.height; arr[o++] = L.build;
       arr[o++] = p.yaw; arr[o++] = p.dev; arr[o++] = p.talk; arr[o++] = p.sit;
       arr[o++] = L.A; arr[o++] = L.B; arr[o++] = L.C; arr[o++] = p.fade;

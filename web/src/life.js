@@ -345,25 +345,26 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
   onFrame(tick);
   for (const mesh of meshes) mesh.frustumCulled = false; // cars move far from where the meshes were created
   const g = new THREE.Group();
-  g.add(...meshes, signals(kit, roads, warp, onFrame, () => t), parkedCars(kit, geo, parked, warp));
+  g.add(...meshes, signals(kit, roads, warp, onFrame, () => t), parkedCars(kit, geo, parked));
   g.userData.clock = () => t; // the lights' time, for the pedestrian signals (walkLight)
   return g;
 }
 
-// Cars parked in the local streets' bays (streets.js block): the moving cars' model, unlit, one instanced mesh
-// per material. parked: [x, z, heading]; warp moves them with the street.
-function parkedCars(kit, geo, parked, warp) {
+// Parked cars: in the ring road's bays (streets.js block) and on the plazas (tiles.js plaza). The moving cars'
+// model, unlit, one instanced mesh per material. parked: [x, z, heading, y, colour] in the world (city.js); y
+// defaults to the road's, colour to one of CAR_COLORS.
+function parkedCars(kit, geo, parked) {
   const rand = rng(91), g = new THREE.Group(), m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
   const body = new THREE.InstancedMesh(geo.paint, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 }), Math.max(1, parked.length));
   const parts = [body, new THREE.InstancedMesh(geo.glass, kit.glass(palette.charcoal), body.count), new THREE.InstancedMesh(geo.tyres, kit.steel(palette.graphite, 0.8), body.count)];
-  const color = new THREE.Color(), shift = [0, 0], one = new THREE.Vector3(1, 1, 1);
-  parked.forEach(([x, z, heading], i) => {
-    warp(x, z, shift);
-    m.compose(new THREE.Vector3(x + shift[0], 0.65, z + shift[1]), q.setFromAxisAngle(up, heading), one);
-    for (const p of parts) p.setMatrixAt(i, m);
-    body.setColorAt(i, color.set(pick(rand, CAR_COLORS)));
+  const color = new THREE.Color(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  parked.forEach(([x, z, heading, y = 0.65, paint], i) => {
+    m.compose(p.set(x, y, z), q.setFromAxisAngle(up, heading), one);
+    for (const part of parts) part.setMatrixAt(i, m);
+    const c = pick(rand, CAR_COLORS); // drawn either way, so the bays keep their colours
+    body.setColorAt(i, color.set(paint ?? c));
   });
-  for (const p of parts) p.count = parked.length;
+  for (const part of parts) part.count = parked.length;
   g.add(...parts);
   return g;
 }
