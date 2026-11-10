@@ -335,7 +335,8 @@ function places(k, snap, layout, net, info, seats, food, lamps) {
     for (const f of food) {
       const v = axis === 'z' ? f.z : f.x;
       if (f.kind !== 'stall' || f.along !== axis || f.line !== lines[L].c || v < lo || v > hi) continue;
-      add([{ x: f.x - Math.sin(f.heading) * 0.6, z: f.z - Math.cos(f.heading) * 0.6, heading: f.heading }], ['work', 'work', 'work', 'talk']);
+      const [x, z] = f.place?.(f.x - Math.sin(f.heading) * 0.6, f.z - Math.cos(f.heading) * 0.6) ?? [f.x - Math.sin(f.heading) * 0.6, f.z - Math.cos(f.heading) * 0.6];
+      add([{ x, z, heading: f.heading + (f.turn ?? 0) }], ['work', 'work', 'work', 'talk']);
       const guests = seats.filter((st) => st.stall === f && st.rank === 1 && rand() < 0.4); // the rest are left for walkers
       if (guests.length) add(guests.map((st) => ({ ...sat(st), sit: !st.stand })), ['eat', 'eat', 'device', 'talk']);
     }
@@ -425,8 +426,10 @@ function seatsOf(benches, food, layout, net) {
     return { x, z, heading, fx, fz, along, L, v, sign, node: along === 'z' ? corner + alongNode * G : alongNode + corner * G,
       lane: (lane) => (along === 'z' ? [kerb + sign * lane, lv] : [lv, kerb + sign * lane]), taken: null, walkUp: true, ...extra };
   };
-  const out = benches.flatMap(([x, z, axis, sign], bench) => [-0.45, 0.45].map((d) =>
-    seat(axis === 'z' ? x : x + d, axis === 'z' ? z + d : z, facing(axis, sign), 0.5, axis, { bench })));
+  const out = benches.flatMap(([x, z, axis, sign], bench) => [-0.45, 0.45].map((d) => {
+    const at = [axis === 'z' ? x : x + d, axis === 'z' ? z + d : z]; // then where the settled bench puts it (city.js settleProps)
+    return seat(...(benches[bench].place?.(...at) ?? at), facing(axis, sign) + (benches[bench].turn ?? 0), 0.5, axis, { bench });
+  }));
   for (const f of food) if (f.kind === 'stool') {
     const st = seat(f.x, f.z, f.heading, -0.55, f.along, { table: f.table });
     const off = (u, w) => Math.abs(f.along === 'z' ? u - f.line : w - f.line); // distance from the walk's middle
@@ -437,11 +440,12 @@ function seatsOf(benches, food, layout, net) {
   // beside the counter each way (ranks 2 and 3, facing it), all reached round the stall's end (via) from the
   // sidewalk behind it. f.seats: the stall's own, for moving up the queue.
   for (const f of food) if (f.kind === 'stall') {
-    const dx = Math.sin(f.heading), dz = Math.cos(f.heading), at = (u, w) => [f.x + dz * u + dx * w, f.z - dx * u + dz * w];
+    // In the stall's frame, then where its settled model puts that (city.js settleProps).
+    const dx = Math.sin(f.heading), dz = Math.cos(f.heading), put = f.place ?? ((x, z) => [x, z]), at = (u, w) => put(f.x + dz * u + dx * w, f.z - dx * u + dz * w);
     const [cx, cz] = at(0, 0.6);
     f.seats = [[-1.05, 1.35, 1], [-0.55, 0.95, 1], [0.55, 0.95, 1], [1.05, 1.35, 1], [-1.75, 1.55, 2], [1.75, 1.55, 2],
       [-2.35, 1.8, 3], [2.35, 1.8, 3]].map(([u, w, rank]) => {
-      const [x, z] = at(u, w), sits = rank === 1 && Math.abs(u) < 1, heading = rank > 1 ? Math.atan2(cx - x, cz - z) : f.heading + Math.PI;
+      const [x, z] = at(u, w), sits = rank === 1 && Math.abs(u) < 1, heading = rank > 1 ? Math.atan2(cx - x, cz - z) : f.heading + Math.PI + (f.turn ?? 0);
       return seat(x, z, heading, sits ? -0.5 : 0, f.along, { stall: f, stand: !sits, rank, via: at(Math.sign(u) * 2.2, 1.45) });
     });
     out.push(...f.seats);

@@ -151,7 +151,7 @@ function crossings(ctx, s, segs) {
       if (!hasZebra(ctx.layout, s.axis, s.line, l, -dir)) continue;
       for (let off = -R + 0.6; off < R; off += 1.2) {
         if (Math.abs(off) < inner + 0.2) continue; // the median is a refuge, not paint
-        lay(ctx, s, ZEBRA_W, 0.02, 0.6, paint, at, off, 0.01);
+        lay(ctx, s, ZEBRA_W, 0.02, 0.6, paint, at, off, 0.01).userData.whole = true; // kept a rectangle in the old town (city.js settleProps)
       }
     }
   }
