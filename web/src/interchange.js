@@ -121,6 +121,58 @@ export function onRamp(layout, x, z) {
   return plan(layout).decks.some(({ pts }) => pts.some(([px, py, pz]) => py < 6 && Math.hypot(px - x, pz - z) < 6));
 }
 
+// Where polyline pts ([x, y, z]: a deck's points, or a lane's along one, `lift` m above it) crosses a main
+// street's sidewalk at street level: the low ends of the ramps, where people.js walkers cross them and life.js cars
+// give way. Each crossing is { key, axis, c, u0, u1, a, b }: the sidewalk runs along `axis` with its middle at c,
+// walkers are on the deck from u0 to u1 along it (anywhere across the sidewalk, measured along both of the deck's
+// edges at the width buildInterchange draws it, plus half a metre), and cars along pts are on the sidewalk from a
+// to b metres along them. The key is the same from a deck's points as from its lane's, so walkers and cars agree
+// on it. Not inside a street crossing (no sidewalk there).
+export function sidewalkCrossings(layout, pts, lift = 0) {
+  const out = [], { lines, cross } = layout, at = [0];
+  for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][2] - pts[i - 1][2]));
+  const street = pts[0][1] - lift < 1 ? 0 : at.at(-1), half = at.map((v) => 1.8 + 2.2 * Math.min(1, Math.abs(v - street) / 25)); // as buildInterchange
+  const edges = [-1, 1].map((s) => pts.map((p, i) => {
+    const [nx, nz] = normal(pts, i);
+    return [p[0] + s * nx * half[i], p[1], p[2] + s * nz * half[i]];
+  }));
+  // The stretches of polyline P inside the band |P[across] - c| < w / 2 at street level: [{ i, t0, t1 }] per run,
+  // from segment i at t0 to its last segment's t1 (as [segment, t] pairs).
+  const runs = (P, across, c, w) => {
+    const found = [];
+    let run = null;
+    for (let i = 1; i < P.length; i++) {
+      const [p, q] = [P[i - 1], P[i]], [v0, v1] = [p[across] - c, q[across] - c];
+      let [t0, t1] = v0 === v1 ? (Math.abs(v0) < w / 2 ? [0, 1] : [1, 0]) : [(-w / 2 - v0) / (v1 - v0), (w / 2 - v0) / (v1 - v0)].sort((m, n) => m - n);
+      [t0, t1] = [Math.max(0, t0), Math.min(1, t1)];
+      if (t0 >= t1 || Math.max(p[1], q[1]) - lift > 2) {
+        run = null;
+        continue;
+      }
+      if (!run) found.push((run = { from: [i, t0] }));
+      run.to = [i, t1];
+      if (t1 < 1) run = null;
+    }
+    return found;
+  };
+  const point = (P, [i, t], k) => P[i - 1][k] + (P[i][k] - P[i - 1][k]) * t;
+  for (const l of lines) for (const axis of ['x', 'z']) for (const s of [-1, 1]) {
+    const c = l.c + s * (l.w / 2 - l.side / 2), across = axis === 'x' ? 2 : 0, along = 2 - across;
+    for (const run of runs(pts, across, c, l.side)) {
+      const us = [run.from, run.to].map((st) => point(pts, st, along)), mid = (us[0] + us[1]) / 2;
+      if (cross.some((m) => Math.abs(mid - m.c) < m.w / 2 - m.side)) continue; // in a crossing: no sidewalk
+      for (const E of edges) for (const r of runs(E, across, c, l.side)) { // the deck's edges where they cross the same band near it
+        const ue = [r.from, r.to].map((st) => point(E, st, along));
+        if (Math.min(...ue) < Math.max(...us) + 15 && Math.max(...ue) > Math.min(...us) - 15) us.push(...ue);
+      }
+      const [x, z] = [(point(pts, run.from, 0) + point(pts, run.to, 0)) / 2, (point(pts, run.from, 2) + point(pts, run.to, 2)) / 2];
+      const a = at[run.from[0] - 1] + (at[run.from[0]] - at[run.from[0] - 1]) * run.from[1], b = at[run.to[0] - 1] + (at[run.to[0]] - at[run.to[0] - 1]) * run.to[1];
+      out.push({ key: `ramp|${Math.round(x)}|${Math.round(z)}`, axis, c, u0: Math.min(...us) - 0.5, u1: Math.max(...us) + 0.5, a, b });
+    }
+  }
+  return out;
+}
+
 // Lane rules where the median ramps meet the boulevard (at `west`) and under them (at `mid`, right in and right
 // out: the median is closed): the moves lane k of a street of `kind`, along `axis` with centre line c, heading dir,
 // may make at the crossing `at` along it; null where the usual rules hold (streets.js lanesMay). At `west` the
@@ -395,8 +447,9 @@ function centre(pts) {
 // street the ramps split off and join its outer lanes, and the slip roads off the cross streets' near lanes. The
 // median ramps run between the expressway's inner lanes and the boulevard's at `west`, whose lanes there follow
 // turnsAt and go straight on lane by lane by their place across the road (so the avenue's lanes keep their line),
-// and the crossing at `mid` gives priority to the avenue. Every split and merge is a 'free' node: cars go on
-// without stopping, waiting only for room ahead.
+// and the crossing at `mid` gives priority to the avenue. Every split and merge is a 'free' node: at a split cars go
+// on without stopping, waiting only for room ahead; at a merge they take turns, a ramp or slip waiting for a gap
+// (life.js merging). Each ramp also gives way to walkers where its low end crosses a sidewalk (walks).
 export function interchangeLanes(roads, layout, reach) {
   const { links, nodes } = roads, { xs, z0, xa, edge, ramps, median, slips, west, mid } = plan(layout), lanes = STREETS.boulevard.lanes;
   const node = (x, z) => {
@@ -455,7 +508,7 @@ export function interchangeLanes(roads, layout, reach) {
   const ends = [[rIn, split, cut(street(-1, rIn.to[1] + z0), rIn.to[1] + z0)], [rLoopIn, end, cut(street(1, rLoopIn.to[1] + z0), rLoopIn.to[1] + z0)],
     [rLoopOut, cut(street(1, rLoopOut.from[1] + z0), rLoopOut.from[1] + z0), begin], [rOut, cut(street(-1, rOut.from[1] + z0), rOut.from[1] + z0), join]];
   const ramp = (pts, start, endN, extra) => wire({ kind: 'boulevard', k: 0, n: 1, dir: 1, y: 0, from: 0, to: 1, start, end: endN, ramp: true,
-    pts: pts.map(([x, y, z]) => [x, y + 0.65, z]), ...extra });
+    pts: pts.map(([x, y, z]) => [x, y + 0.65, z]), walks: sidewalkCrossings(layout, pts), ...extra }); // walks: where it gives way to walkers
   for (const [r, start, endN] of ends) {
     const s = slips.find((p) => p.ramp === r), share = r === rIn ? 3 : undefined; // inbound, half go right and half round the loop
     if (!s) {

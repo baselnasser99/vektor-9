@@ -44,6 +44,12 @@ Renderer only; the sim and the snapshot are unchanged.
 - **Barriers** are left out where a deck is at road level on any street, and where two decks part or meet.
 - **What could break:** merges onto ramps and the cross streets still don't look for a gap. Walkers pass through a slip road's low end where it crosses a cross street's sidewalk, as at the main street. The expressway's inbound traffic grows by one lane.
 
+## Amendment (2026-11-11): merges take turns, ramps give way to walkers
+Renderer only; no geometry, sim or snapshot change. Both "what could break" items above were reproduced headless (`tests/js/interchange.test.mjs`) before being fixed.
+- **Merges** (a `free` node with two lanes in): each lane's cars wait their turn at a line far enough back that a car there clears the other lane by its width (the lanes run into one, so close to the node they overlap). One car at a time goes in, the first let go first, and of two waiting the one there longer. A ramp or slip also waits for a gap in the other lane's moving cars, for 4 s at most, then zips in. On seed 7 over ten minutes, the frames with two cars' bodies overlapping at a merge went from 1,289 to 0 (seeds 3 and 11: 740 and 290 to 0).
+- **Walkers at the ramps' low ends:** where a ramp crosses the main street's sidewalk (`sidewalkCrossings`), walkers wait until no car is on it, then cross; cars short of it stop a metre before it while a walker is on it. A car held there by walkers alone for 5 s goes next: walkers not yet on the crossing let it pass, so a steady stream of them never stops a ramp for good. Slip roads cross only mid-street sidewalks, which nobody walks along yet.
+- **Turn order never overrides safety:** patience and who waited longer decide only who goes first. A car goes only into an empty merge with room in the lane out, and the other lane's cars always stop at their own wait line, which clears its path. Tests cover simultaneous arrival, a blocked lane out and its release, sustained congestion and a heavy walker stream.
+
 ## Alternatives considered
 - **Out on the dirt past the edge:** built first, as a bypass with a cloverleaf. Dropped: the user wanted it inside the city.
 - **A flyover inside one street's corridor:** no building moves and no schema change, but no loops.

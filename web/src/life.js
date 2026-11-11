@@ -10,6 +10,11 @@ const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the mov
 const CAR = 4.4; // car length
 const AMBER = 3; // the last seconds of each go phase
 const ALL_RED = 2; // every approach red at the end of each phase, so the crossing clears
+const CLEAR = 2.3; // m between two lanes' centre lines where cars side by side clear each other (cars are 1.9 m wide)
+const GAP = 25; // m: a ramp or slip waits while a moving car on the other lane is this much closer than its own wait
+const PATIENCE = 4; // s a ramp or slip waits for that gap before it zips in
+const FRESH = 0.6; // s a walker's step on a crossing stays fresh for the cars giving way (as at zebras)
+const YIELD = 5; // s a car gives way to walkers at a ramp crossing before the next ones let it go
 const fract = (v) => v - Math.floor(v);
 
 // One controller per lit crossing (streets.js roadNet nodes of type 'signal' and 'round'), shared by its cars,
@@ -53,6 +58,17 @@ function goLeft(N, axis, move, t) {
 }
 const registry = new Map(); // node key -> node, for walkLight
 export const zebraUse = new Map(); // `${node key}|${axis}` -> the lights' time a walker was last on that zebra (people.js)
+const rampWalks = new Map(); // a ramp crossing's key (interchange.js sidewalkCrossings) -> [[lane, crossing]], for rampClear
+const rampWaits = new Map(); // a ramp crossing's key -> the lights' time a car last stood at it, held by walkers alone
+
+// Whether walkers may step onto the ramp crossing `key` at time t (people.js): no car's body on it, nor in the node
+// just before it, and no car that walkers have held there for YIELD seconds. Cars short of it stop while walkers
+// are on it (traffic, giveWay).
+export function rampClear(key, t) {
+  if (t - (rampWaits.get(key) ?? -1e9) < FRESH) return false;
+  return (rampWalks.get(key) ?? []).every(([L, w]) => L.edge.cars.every((c) => c.d + CAR / 2 < w.a - 0.5 || c.d - CAR / 2 > w.b + 0.5)
+    && [...(L.start?.box ?? [])].every((c) => c.edge.next !== L.edge));
+}
 
 // A city car, the everyday cousin of IKARO's executive cars (aircars.js): a low painted body, a dark glass cabin set
 // back under a painted roof, four dark wheels, a white headlight bar and a red tail bar. Origin at the middle of the
@@ -168,6 +184,34 @@ function paths(roads, warp, hub) {
     if (!ok.length) ok = options.filter(({ O, m }) => m !== 'straight' && fits(I, O, m));
     I.moves = ok.map(({ O, m }) => ({ move: m, out: O, edge: edge(curve(N, I, O, m), { node: N, from: I, next: O.edge }) }));
   }
+  // Merges (a free node with two lanes in), where the two lanes run into one: where each lane's cars wait their turn
+  // (L.hold, metres short of the node), far enough back that a car's nose there clears the other lane by a car's
+  // width and a little; and if that would leave it standing on a sidewalk it crosses (L.walks), short of that.
+  const near = (E, x, z) => { // distance from (x, z) to polyline E
+    let best = Infinity;
+    for (let i = 1; i < E.pts.length; i++) {
+      const [a, b] = [E.pts[i - 1], E.pts[i]], dx = b[0] - a[0], dz = b[2] - a[2];
+      const f = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[2]) * dz) / Math.max(1e-9, dx * dx + dz * dz)));
+      best = Math.min(best, Math.hypot(x - a[0] - f * dx, z - a[2] - f * dz));
+    }
+    return best;
+  };
+  const on = (E, d) => { // the point d along polyline E, as [x, z]
+    let i = 1;
+    while (i < E.cum.length - 1 && E.cum[i] < d) i++;
+    const f = Math.max(0, Math.min(1, (d - E.cum[i - 1]) / Math.max(1e-9, E.cum[i] - E.cum[i - 1]))), a = E.pts[i - 1], b = E.pts[i];
+    return [a[0] + (b[0] - a[0]) * f, a[2] + (b[2] - a[2]) * f];
+  };
+  for (const N of nodes) {
+    if (N.type !== 'free' || N.ins.length < 2) continue;
+    for (const I of N.ins) {
+      const others = N.ins.filter((O) => O !== I).map((O) => O.edge), E = I.edge;
+      let nose = E.len; // where its nose may stand
+      while (nose > CAR && others.some((O) => near(O, ...on(E, nose)) < CLEAR)) nose -= 0.5;
+      for (const w of I.walks ?? []) if (nose > w.a - 0.5 && nose - CAR < w.b + 0.5) nose = w.a - 1;
+      I.hold = Math.max(0, E.len - nose - 0.3);
+    }
+  }
   // Self-checks: every lane into a crossing has somewhere to go, and no way through one is zero long (a car can never
   // get past the end of one), or cars would queue there for good.
   const zero = links.flatMap((L) => (L.moves ?? []).filter((mv) => mv.edge.len < 0.5).map(() => L));
@@ -186,6 +230,7 @@ function paths(roads, warp, hub) {
 export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
   const { nodes, links } = roads, rand = rng(77);
   registry.clear();
+  zebraUse.clear(); // walkers' marks are on this traffic's clock, which starts again here
   for (const N of nodes) {
     registry.set(N.key, N);
     N.box = new Set(); // cars on its connectors now
@@ -193,6 +238,9 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     if (!['yield', 'free', 'priority'].includes(N.type)) control(N);
   }
   paths(roads, warp, hub);
+  rampWalks.clear();
+  rampWaits.clear();
+  for (const L of links) for (const w of L.walks ?? []) rampWalks.set(w.key, [...(rampWalks.get(w.key) ?? []), [L, w]]);
   const sources = links.filter((L) => L.out === 'source' || L.through);
   const choose = (L) => {
     if (!L.moves?.length) return null;
@@ -253,13 +301,48 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     });
     for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
   };
+  // At a merge (interchange.js), into lane O from lane L: one car at a time, the first let go first, so two never
+  // meet where their lanes run into one; and a ramp or slip road also waits for a gap in the other lane's moving
+  // cars, which go on without slowing, for PATIENCE seconds at most: past that (a queue creeping through the merge
+  // never leaves a gap) it zips in, and the other lane's next car waits at its own line, so neither starves. Patience
+  // and turn order only decide who goes first, never whether it is safe: a car goes only into an empty merge, with
+  // room in the lane out, and the other lane's cars, never let go while it is, always stop at their own line, which
+  // clears its path (L.hold).
+  const merging = (c, L, O, N) => {
+    for (const b of N.box) if (b.edge.next === O.edge) return false;
+    for (const I of N.ins) {
+      const f = I === L ? null : I.edge.cars[0];
+      if (!f || f.choice?.out !== O) continue;
+      if (f.cleared) return false;
+      const toLine = I.edge.len - f.d - CAR / 2 - 0.3 - (I.hold ?? 0); // its nose to its own wait line
+      if (f.stopped > c.stopped && toLine < 1) return false; // both waiting: the one there longer first
+      if (L.ramp && c.stopped < PATIENCE && f.v > 1 && toLine < GAP) return false;
+    }
+    return true;
+  };
+  // Walkers on a ramp's crossing (interchange.js sidewalkCrossings, people.js): a car short of it, on that ramp or
+  // on the lane into it, stops a metre before it. room: how far the car may go; returns it, less if it must stop.
+  // A car held there by walkers alone for YIELD seconds is marked waiting (rampWaits), and walkers not yet on the
+  // crossing let it go first (rampClear), so a steady stream of them never stops the ramp for good.
+  const giveWay = (c, E, room) => {
+    for (const [R, from] of [[E.link, 0], [c.choice?.out, E.len + (c.choice?.edge.len ?? 0)]]) {
+      for (const w of R?.walks ?? []) {
+        if (t - (zebraUse.get(w.key) ?? -1e9) > FRESH) continue;
+        const gap = from + w.a - 1 - (c.d + CAR / 2); // its nose to a metre short of the crossing
+        if (gap <= -0.5) continue; // already on it: it drives on off it
+        if (gap < 1 && room > gap + 1 && c.stopped > YIELD) rampWaits.set(w.key, t);
+        room = Math.min(room, Math.max(0, gap));
+      }
+    }
+    return room;
+  };
   // Whether car c, at the stop line of link L, may go into the crossing now on its chosen move.
   const mayGo = (c, L, dist, t) => {
     const mv = c.choice, N = L.end;
     if (!mv) return false;
     const last = mv.out.edge.cars.at(-1), inBox = mv.edge.cars.at(-1);
     if ((last && last.d < CAR + 4) || (inBox && inBox.d < CAR + 3)) return false; // no room beyond: never block the crossing
-    if (N.type === 'free') return true; // a split or merge on the highway
+    if (N.type === 'free') return N.ins.length < 2 || merging(c, L, mv.out, N); // a split goes on; a merge takes turns
     if (mv.move !== 'straight' && t - (zebraUse.get(`${N.key}|${mv.out.axis}`) ?? -1e9) < 0.6) return false; // walkers on the zebra it turns across
     if (N.type === 'priority') { // under the median ramps: the avenue goes on; the side street waits for a gap in it
       if (WIDE.has(L.kind)) return true;
@@ -300,11 +383,13 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
           room = E.len - c.d + (nextE ? (lastNext ? lastNext.d - CAR - 2 : nextE.len) : Infinity);
           const L = E.link;
           if (L?.end && !c.cleared) {
-            const dist = E.len - c.d - CAR / 2 - 0.3; // to where its nose meets the stop line
+            const dist = E.len - c.d - CAR / 2 - 0.3 - (L.hold ?? 0); // to where its nose meets the stop line (at a merge, its wait)
             if (dist < 4 && mayGo(c, L, dist, t)) c.cleared = true;
             else room = Math.min(room, Math.max(0, dist));
           }
         }
+        if (lead && E.link?.hold && !c.cleared) room = Math.min(room, Math.max(0, E.len - c.d - CAR / 2 - 0.3 - E.link.hold)); // behind a car let go into a merge, it still waits its own turn
+        if (E.link) room = giveWay(c, E, room);
         c.v = Math.min(c.speed, Math.max(0, room) * 1.2, c.v + 5 * dt); // ease into the gap; pick up speed gently
         c.stopped = c.v < 0.3 ? c.stopped + dt : 0;
         c.d += c.v * dt;
