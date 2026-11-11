@@ -9,7 +9,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
-import { city, localSeries, series, snapshot } from './harness.mjs';
+import { city, fixture, localSeries, series, snapshot } from './harness.mjs';
 import { cityLayout, cityPlan, hqCut } from '../../web/src/city.js';
 import { ROLES, masterplan } from '../../web/src/masterplan.js';
 import { CARS } from '../../web/src/world.js';
@@ -178,7 +178,7 @@ describe('closable approaches keep the streets working when built over', () => {
   }
   test('most of them were closable, so were built over', () => assert.ok(built >= 5, `${built} of 9`));
   test('seed 3: its approach is not closable, and building it over anyway leaves a dead end', () => {
-    const [approach, , fresh] = overBuilt(snapshot(3), null, true);
+    const [approach, , fresh] = overBuilt(fixture('sim-v1-seed3-t288.json.gz'), null, true); // seed 3, tick 288, version 1
     assert.equal(approach.closable, false);
     assert.ok(fresh.length > 0, 'the guard should be needed here');
   });
