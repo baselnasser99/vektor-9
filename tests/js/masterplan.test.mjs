@@ -5,9 +5,11 @@
 // described: a test builds it over to check that `closable` means what it says, but nothing in the city does.
 // Run: node --import ./tests/js/three-loader.mjs --test "tests/js/*.test.mjs"
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
-import { city, series, snapshot } from './harness.mjs';
+import { city, localSeries, series, snapshot } from './harness.mjs';
 import { cityLayout, cityPlan, hqCut } from '../../web/src/city.js';
 import { ROLES, masterplan } from '../../web/src/masterplan.js';
 import { CARS } from '../../web/src/world.js';
@@ -187,12 +189,9 @@ describe('closable approaches keep the streets working when built over', () => {
 // three-day run like the other seeds (every 6 hours).
 describe('roles across ticks', () => {
   let changed = 0;
-  const local = (k) => `snapshots/${String(k).padStart(6, '0')}.json`;
   for (const seed of SEEDS) {
     test(`seed ${seed}`, () => {
-      const snaps = seed === 7 && existsSync(local(4032)) && JSON.parse(readFileSync(local(4032))).seed === 7
-        ? Array.from({ length: 15 }, (_, d) => JSON.parse(readFileSync(local(d * 288))))
-        : series(seed, 864, 72);
+      const snaps = (seed === 7 && localSeries(7, 14 * 288, 288)) || series(seed, 864, 72);
       const plans = snaps.map(planOf), first = plans[0];
       const fixed = (p, s) => p.matches[s].filter((r) => FIXED.includes(r));
       const moving = (p, s) => p.matches[s].filter((r) => r === 'corporate' || r === 'frontier');
@@ -205,4 +204,16 @@ describe('roles across ticks', () => {
     });
   }
   test('some role changed over the runs, so the rule above was exercised', () => assert.ok(changed > 0));
+  test('the local history is used only when all of it is there', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'v9-history-'));
+    const put = (tick, seed = 7) => writeFileSync(join(dir, `${String(tick).padStart(6, '0')}.json`), JSON.stringify({ seed, tick }));
+    assert.equal(localSeries(7, 4032, 288, join(dir, 'absent')), null); // no snapshots folder
+    put(4032);
+    assert.equal(localSeries(7, 4032, 288, dir), null); // only the latest snapshot
+    for (let d = 0; d < 14; d++) put(d * 288);
+    assert.equal(localSeries(7, 4032, 288, dir).length, 15); // the whole history
+    assert.equal(localSeries(3, 4032, 288, dir), null); // another seed's history
+    put(288, 3);
+    assert.equal(localSeries(7, 4032, 288, dir), null); // a mixed folder
+  });
 });
