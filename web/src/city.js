@@ -305,7 +305,7 @@ export function buildCity(kit, snap) {
 
 // Where the headquarters' campus covers the mid street it straddles: that corridor, along the axis it runs, over
 // the campus's depth. Returns layout.cut(l, axis, v).
-function hqCut({ pos, mids }, hq) {
+export function hqCut({ pos, mids }, hq) {
   const along = hq.heading === 0 || hq.heading === Math.PI ? 'z' : 'x'; // the mid street runs from the front street back
   const deep = hq.cells.map(([c, r]) => (along === 'z' ? r : c)), sector = Math.floor((along === 'z' ? hq.cells[0][0] : hq.cells[0][1]) / BLOCK);
   const [v0, v1] = [pos(Math.min(...deep)) - TILE / 2, pos(Math.max(...deep)) + TILE / 2];

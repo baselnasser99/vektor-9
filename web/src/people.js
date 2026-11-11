@@ -24,7 +24,8 @@ import * as THREE from 'three';
 import { css, ui } from './palette.js';
 import { rng } from './geometry.js';
 import { crossing } from './city.js';
-import { walkLight, zebraUse } from './life.js';
+import { rampClear, walkLight, zebraUse } from './life.js';
+import { plan, sidewalkCrossings } from './interchange.js';
 import { BLOCK, CARS, STREETS, TILE, WIDE } from './world.js';
 import { ZEBRA_W, hasZebra, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
@@ -74,8 +75,9 @@ const HAIR = { hairBlack: 5, hairBrown: 4, hairAsh: 1, hairBleach: 0.6, hairRed:
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length)];
 const groupBy = (list, key) => [...list.reduce((m, x) => m.set(key(x), [...(m.get(key(x)) ?? []), x]), new Map()).values()];
-// Whether a kerb stop's light gives enough walk time left to reach the next stop (life.js walkLight).
-const canCross = ({ light, need }, t) => walkLight(light.x, light.z, light.axis, t) > need;
+// Whether a kerb stop's light gives enough walk time left to reach the next stop (life.js walkLight), or, at a
+// ramp's crossing, whether no car is on it (life.js rampClear).
+const canCross = ({ light, need, ramp }, t) => (ramp ? rampClear(ramp, t) : walkLight(light.x, light.z, light.axis, t) > need);
 function weighted(rand, table) {
   const keys = Object.keys(table), total = keys.reduce((s, k) => s + table[k], 0);
   let r = rand() * total;
@@ -105,7 +107,7 @@ function dress(rand, weights) {
 
 // The walking network: corner nodes X + Z * G (X = 2 * sector column + 0 west / 1 east, Z the same for rows), the
 // sidewalk and crossing links between them, shortest routes between every pair, and ground heights.
-function network(layout) {
+export function network(layout) {
   const { n, pos, lines } = layout, S = n / BLOCK, G = 2 * S, N = G * G, h = S / 2, hub = lines[h].c;
   const e0 = [], e1 = []; // each sector's kerb lines, the same along both axes
   for (let b = 0; b < S; b++) {
@@ -124,13 +126,21 @@ function network(layout) {
   // A sidewalk along `axis` from sector corner to sector corner, on the side of main street M, crosses its
   // sector's mid street (layout.mids) on the zebra in line with it: waiting at the kerb for the walkers' light where
   // the mid street carries cars and the crossing has lights (walkLight; at crossings without lights cars give way),
-  // straight over an alley, a market lane or the headquarters' campus. Points as in cross below.
+  // straight over an alley, a market lane or the headquarters' campus; and over the low end of any ramp that crosses
+  // the sidewalk (the interchange), once no car is on it, the cars short of it then giving way. Points as in cross below.
+  const ramps = layout.expressway ? plan(layout).decks.flatMap((deck) => sidewalkCrossings(layout, deck.pts)) : [];
   const side = (axis, b, M, from, to) => (p) => {
     const m = layout.mids[b], [f, g] = [node(from.id, p.lane), node(to.id, p.lane)], [u0, u1] = axis === 'x' ? [f[0], g[0]] : [f[1], g[1]];
     const d = Math.sign(u1 - u0), lateral = axis === 'x' ? f[1] : f[0], pt = (u, wait, tag) => (axis === 'x' ? [u, lateral, wait, tag] : [lateral, u, wait, tag]);
     const cars = CARS.has(layout.kindAt(m, axis === 'x' ? 'z' : 'x', M.c)), near = m.c - d * (kerbOf(m) + 0.45), far = m.c + d * (kerbOf(m) + 0.45);
     const light = cars && (axis === 'x' ? { x: m.c, z: M.c, axis: 'z' } : { x: M.c, z: m.c, axis: 'x' });
-    return [pt(near, light && { light, need: Math.abs(far - near) / p.speed + 1.5 }), pt(far, null, light && zebraKey(light))];
+    const pts = [pt(near, light && { light, need: Math.abs(far - near) / p.speed + 1.5 }), pt(far, null, light && zebraKey(light))];
+    for (const w of ramps) {
+      if (w.axis !== axis || Math.abs(lateral - w.c) > 3 || w.u0 < Math.min(u0, u1) || w.u1 > Math.max(u0, u1)) continue;
+      pts.push(pt(d > 0 ? w.u0 : w.u1, { ramp: w.key }), pt(d > 0 ? w.u1 : w.u0, null, w.key));
+    }
+    const along = axis === 'x' ? 0 : 1;
+    return pts.sort((q, r) => (q[along] - r[along]) * d);
   };
   for (let K = 0; K < G; K++) for (let b = 0; b < S; b++) {
     const M = lines[(K >> 1) + (K & 1)];
