@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from sim import rules as R
+from sim.rng import choice, randint, randrange
 from sim.state import apply_power, new_city, new_tile
 from sim.step import step, tick_rng
 
@@ -32,10 +33,10 @@ def chaotic_city(seed):
     rng = random.Random(seed)
     tiles = []
     for _ in range(R.SIZE * R.SIZE):
-        kind = rng.choice(R.KINDS)
-        target = rng.randint(1, R.FLOORS_MAX) if kind in ("build", "house") else 0
-        floors = rng.randrange(target) if kind == "build" else target
-        people = rng.randint(0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0
+        kind = choice(rng, R.KINDS)
+        target = randint(rng, 1, R.FLOORS_MAX) if kind in ("build", "house") else 0
+        floors = randrange(rng, target) if kind == "build" else target
+        people = randint(rng, 0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0
         tiles.append(new_tile(kind, rng, floors, target, people))
     return {**new_city(seed), "tiles": tiles, "power": apply_power(tiles)}
 
@@ -65,6 +66,7 @@ CASES = {
     "seed7-day": (lambda: new_city(7), DAY, (0, 1, 12, 96, DAY), False),
     "seed3-day": (lambda: new_city(3), DAY, (0, 1, 12, 96, DAY), False),
     "seed11-day": (lambda: new_city(11), DAY, (0, 1, 12, 96, DAY), False),
+    "seed7-3days": (lambda: new_city(7), 3 * DAY, (DAY - 1, DAY, DAY + 1, 2 * DAY, 3 * DAY), False),
     "seed5-marks": (lambda: new_city(5), 24, (1, 2, 12, 24), True),
     "chaotic-seed2": (lambda: chaotic_city(2), 48, (0, 1, 12, 48), False),
     "seed9-lone-market": (lambda: lone_market(9), 48, (0, 48), False),

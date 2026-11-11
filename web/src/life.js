@@ -211,6 +211,18 @@ function paths(roads, warp, hub) {
       for (const w of I.walks ?? []) if (nose > w.a - 0.5 && nose - CAR < w.b + 0.5) nose = w.a - 1;
       I.hold = Math.max(0, E.len - nose - 0.3);
     }
+    // Ways through that come within CLEAR of each other (joining, crossing, or one lane in splitting apart, where
+    // two lanes in widen into more lanes out): for each pair, how far along its own way a car must be before its
+    // body is clear of the other's path (Infinity: not until it has left the way).
+    const ways = N.ins.flatMap((I) => I.moves.map((m) => m.edge));
+    for (const A of ways) {
+      A.clears = new Map();
+      for (const B of ways) {
+        let last = -1;
+        if (B !== A) for (let d = 0; d <= A.len; d += 0.5) if (near(B, ...on(A, d)) < CLEAR) last = d;
+        if (last >= 0) A.clears.set(B, last + CAR / 2 >= A.len ? Infinity : last + CAR / 2);
+      }
+    }
   }
   // Self-checks: every lane into a crossing has somewhere to go, and no way through one is zero long (a car can never
   // get past the end of one), or cars would queue there for good.
@@ -307,12 +319,14 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
   // never leaves a gap) it zips in, and the other lane's next car waits at its own line, so neither starves. Patience
   // and turn order only decide who goes first, never whether it is safe: a car goes only into an empty merge, with
   // room in the lane out, and the other lane's cars, never let go while it is, always stop at their own line, which
-  // clears its path (L.hold).
+  // clears its path (L.hold). Where two lanes widen into more (the interchange's east end), ways to different lanes
+  // out cross or split apart: a way that comes near this car's (clears) counts like one into the same lane out.
   const merging = (c, L, O, N) => {
-    for (const b of N.box) if (b.edge.next === O.edge) return false;
+    const mine = c.choice.edge;
+    for (const b of N.box) if (b.edge.next === O.edge || b.d < (b.edge.clears?.get(mine) ?? -1)) return false;
     for (const I of N.ins) {
       const f = I === L ? null : I.edge.cars[0];
-      if (!f || f.choice?.out !== O) continue;
+      if (!f?.choice || (f.choice.out !== O && !f.choice.edge.clears?.has(mine))) continue;
       if (f.cleared) return false;
       const toLine = I.edge.len - f.d - CAR / 2 - 0.3 - (I.hold ?? 0); // its nose to its own wait line
       if (f.stopped > c.stopped && toLine < 1) return false; // both waiting: the one there longer first

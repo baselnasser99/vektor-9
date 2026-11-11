@@ -4,6 +4,7 @@ import random
 
 from sim import rules as R
 from sim.cycles import blackout_window, wave
+from sim.rng import choice, randint
 from sim.state import (
     SECTORS,
     apply_power,
@@ -69,7 +70,7 @@ def height_cap(x, y, tiles):
 
 
 def new_build(x, y, tiles, rng, tick, low=R.FLOORS_MIN):
-    return new_tile("build", rng, target=rng.randint(low, height_cap(x, y, tiles)), tick=tick)
+    return new_tile("build", rng, target=randint(rng, low, height_cap(x, y, tiles)), tick=tick)
 
 
 def built_percent(tiles):
@@ -143,7 +144,7 @@ def step(state, marks, rng):
             elif declining:
                 t["p"] = max(0, t["p"] - R.DECLINE_LOSS)
             elif can_grow and has_market:
-                t["p"] = min(t["f"] * R.PEOPLE_PER_FLOOR, t["p"] + rng.randint(0, R.GROWTH))
+                t["p"] = min(t["f"] * R.PEOPLE_PER_FLOOR, t["p"] + randint(rng, 0, R.GROWTH))
             if t["p"] > t["f"] * R.PEOPLE_PER_FLOOR:
                 if rng.random() < R.OVERCROWD_DECAY_CHANCE:
                     t["f"] -= 1
@@ -186,7 +187,7 @@ def step(state, marks, rng):
             and houses_near(*xy(i), 1)
         ]
         if spots:
-            i = rng.choice(spots)
+            i = choice(rng, spots)
             tiles[i] = new_tile("plant", rng, tick=tick)
             events.append(event("plant_opened", *xy(i)))
 

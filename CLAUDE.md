@@ -32,6 +32,7 @@ Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5
 
 - `step(state, marks, rng)` stays pure and deterministic: no `datetime.now()`, no unseeded randomness, no I/O.
 - The snapshot JSON (see ADR-0003 once written) is the contract between sim and renderer. Schema changes need a branch, a version bump, and tests.
+- Renderer tests that assert one seed's specific outcome read a frozen fixture from `tests/fixtures/` (via `fixture()` in `tests/js/harness.mjs`), not a fresh sim run, so a new simulation version cannot change what they test.
 - The renderer draws only what the snapshot says. Ambient life (people, cars, steam, crane motion) is browser-only, never stored, and must stay consistent with the snapshot (ADR-0002).
 - All colors come from `web/src/palette.js`, which mirrors the style guide. No hard-coded colors elsewhere.
 - Visitor input is never free text. Marks are enums plus coordinates, validated server-side; each mark has an ID and is applied at most once.

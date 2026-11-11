@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 
 // textures.js draws on 2D canvases; here every canvas call is a no-op.
 const ctx2d = new Proxy(function () {}, {
@@ -40,6 +41,12 @@ export function snapshot(seed) {
     if (snap.seed === 7) return snap;
   }
   return series(seed, 288, 288).at(-1);
+}
+
+// A frozen snapshot from tests/fixtures (gzipped JSON). A test that asserts one seed's specific outcome reads one of
+// these, not a fresh run of the sim, so a new simulation version does not change what it tests.
+export function fixture(name) {
+  return JSON.parse(gunzipSync(readFileSync(join('tests', 'fixtures', name))));
 }
 
 // The local history of a seed in `dir`: the snapshots of every `every`-th tick from 0 to `ticks`, or null unless every
