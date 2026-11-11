@@ -24,7 +24,7 @@ Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5
 - Install: `uv sync`
 - Run the simulation locally (N ticks → snapshots): `uv run python -m sim --ticks 288 --seed 7 --out snapshots`
 - Serve the site locally: `uv run python tools/serve.py` from the repo root (caching off), then open `http://localhost:8000/web/` (needs `snapshots/004032.json`; `web/sample.html` shows two buildings up close; add `?bench` to log frame time (`?bench=1000x625` pins the canvas to that many pixels so runs compare), `?rain=0..1` to preview rain, `?view=x,y,z,tx,ty,tz` to set the camera, `?crowd` to open the crowd settings (or press P), `?crowd=off` to hide people)
-- Tests: `uv run pytest` (the sim); `node --import ./tests/js/three-loader.mjs --test "tests/js/*.test.mjs"` (the renderer's traffic and walkers, headless; needs Node 22+)
+- Tests: `uv run pytest` (the sim); `node --import ./tests/js/three-loader.mjs --test "tests/js/*.test.mjs"` (the renderer's traffic, walkers and masterplan, headless; needs Node 22+)
 - Lint/format: `uv run ruff check .` and `uv run ruff format .` (CI runs `ruff format --check .`)
 - CDK synth / diff: not yet
 
