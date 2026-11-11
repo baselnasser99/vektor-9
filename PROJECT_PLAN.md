@@ -4,8 +4,8 @@
 **What it is:** A passion project. A sunlit, hazy cyberpunk city, seen in 3D from above, that grows, decays, and rebuilds itself every five minutes on AWS, whether anyone is watching or not.
 **Goals, in order:**
 1. Fun to build and endlessly refinable visually.
-2. Hands-on practice for the AWS Solutions Architect Associate exam, with real architecture decisions documented.
-3. Quietly impressive to anyone who finds it: live, polished, honest about how it works.
+2. A complete serverless system on AWS: scheduled compute, object storage behind a CDN, monitoring and alerting, all defined as code, with each architecture decision recorded in an ADR.
+3. Live and transparent: the running city, its history and its cost are public, and every figure about it comes from a measurement.
 
 ## 1. The pitch
 
@@ -118,9 +118,9 @@ EventBridge Scheduler (every 5 min) ─▶ Tick Lambda ◀───────�
 - Check which AWS free plan the account is on; design to run cheaply after it ends.
 - README publishes the real monthly cost from the actual bill.
 
-## 5. Exam skills map
+## 5. Architecture concepts by feature
 
-| Feature | AWS services | SAA domain |
+| Feature | AWS services | Well-Architected focus |
 | --- | --- | --- |
 | City served worldwide, private bucket | S3, CloudFront, OAC | Secure, high-performing |
 | The heartbeat | EventBridge Scheduler, Lambda, reserved concurrency | Resilient |
@@ -133,7 +133,7 @@ EventBridge Scheduler (every 5 min) ─▶ Tick Lambda ◀───────�
 | No stored keys | IAM roles, least privilege, GitHub OIDC | Secure |
 | Whole stack as code | CDK / CloudFormation | All |
 
-Every non-obvious choice gets a short ADR in `docs/adr/`, written the way an exam question is answered: requirements first, then the cheapest design that meets them.
+Every non-obvious choice gets a short ADR in `docs/adr/`: requirements first, then the simplest and cheapest design that meets them, with the alternatives considered.
 
 ## 6. Art direction
 
@@ -141,9 +141,9 @@ See **`docs/STYLE_GUIDE.md`**: a richly detailed neon cyberpunk night, dark gunm
 
 ## 7. Milestones
 
-Each milestone ends with something visible. The grad program starts in January 2027; aim to finish M0–M2 before then, then continue at a relaxed pace.
+Each milestone ends with something visible.
 
-| Milestone | What you get | Pairs with exam topic |
+| Milestone | What you get | Architecture concepts |
 | --- | --- | --- |
 | **M0a: Foundation** | Repo, Python project setup, tests, linting, CI on GitHub Actions | GitHub Actions basics |
 | **M0b: The city, as data** | `sim/` v1 with the five tile types and invariant tests; snapshot schema (ADR-0003); a CLI that runs N ticks and writes snapshots to disk | (Python only) |
@@ -155,7 +155,7 @@ Each milestone ends with something visible. The grad program starts in January 2
 | **M4: Visitors** | API Gateway, mark Lambda, DynamoDB conditional writes, SQS, throttling | API Gateway, SQS, DynamoDB |
 | **M5: Control room** | CloudWatch metrics and alarm, SNS email, public control-room page | CloudWatch, SNS |
 | **M6: Timelapse** | Nightly timelapse render; optional Step Functions | Step Functions |
-| **Ongoing** | Detail and polish, new tile types and events, day-night cycle | Whatever you're studying |
+| **Ongoing** | Detail and polish, new tile types and events, day-night cycle | As new features need them |
 
 Design work (M0d onward) is meant to be continuous: small daily refinements are encouraged once the data-to-3D pipeline exists.
 
@@ -171,7 +171,7 @@ Design work (M0d onward) is meant to be continuous: small daily refinements are 
 ## 9. README plan
 
 - Hero GIF and a live link at the top.
-- One-paragraph pitch, then "How this city runs": architecture diagram and the exam skills map.
+- One-paragraph pitch, then "How this city runs": architecture diagram and the table of architecture concepts by feature.
 - Links to ADRs, the style guide, the control room, and real monthly cost.
 - "Simulated city, invented names" disclosure.
 - Honest limitations.
