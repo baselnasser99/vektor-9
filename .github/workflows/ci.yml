@@ -18,3 +18,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --import ./tests/js/three-loader.mjs --test "tests/js/*.test.mjs"
