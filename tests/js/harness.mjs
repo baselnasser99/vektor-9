@@ -15,8 +15,7 @@ const ctx2d = new Proxy(function () {}, {
 globalThis.document ??= { createElement: () => ({ width: 1, height: 1, getContext: () => ctx2d }) };
 
 const THREE = await import('three');
-const { cityLayout, crossing, hqCut } = await import('../../web/src/city.js');
-const { hqSite } = await import('../../web/src/headquarters.js');
+const { cityPlan } = await import('../../web/src/city.js');
 const { buildStreets } = await import('../../web/src/streets.js');
 const { outOfTown } = await import('../../web/src/desert.js');
 const { traffic } = await import('../../web/src/life.js');
@@ -40,9 +39,14 @@ export function snapshot(seed) {
     const snap = JSON.parse(readFileSync(local));
     if (snap.seed === 7) return snap;
   }
+  return series(seed, 288, 288).at(-1);
+}
+
+// A fresh run of the sim for a seed: the snapshots of every `every`-th tick from 0 to `ticks`.
+export function series(seed, ticks, every) {
   const out = mkdtempSync(join(tmpdir(), `v9-seed${seed}-`));
-  execFileSync('uv', ['run', 'python', '-m', 'sim', '--ticks', '288', '--seed', String(seed), '--out', out], { stdio: 'ignore' });
-  return JSON.parse(readFileSync(join(out, readdirSync(out).sort().at(-1))));
+  execFileSync('uv', ['run', 'python', '-m', 'sim', '--ticks', String(ticks), '--seed', String(seed), '--out', out], { stdio: 'ignore' });
+  return readdirSync(out).sort().filter((_, k) => k % every === 0).map((f) => JSON.parse(readFileSync(join(out, f))));
 }
 
 const still = (x, z, out) => {
@@ -50,12 +54,13 @@ const still = (x, z, out) => {
   return out;
 };
 
-// Everything the circulation tests need for a snapshot: the layout as buildCity sets it up (the HQ's cut), the
-// streets, the road graph with the interchange's lanes, the walking network, and running traffic with a manual
-// clock: run(seconds) steps it at 0.1 s, calling each(t) after every step.
-export function city(snap) {
-  const layout = cityLayout(snap), hq = hqSite(snap, layout, new Set(crossing(snap).corners));
-  if (hq) layout.cut = hqCut(layout, hq);
+// Everything the circulation tests need for a snapshot: the layout as buildCity sets it up (city.js cityPlan: the
+// HQ's cut, the masterplan), the streets, the road graph with the interchange's lanes, the walking network, and
+// running traffic with a manual clock: run(seconds) steps it at 0.1 s, calling each(t) after every step.
+// adjust(layout, hq), if given, changes the layout before the streets are built (a test trying a street change).
+export function city(snap, adjust) {
+  const { layout, hq } = cityPlan(snap);
+  adjust?.(layout, hq);
   const streets = buildStreets(kit, layout, new THREE.Group());
   const roads = outOfTown(streets.roads, streets.hi, layout);
   const net = network(layout);
