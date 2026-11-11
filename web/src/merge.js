@@ -58,6 +58,9 @@ function bake(buckets, warp) {
       // Raw arrays with the matrix math inlined: every part is built in code, so no attribute is interleaved.
       const p = g.attributes.position.array, n = g.attributes.normal.array, t = g.attributes.uv.array, count = p.length / 3;
       const m = matrixWorld.elements, q = normalMatrix.getNormalMatrix(matrixWorld).elements;
+      // A part scaled to nothing on an axis has no normal matrix (three gives all zeros): its normals would be zero,
+      // NaN in the shader, and bloom spreads a few NaN pixels into screen-sized black blocks.
+      console.assert(q.some((v) => v !== 0), `merge: a ${material.name || material.type} part is scaled flat; build it with a real size`);
       // Placements are affine, so the divide below is by exactly 1 and skipping it changes no bits.
       const affine = m[3] === 0 && m[7] === 0 && m[11] === 0 && m[15] === 1;
       for (let i = 0, o = base * 3; i < count * 3; i += 3, o += 3) {
