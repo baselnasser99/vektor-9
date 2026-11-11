@@ -1,0 +1,3 @@
+# Proposals
+
+These are working proposals and audits, not decisions. The AWS M1 documents (revision 2: `AWS_READINESS.md`, `AWS_M1_ARCHITECTURE.md`, `AWS_COST_MODEL.md`, `AWS_M1_BACKLOG.md`) are approved in direction: a serverless stack on EventBridge Scheduler, Lambda, S3, CloudFront, CloudWatch and SNS, defined in CDK. Of the urban documents (`URBAN_AUDIT.md`, `URBAN_MASTERPLAN.md`, `URBAN_DEPENDENCIES.md`, `AUDIT_PLAN.md`, the two SVG diagrams and `urban-audit/`), Direction B, the masterplan table, is approved, and step 3a of it is built. Accepted decisions live in `docs/adr/`; where a proposal and an ADR disagree, the ADR wins.

@@ -42,5 +42,6 @@ Working tree: clean | dirty (list paths)
 
 - Inspect real state (`git status`, `git log`) before writing; never rely on memory.
 - If the tree is dirty, list every changed path and ask whether to make a WIP commit. Don't commit on your own.
+- Handoff updates are docs-only commits on `main`, pushed only with the owner's approval. Local `main` tracks `origin/main` exactly: no local-only commits.
 - No secrets, AWS account IDs, or personal data in handoff notes.
 - If files can't be written, print the handoff in chat and say clearly it was not saved.

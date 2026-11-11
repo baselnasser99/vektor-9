@@ -48,3 +48,4 @@ Vektor-9 is a passion project: a cyberpunk city simulation that advances every 5
 - Simulation rules, snapshot schema, infra, IAM, API: branch + PR, with tests and a short note on what could break, be abused, or cost money. Run `/ship` before proposing the PR.
 - New architecture decision → add an ADR.
 - At checkpoints or when context runs low: `/handoff`. New session: `/pickup`. Protocol: `docs/process/SESSION_HANDOFF.md`.
+- Handoff updates are docs-only commits on `main`, pushed only with my approval. Local `main` tracks `origin/main` exactly: no local-only commits.
