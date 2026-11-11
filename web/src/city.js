@@ -13,6 +13,7 @@ import { park, railGround, railLine, railway, verge, works } from './terrain.js'
 import { buildInterchange, hasInterchange } from './interchange.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite } from './headquarters.js';
+import { masterplan } from './masterplan.js';
 import { BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp), and the street corridors between them. Across the
@@ -175,13 +176,21 @@ function settleProps(root, warp, food, benches) {
   }
 }
 
-export function buildCity(kit, snap) {
-  const layout = cityLayout(snap), { n, pos, inTown } = layout, root = new THREE.Group();
-  const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
-  // The headquarters (headquarters.js): its 24 tiles are drawn as one campus, and nothing else lands on them; the
-  // mid street it straddles stops at the campus (layout.cut), so streets.js paves it over.
-  const hq = hqSite(snap, layout, new Set(crossing(snap).corners)), hqTiles = hq?.tiles ?? new Set();
+// The plan buildCity draws from, shared with the headless tests (tests/js/harness.mjs): the street layout; the
+// headquarters' site (headquarters.js), whose 24 tiles are drawn as one campus with nothing else on them, and the
+// mid street it straddles stopping at the campus (layout.cut), so streets.js paves it over; and the masterplan
+// (masterplan.js, layout.plan), which nothing reads yet.
+export function cityPlan(snap) {
+  const layout = cityLayout(snap), hq = hqSite(snap, layout, new Set(crossing(snap).corners));
   if (hq) layout.cut = hqCut(layout, hq);
+  layout.plan = masterplan(snap, layout, hq);
+  return { layout, hq };
+}
+
+export function buildCity(kit, snap) {
+  const { layout, hq } = cityPlan(snap), { n, pos, inTown } = layout, root = new THREE.Group();
+  const rails = snap.tiles.flatMap((t, i) => (t.k === 'rail' ? [[pos(i % n), pos(Math.floor(i / n))]] : []));
+  const hqTiles = hq?.tiles ?? new Set();
   const warp = cityWarp(snap, layout, railLine(rails)), streets = buildStreets(kit, layout, root);
   if (layout.expressway) buildInterchange(kit, root, layout, snap); // the highway in on a viaduct, its ramps on the road land
   const signature = signatureTowers(snap), heavy = heavyTowers(snap, layout, signature), shops = storefrontTiles(snap), towers = new Map(), near = surroundings(snap, layout), detail = new Map(); // sector -> centre
