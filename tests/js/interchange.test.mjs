@@ -4,7 +4,7 @@
 // Run: node --import ./tests/js/three-loader.mjs --test "tests/js/*.test.mjs"
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
-import { city, snapshot } from './harness.mjs';
+import { city, fixture, snapshot } from './harness.mjs';
 import { plan, sidewalkCrossings } from '../../web/src/interchange.js';
 import { rampClear, zebraUse } from '../../web/src/life.js';
 
@@ -194,8 +194,8 @@ const quiet = (f) => {
 const lineOf = (I) => I.edge.len - CAR / 2 - 0.3 - (I.hold ?? 0); // where a car's centre stands at lane I's wait line
 
 describe('merge scenarios (seed 7, every merge)', () => {
-  const merges = () => {
-    const C = quiet(() => city(snapshot(7)));
+  const merges = (snap = snapshot(7)) => {
+    const C = quiet(() => city(snap));
     return { C, list: C.roads.nodes.filter((N) => N.type === 'free' && N.ins.length > 1) };
   };
 
@@ -214,8 +214,9 @@ describe('merge scenarios (seed 7, every merge)', () => {
     for (const [N, pair] of cars) for (const x of pair) assert.ok(!N.ins.some((I) => I.edge.cars.includes(x)), `${N.key}: a car never got through`);
   });
 
-  test('downstream blockage: with the lane out blocked nobody enters; released, both queues drain, no overlap', () => {
-    const { C, list } = merges();
+  // On a snapshot (default seed 7 fresh from the sim): queues at every merge that stands apart.
+  const blockage = (snap) => () => {
+    const { C, list } = merges(snap?.());
     // Merges that share no lane with another (one merge's lane out can be the next one's lane in), so emptying and
     // blocking one does not disturb another.
     const lanes = (N) => [...N.ins, ...N.outs];
@@ -237,15 +238,46 @@ describe('merge scenarios (seed 7, every merge)', () => {
     assert.equal(worst, 0, 'cars overlapped while queued at a blocked merge');
     assert.equal(entered, 0, 'a car went into a merge whose lane out was blocked');
     for (const { O, blocker } of setup) O.edge.cars.splice(O.edge.cars.indexOf(blocker), 1);
+    const through = new Set(); // queued cars that went into their merge (one may drive on round town and come back)
     C.run(120, () => {
-      for (const { N } of setup) worst = Math.max(worst, overlapsAt(N));
+      for (const { N, queued } of setup) {
+        worst = Math.max(worst, overlapsAt(N));
+        for (const x of queued) if (N.box.has(x)) through.add(x);
+      }
     });
     assert.equal(worst, 0, 'cars overlapped while the queues drained');
     for (const { N, queued } of setup) {
-      const left = queued.filter((x) => N.ins.some((I) => I.edge.cars.includes(x)));
+      const left = queued.filter((x) => !through.has(x));
       assert.equal(left.length, 0, `${N.key}: ${left.length} of ${queued.length} queued cars still waiting two minutes after the release`);
     }
-  });
+  };
+  test('downstream blockage: with the lane out blocked nobody enters; released, both queues drain, no overlap', blockage());
+  // Regression (simulation version 2, seed 7): a car from the queue at ix|342|-79 got through, drove round town and
+  // was back in a lane in when the two minutes ended.
+  test('downstream blockage on frozen seed 7 (version 2)', blockage(() => fixture('sim-v2-seed7-t288.json.gz')));
+
+  // Regression (simulation version 2, seeds 7 and 3): where two lanes in widen into three out (ix|477|10), every lane
+  // in may take any lane out, so ways to different lanes out cross or split apart. Two cars arriving together on
+  // every pair of ways: one goes first, no overlap, both get through.
+  for (const name of ['sim-v2-seed7-t288.json.gz', 'sim-v2-seed3-t288.json.gz']) {
+    test(`widening merge, every pair of ways, frozen ${name}`, () => {
+      const { C, list } = merges(fixture(name)), wide = list.filter((N) => N.outs.length > N.ins.length);
+      assert.ok(wide.length > 0, 'no merge widens into more lanes');
+      for (const N of wide) for (const A of N.outs) for (const B of N.outs) {
+        empty(N);
+        const [I, J] = N.ins, pair = [put(I, A, Math.max(1, lineOf(I) - 12), 8), put(J, B, Math.max(1, lineOf(J) - 12), 8)];
+        const through = new Set();
+        let worst = 0;
+        C.run(30, () => {
+          worst = Math.max(worst, overlapsAt(N));
+          for (const x of pair) if (N.box.has(x)) through.add(x);
+        });
+        const ways = `${N.key} in0 to out${N.outs.indexOf(A)}, in1 to out${N.outs.indexOf(B)}`;
+        assert.equal(worst, 0, `${ways}: two cars overlapped`);
+        assert.equal(through.size, 2, `${ways}: a car never got through`);
+      }
+    });
+  }
 
   test('sustained congestion: an unbroken stream on one lane; the ramp still zips in, without overlap or hard braking', () => {
     const { C, list } = merges();
