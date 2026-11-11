@@ -10,7 +10,8 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 
 ```json
 {
-  "schema": 4,
+  "schema": 5,
+  "sim": 1,
   "tick": 288,
   "seed": 7,
   "size": 48,
@@ -21,6 +22,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 }
 ```
 
+- **schema:** this format's version. **sim:** the version of the simulation rules that produced this snapshot (`SIM_VERSION`, ADR-0013); a positive integer. `validate()` accepts any version; `step()` refuses to advance a snapshot from newer rules or another schema (ADR-0013). The two are independent: a rules change bumps `sim`, a format change bumps `schema`.
 - **tiles:** row-major, index `y * size + x`. Every tile has exactly these keys:
   - `k`: `lot` | `build` | `house` | `market` | `plant`, or terrain: `rail` | `park` | `works` | `road`. Terrain is laid out by `new_city` from the seed (a railway from one edge to a terminus beside the core, a couple of parks, an old industrial site, and the land of the highway interchange, all clear of the starting core) and never changes; nothing is built on it.
   - `f`: floors (built so far for `build`, current for `house`; 0 otherwise)
@@ -38,6 +40,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 
 ## Versions
 - **1** (2026-11-02): first version.
+- **5** (2026-11-11): adds the top-level `sim`, the simulation version that produced the snapshot (ADR-0013). Nothing else changes; the renderer draws schemas 4 and 5 the same way.
 - **4** (2026-11-09): adds terrain kind `road`, the land of the highway interchange (ADR-0011): four blocks round one crossing on the +x side, on every seed.
 - **3** (2026-11-03): adds terrain kinds `rail`, `park`, `works` and the per-tile `b` (built at tick). A sector's built share for decline and redevelopment now counts only its buildable (non-terrain) tiles.
 - **2** (2026-11-02): adds the `plant_opened` event kind; `power.supplied` now counts an overloaded plant as supplying its capacity instead of nothing, since overload no longer cuts power. Blackout schedule and district waves are derived from `seed` and `tick`, so no new fields.
@@ -50,4 +53,4 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 ## Consequences
 - Measured (schema 3): a day-14 snapshot for seed 7, with the map mostly built, is ~26 KB gzipped (schema 2 was ~20 KB; `b` adds the rest).
 - Any change to keys, kinds, or meaning bumps `schema`, needs a branch, and updates `validate()` and its tests.
-- Rule constants (`sim/rules.py`) can be tuned without a schema change.
+- Rule constants (`sim/rules.py`) can be tuned without a schema change, but any change to the simulation's results bumps `SIM_VERSION` (ADR-0013); the golden-output test enforces it.
