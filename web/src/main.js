@@ -15,12 +15,14 @@ import { people } from './people.js';
 import { airships, cloudDeck, districtGlows, horizon, moon, rain, rainAmount, stars } from './atmosphere.js';
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
-const SCHEMA = 4;
+// Snapshot schemas this renderer draws (ADR-0003). 5 only adds the simulation version "sim" (ADR-0013),
+// which the city does not depend on, so schema-4 snapshots draw the same way.
+const SCHEMAS = [4, 5];
 
 const params = new URLSearchParams(location.search);
 const snapUrl = params.get('snap') ?? '../snapshots/004032.json';
 const snap = await (await fetch(snapUrl)).json();
-if (snap.schema !== SCHEMA) throw new Error(`snapshot schema ${snap.schema}, renderer knows ${SCHEMA}`);
+if (!SCHEMAS.includes(snap.schema)) throw new Error(`snapshot schema ${snap.schema}, renderer knows ${SCHEMAS.join(', ')}`);
 
 const layout = cityLayout(snap), half = layout.span / 2;
 // Start low over the southeast corner so streets, shopfronts and signs show; orbit out for the overview.

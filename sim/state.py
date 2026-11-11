@@ -265,6 +265,7 @@ def new_city(seed):
             tiles.append(new_tile("lot", rng))
     return {
         "schema": R.SCHEMA,
+        "sim": R.SIM_VERSION,
         "tick": 0,
         "seed": seed,
         "size": R.SIZE,
@@ -286,6 +287,9 @@ def validate(state):
         return ["state is not an object"]
     if state.get("schema") != R.SCHEMA:
         errors.append(f"schema must be {R.SCHEMA}")
+    # Any version is a valid snapshot; whether this code may advance it is step.resume_error's call.
+    if not (is_count(state.get("sim")) and state["sim"] >= 1):
+        errors.append("sim must be a simulation version (a positive integer)")
     if state.get("size") != R.SIZE:
         errors.append(f"size must be {R.SIZE}")
     for key in ("tick", "seed"):
