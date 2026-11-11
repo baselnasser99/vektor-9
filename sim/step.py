@@ -23,6 +23,19 @@ def tick_rng(state):
     return random.Random(f"{state['seed']}:{state['tick'] + 1}")
 
 
+def resume_error(state):
+    """Why this code must not advance `state`, or None (ADR-0013). validate() says whether a
+    snapshot is well formed; this says whether these rules may continue it. Older rules versions may
+    be continued: the next tick records the new version. Newer rules or another schema are refused,
+    so rules versions are never mixed silently."""
+    if state.get("schema") != R.SCHEMA:
+        return f"snapshot schema {state.get('schema')!r}; this code advances schema {R.SCHEMA}"
+    sim = state.get("sim")
+    if not (is_count(sim) and 1 <= sim <= R.SIM_VERSION):
+        return f"snapshot from simulation version {sim!r}; this code runs version {R.SIM_VERSION}"
+    return None
+
+
 def mark_error(mark):
     """Return why a visitor mark is malformed, or None. Lot availability is checked in step()."""
     if not isinstance(mark, dict):
@@ -70,6 +83,8 @@ def built_percent(tiles):
 
 
 def step(state, marks, rng):
+    if why := resume_error(state):
+        raise ValueError(f"cannot advance this snapshot: {why}")
     old = state["tiles"]
     tiles = [dict(t) for t in old]
     tick = state["tick"] + 1
@@ -188,6 +203,7 @@ def step(state, marks, rng):
 
     new_state = {
         **state,
+        "sim": R.SIM_VERSION,  # the rules that made this tick, not the ones that made the last
         "tick": tick,
         "tiles": tiles,
         "power": power,

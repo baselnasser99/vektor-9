@@ -42,6 +42,15 @@ export function snapshot(seed) {
   return series(seed, 288, 288).at(-1);
 }
 
+// The local history of a seed in `dir`: the snapshots of every `every`-th tick from 0 to `ticks`, or null unless every
+// one of them is there and belongs to that seed (a folder may hold only 004032.json, or another seed's run).
+export function localSeries(seed, ticks, every, dir = 'snapshots') {
+  const files = Array.from({ length: ticks / every + 1 }, (_, k) => join(dir, `${String(k * every).padStart(6, '0')}.json`));
+  if (!files.every((f) => existsSync(f))) return null;
+  const snaps = files.map((f) => JSON.parse(readFileSync(f)));
+  return snaps.every((s) => s.seed === seed) ? snaps : null;
+}
+
 // A fresh run of the sim for a seed: the snapshots of every `every`-th tick from 0 to `ticks`.
 export function series(seed, ticks, every) {
   const out = mkdtempSync(join(tmpdir(), `v9-seed${seed}-`));

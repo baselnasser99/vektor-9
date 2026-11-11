@@ -2,6 +2,7 @@ import gzip
 import json
 import random
 
+import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
@@ -21,7 +22,7 @@ from sim.state import (
     validate,
     xy,
 )
-from sim.step import mark_error, step, tick_rng
+from sim.step import mark_error, resume_error, step, tick_rng
 
 seeds = st.integers(0, 2**32)
 coords = st.integers(0, R.SIZE - 1)
@@ -146,6 +147,51 @@ def test_validate_catches_broken_snapshots():
     assert validate({**city, "tiles": tiles})
     tiles[0].update(k="castle", f=0, t=0)
     assert validate({**city, "tiles": tiles})
+
+
+def test_snapshots_record_schema_and_simulation_version():
+    city = new_city(4)
+    after, _ = step(city, [], tick_rng(city))
+    for state in (city, after, roundtrip(after)):
+        assert (state["schema"], state["sim"]) == (R.SCHEMA, R.SIM_VERSION)
+        assert validate(state) == []
+
+
+def test_validate_checks_the_simulation_version():
+    city = new_city(6)
+    without = {k: v for k, v in city.items() if k != "sim"}
+    for bad in (without, {**city, "sim": 0}, {**city, "sim": True}, {**city, "sim": "1"},
+                {**city, "schema": 4}):  # fmt: skip
+        assert validate(bad), bad
+    assert validate({**city, "sim": R.SIM_VERSION + 1}) == []  # well formed, just not ours to run
+
+
+def test_step_refuses_snapshots_it_must_not_advance():
+    city = new_city(6)
+    schema4 = {k: v for k, v in city.items() if k != "sim"} | {"schema": 4}  # like snapshots/
+    for state in (schema4, {**city, "sim": R.SIM_VERSION + 1}, {**city, "sim": 0}):
+        assert resume_error(state)
+        with pytest.raises(ValueError, match="cannot advance"):
+            step(state, [], tick_rng(state))
+    assert resume_error(city) is None
+
+
+def test_newer_rules_continue_an_older_version_and_say_so(monkeypatch):
+    older = new_city(6)
+    monkeypatch.setattr(R, "SIM_VERSION", R.SIM_VERSION + 1)
+    assert resume_error(older) is None
+    after, _ = step(older, [], tick_rng(older))
+    assert (older["sim"], after["sim"]) == (R.SIM_VERSION - 1, R.SIM_VERSION)
+
+
+def test_rules_version_is_independent_of_the_schema(monkeypatch):
+    older = new_city(8)
+    expected, _ = step(older, [], tick_rng(older))
+    monkeypatch.setattr(R, "SIM_VERSION", R.SIM_VERSION + 1)
+    newer, _ = step(older, [], tick_rng(older))
+    assert validate(older) == [] and validate(newer) == []  # an older version stays valid
+    assert (newer["schema"], newer["sim"]) == (R.SCHEMA, R.SIM_VERSION)  # schema unchanged
+    assert {**newer, "sim": expected["sim"]} == expected  # the label never changes the city
 
 
 def test_cli_writes_valid_snapshots(tmp_path, capsys):
