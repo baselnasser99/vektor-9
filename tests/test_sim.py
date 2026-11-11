@@ -1,6 +1,7 @@
 import gzip
 import json
 import random
+from pathlib import Path
 
 import pytest
 from hypothesis import example, given, settings
@@ -9,6 +10,7 @@ from hypothesis import strategies as st
 from sim import rules as R
 from sim.__main__ import main
 from sim.cycles import blackout_starts, wave
+from sim.rng import choice, randint, randrange
 from sim.state import (
     apply_power,
     chebyshev,
@@ -49,10 +51,10 @@ def random_city(seed):
     rng = random.Random(seed)
     tiles = []
     for _ in range(R.SIZE * R.SIZE):
-        kind = rng.choice(R.KINDS)
-        target = rng.randint(1, R.FLOORS_MAX) if kind in ("build", "house") else 0
-        floors = rng.randrange(target) if kind == "build" else target
-        people = rng.randint(0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0
+        kind = choice(rng, R.KINDS)
+        target = randint(rng, 1, R.FLOORS_MAX) if kind in ("build", "house") else 0
+        floors = randrange(rng, target) if kind == "build" else target
+        people = randint(rng, 0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0
         tiles.append(new_tile(kind, rng, floors, target, people))
     city = new_city(seed)
     return {**city, "tiles": tiles, "power": apply_power(tiles)}
@@ -182,6 +184,19 @@ def test_newer_rules_continue_an_older_version_and_say_so(monkeypatch):
     assert resume_error(older) is None
     after, _ = step(older, [], tick_rng(older))
     assert (older["sim"], after["sim"]) == (R.SIM_VERSION - 1, R.SIM_VERSION)
+
+
+def test_this_version_continues_a_version_1_snapshot():
+    """A snapshot made by version 1 (tests/fixtures, seed 7 at tick 288) is valid, may be
+    continued, and every tick after it is labelled with this version."""
+    path = Path(__file__).parent / "fixtures" / "sim-v1-seed7-t288.json.gz"
+    state = json.loads(gzip.decompress(path.read_bytes()))
+    assert (state["schema"], state["sim"], state["tick"]) == (5, 1, 288)
+    assert validate(state) == [] and resume_error(state) is None
+    for _ in range(10):
+        state, _ = step(state, [], tick_rng(state))
+        assert state["sim"] == R.SIM_VERSION and validate(state) == []
+    assert state["tick"] == 298
 
 
 def test_rules_version_is_independent_of_the_schema(monkeypatch):

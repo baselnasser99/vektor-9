@@ -1,4 +1,6 @@
 import random
+import re
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -94,3 +96,16 @@ def test_outputs_are_frozen_for_a_fixed_seed():
     assert [randrange(r, 10, 100, 7) for _ in range(5)] == [10, 31, 87, 31, 87]
     assert [choice(r, "abcdef") for _ in range(5)] == ["d", "b", "a", "a", "d"]
     assert sample(r, range(20), 6) == [14, 7, 3, 8, 11, 18]
+
+
+def test_the_simulation_draws_only_through_random():
+    """In sim/, a generator is only seeded and asked for random(); everything else goes through
+    sim/rng.py (ADR-0013)."""
+    calls = re.compile(r"\b(?:rng|r)\.(\w+)\(")
+    bad = [
+        f"{path}: rng.{method}()"
+        for path in sorted(Path("sim").glob("*.py"))
+        for method in calls.findall(path.read_text(encoding="utf-8"))
+        if method not in ("random", "seed")
+    ]
+    assert not bad

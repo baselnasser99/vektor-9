@@ -3,9 +3,11 @@
 # The snapshot format (ADR-0003). Bump when keys, kinds or their meaning change.
 SCHEMA = 5
 # The simulation rules (ADR-0013). Bump when new_city() or step() can give a different result for
-# any input: a constant here, a rule, the order of random draws, or the Python version they run on.
+# any input: a constant here, a rule, the order or kind of random draws (all through sim/rng.py).
 # The golden-output test (tests/test_golden.py) fails until this is bumped and recorded.
-SIM_VERSION = 1
+# 2: every draw is built on random() alone, so the rules no longer depend on how a Python version
+#    implements randint, randrange, choice or sample.
+SIM_VERSION = 2
 SIZE = 48
 BLOCK = 8  # sectors are BLOCK x BLOCK tiles; streets run between them and are renderer-only
 TICKS_PER_DAY = 288  # one tick every 5 minutes

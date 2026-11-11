@@ -3,6 +3,7 @@
 import random
 
 from sim import rules as R
+from sim.rng import choice, randint, randrange, sample
 
 TILE_KEYS = {"k", "f", "t", "p", "on", "s", "b"}
 POWER_KEYS = ("capacity", "demand", "supplied")
@@ -53,7 +54,7 @@ def counter(tiles, kind):
 def new_tile(kind, rng, floors=0, target=0, people=0, tick=0):
     """A tile that took its current form at `tick` (its "b": the renderer tells old from new)."""
     return {"k": kind, "f": floors, "t": target, "p": people, "on": False,
-            "s": rng.randrange(R.STYLE_SEED_MAX), "b": tick}  # fmt: skip
+            "s": randrange(rng, R.STYLE_SEED_MAX), "b": tick}  # fmt: skip
 
 
 def load(tile):
@@ -156,7 +157,7 @@ def lay_rail(rng, clear):
     rows = [
         r for r in range(n - 1) if r % half == 1 and lo <= min(abs(r - c), abs(r + 1 - c)) <= hi
     ]
-    row, along_x, edge = rng.choice(rows), rng.choice((True, False)), rng.choice((0, n - 1))
+    row, along_x, edge = choice(rng, rows), choice(rng, (True, False)), choice(rng, (0, n - 1))
     rail = {}
     for i in range(n * n):
         x, y = xy(i)
@@ -173,7 +174,7 @@ def lay_parks(rng, clear, terrain, rails):
     parks = []
     for _ in range(R.PARKS):
         for _attempt in range(500):
-            px, py = rng.randrange(n), rng.randrange(n)
+            px, py = randrange(rng, n), randrange(rng, n)
             if (
                 R.PARK_DISTANCE[0] <= chebyshev(px, py, c, c) <= R.PARK_DISTANCE[1]
                 and not near(px, py, rails, 3)
@@ -183,9 +184,9 @@ def lay_parks(rng, clear, terrain, rails):
         else:
             continue
         parks.append((px, py))
-        blobs = [(px, py), (px + rng.randint(-2, 2), py + rng.randint(-2, 2))]
+        blobs = [(px, py), (px + randint(rng, -2, 2), py + randint(rng, -2, 2))]
         blobs = [
-            (bx, by, rng.randint(*R.PARK_RADIUS), rng.randint(*R.PARK_RADIUS)) for bx, by in blobs
+            (bx, by, randint(rng, *R.PARK_RADIUS), randint(rng, *R.PARK_RADIUS)) for bx, by in blobs
         ]
         # Only the blobs' bounding box, in row order like a full scan, so tiles keep their order.
         x0, x1 = (
@@ -218,11 +219,11 @@ def lay_works(rng, clear, terrain, rails):
     ]
     if not sidings:
         return
-    rx, ry = rng.choice(sidings)
-    (w, h), sx, sy = R.WORKS_SIZE, rng.choice((1, -1)), rng.choice((1, -1))
+    rx, ry = choice(rng, sidings)
+    (w, h), sx, sy = R.WORKS_SIZE, choice(rng, (1, -1)), choice(rng, (1, -1))
     xs = range(rx + 1, rx + 1 + w) if sx > 0 else range(rx - w, rx)
     ys = range(ry + 1, ry + 1 + h) if sy > 0 else range(ry - h, ry)
-    corner = (rng.choice((xs[0], xs[-1])), rng.choice((ys[0], ys[-1])))
+    corner = (choice(rng, (xs[0], xs[-1])), choice(rng, (ys[0], ys[-1])))
     for y in ys:
         for x in xs:
             i = y * n + x
@@ -243,7 +244,7 @@ def new_city(seed):
         for i in range(R.SIZE * R.SIZE)
         if chebyshev(*xy(i), c, c) <= R.START_RADIUS and i not in terrain and xy(i) != plant
     ]
-    markets = set(rng.sample(core, R.START_MARKETS))
+    markets = set(sample(rng, core, R.START_MARKETS))
     market_xy = [xy(i) for i in markets]
     tiles = []
     for i in range(R.SIZE * R.SIZE):
@@ -259,7 +260,7 @@ def new_city(seed):
             and near(x, y, market_xy, R.MARKET_RADIUS)
             and rng.random() < R.START_HOUSE_CHANCE
         ):
-            f = rng.randint(*R.START_FLOORS)
+            f = randint(rng, *R.START_FLOORS)
             tiles.append(new_tile("house", rng, f, f, f * R.PEOPLE_PER_FLOOR // 2))
         else:
             tiles.append(new_tile("lot", rng))
@@ -287,7 +288,7 @@ def validate(state):
         return ["state is not an object"]
     if state.get("schema") != R.SCHEMA:
         errors.append(f"schema must be {R.SCHEMA}")
-    # Any version is a valid snapshot; whether this code may advance it is step.resume_error's call.
+    # Within this schema any version is valid; resume_error decides whether this code advances it.
     if not (is_count(state.get("sim")) and state["sim"] >= 1):
         errors.append("sim must be a simulation version (a positive integer)")
     if state.get("size") != R.SIZE:
