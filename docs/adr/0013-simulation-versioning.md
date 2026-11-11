@@ -16,7 +16,7 @@ The rules also depend on the Python interpreter, through its `random` module (se
 - `SIM_VERSION` in `sim/rules.py` numbers the simulation rules, starting at 1.
 - Schema 5 adds a top-level `"sim"` to every snapshot: the `SIM_VERSION` of the code that produced it. `new_city()` and `step()` set it.
 - Two questions are kept apart:
-  - **Is the snapshot well formed?** `validate()` checks the format only. Any positive `sim` is valid, so a historical snapshot made by other rules, older or newer, still validates and can be stored, drawn and inspected.
+  - **Is the snapshot well formed?** `validate()` checks the format of the current schema only. Within that schema any positive `sim` is valid, so a historical snapshot made by other rules, older or newer, still validates and can be stored, drawn and inspected. A snapshot in another schema, such as the schema-4 files in `snapshots/`, fails `validate()`; the renderer can still draw it.
   - **May this code advance it?** `resume_error()` in `sim/step.py`, which `step()` calls first and turns into a `ValueError`. It refuses a snapshot in another schema (such as the schema-4 files in `snapshots/`) and one made by newer rules than the running code. A snapshot from older rules may be continued: that is how a rules change takes effect, and the next tick records the new version, so the switch is visible in the history rather than silent.
   - Replaying a historical tick therefore needs the code of that tick's version; current code refuses anything newer than itself.
 - `schema` and `sim` are independent. A rules change bumps `sim` and leaves the format alone; a format change bumps `schema`. Neither implies the other.
@@ -74,3 +74,10 @@ The renderer accepts a list of schemas (`web/src/main.js`), currently 4 and 5. I
 - The golden test adds about ten seconds to `uv run pytest` (measured locally).
 - Coverage is limited to what the cases reach: one city day from three seeds, plus the marks, dense-city and lone-market cases. Very long-run effects (district waves over several days) are only covered as far as those cases reach them, and through the property tests in `tests/test_sim.py`.
 - A Python upgrade is a deliberate step with its own check.
+
+## Revision 2026-11-11: simulation version 2
+
+- **Draws built on `random()` alone.** `sim/rng.py` implements `randint`, `randrange`, `choice` and `sample` (a partial Fisher-Yates shuffle) on top of one call to `random()` each, with the standard library's argument checks. All simulation code, and the test helpers that build cities, draw through it; a test checks that nothing in `sim/` calls any other method of `random.Random`. Generators and their seeds are unchanged. `SIM_VERSION` is 2, and its outputs are in `tests/golden/sim-v2.json`; `sim-v1.json` stays as the record of version 1.
+- **Independent of the Python version, except for `random()` and seeding.** Those are the two things Python promises to keep, so the "No" row of the random-number table no longer applies to the simulation. The Python-upgrade row of the bump table relaxes accordingly: an upgrade is expected to leave results unchanged, and running the golden-output test on the new version before moving the city remains the check. Another Python implementation is still neither promised nor tested.
+- **Continuation from version 1.** `tests/fixtures/sim-v1-seed7-t288.json.gz` is seed 7 at tick 288, recorded with the version-1 code. A test checks that it validates, that this code may continue it, and that the ticks after it carry the new version.
+- **Coverage.** A golden case runs seed 7 for three days, with checkpoints either side of each day boundary (ticks 287, 288, 289, 576 and 864).

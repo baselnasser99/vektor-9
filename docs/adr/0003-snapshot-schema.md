@@ -22,7 +22,7 @@ The simulation state **is** the snapshot: `step()` takes and returns the same pl
 }
 ```
 
-- **schema:** this format's version. **sim:** the version of the simulation rules that produced this snapshot (`SIM_VERSION`, ADR-0013); a positive integer. `validate()` accepts any version; `step()` refuses to advance a snapshot from newer rules or another schema (ADR-0013). The two are independent: a rules change bumps `sim`, a format change bumps `schema`.
+- **schema:** this format's version. **sim:** the version of the simulation rules that produced this snapshot (`SIM_VERSION`, ADR-0013); a positive integer. Within the current schema, `validate()` accepts any `sim`; a snapshot in another schema (such as the schema-4 files in `snapshots/`) fails `validate()`. `step()` refuses to advance a snapshot from newer rules or another schema (ADR-0013). The two are independent: a rules change bumps `sim`, a format change bumps `schema`.
 - **tiles:** row-major, index `y * size + x`. Every tile has exactly these keys:
   - `k`: `lot` | `build` | `house` | `market` | `plant`, or terrain: `rail` | `park` | `works` | `road`. Terrain is laid out by `new_city` from the seed (a railway from one edge to a terminus beside the core, a couple of parks, an old industrial site, and the land of the highway interchange, all clear of the starting core) and never changes; nothing is built on it.
   - `f`: floors (built so far for `build`, current for `house`; 0 otherwise)
