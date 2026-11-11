@@ -345,8 +345,10 @@ export function flagship(kit, g, clear, toward, rand, lit, [name, line, mark, li
   for (const o of banners) o.removeFromParent();
   const open = [0, 1, 2, 3].sort((p, q) => clear(p) - clear(q) || toward(q) - toward(p));
   const show = open.slice(0, 2).sort((p, q) => toward(q) - toward(p))[0], lift = open.slice(0, 2).find((k) => k !== show);
-  // A riser of `kind` (12 m segments stretched a little to fit) on face k at u, from y to `to`.
+  // A riser of `kind` (12 m segments stretched a little to fit) on face k at u, from y to `to`; none where there is
+  // no height (a segment squashed flat has no normals: NaN on screen, which bloom spreads into black blocks).
   const riser = (kind, k, u, y, to) => {
+    if (to <= y) return;
     const n = Math.max(1, Math.round((to - y) / 12)), seg = (to - y) / n;
     for (let i = 0; i < n; i++) mount(kind, k, u, y + i * seg).scale.y = seg / 12;
   };
