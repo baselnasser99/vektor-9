@@ -294,9 +294,9 @@ Each criterion is measured with `tools/urban_metrics.mjs` on seeds 7, 3, 11 and 
 | 1 | Height rises toward the centre: 90th percentile in band 0-3 at least 10 floors above band 20-23, and median at least 6 above, at tick 4032 on every seed | +1/0, +1/+2, +3/+2, 0/+2 (seeds 7, 3, 11, 2) |
 | 2 | No reversal: from band to band outward, the median never rises by more than 1 floor | Seed 7 rises 3 from band 16-19 to 20-23 |
 | 3 | Frontage premium: in bands 4-19 taken together, major frontage's median is at least 3 floors above all other tiles, and its floors per tile at least 1.2 times theirs | Bands 4-19 together not measured. Per band: -2 to +4 floors; all tiles: within 1 floor, floors per tile -6% to +14% |
-| 4 | The frontier fills along the backbone: at tick 1440, in band 20-23, major frontage's lot share is at most 0.75 times the other tiles' | 0.98, 1.05, 0.98, 1.00 |
+| 4 | The frontier fills along the backbone where it is reachable (amended in PR B): at tick 1440, in band 20-23, among the buildable tiles that have a market within 4 tiles and a power plant within 8, the empty-lot share of major frontage is at most 0.75 times the other tiles'. The original measure (all band 20-23 tiles, reachable or not) is kept for information only | Amended measure, v3: 1.31, 1.61, 1.09, 1.04. Original measure, v2: 0.98, 1.05, 0.98, 1.00 |
 | 5 | The headquarters fronts the backbone on every seed: `hq.front.kind` is `avenue`, the court is the 12 `terrain` tiles across, nothing is hidden (`floorsOnSite` 0), and the sector is the same in every hourly snapshot of the run | Never major; up to 12 moves |
-| 6 | No regression: the mean population at tick 4032 over seeds 7, 3, 11, 2, 1, 4, 5, 6, 8, 9, 10 and 12 within ±10% of the v2 mean over the same seeds (amended in PR A; per-seed changes are for information only, see the implementation notes); `validate()` empty on every tick; gzipped size within +2% at the same tick; tick time within +10% | Population 97,065 / 136,807 / 124,959 / 134,518 |
+| 6 | No regression: the mean population at tick 4032 over seeds 7, 3, 11, 2, 1, 4, 5, 6, 8, 9, 10 and 12 within ±10% of the v2 mean over the same seeds (amended in PR A; per-seed changes are for information only, see the implementation notes); `validate()` empty on every tick; gzipped size of seed 7 at tick 4032 within +5% of `SIM_VERSION` 3 (amended in PR B; it was +2% with no baseline named); tick time within +10% | Population 97,065 / 136,807 / 124,959 / 134,518 |
 
 - PR A must meet 5 and 6 (growth is unchanged, so 1 to 4 stay as today).
 - PR B must meet all six.
@@ -408,3 +408,55 @@ Where PR A departs from the plan above, and why:
 
   PR A meets the amended criterion (-2.9%, within ±10%). PR B measures it on the same 12 seeds.
 - **Continuation in PR B.** PR B adds a continuation test: the v3 fixtures (`sim-v3-seed7-t288`, `sim-v3-seed3-t288`) continued under `SIM_VERSION` 4. That restores the cross-version case this PR's schema change removed.
+
+## Implementation notes (PR B)
+
+`SIM_VERSION` 4. `SCHEMA` stays 6. The weighting is as specified above, with these departures:
+
+- **The envelope is also capped at `FLOORS_MAX` (60).** With `FRONT_FLOORS` added, the formula would let backbone tiles near the centre exceed 60 floors. No version has drawn a building taller than 60, so the cap keeps the renderer's range unchanged. Neutral parameters still reproduce version 3 exactly (tested).
+- **Criteria 4 and 6 amended** (see the table and below).
+
+### Tuning rounds
+
+Seeds 7, 3, 11 and 2 at tick 4032 (criterion 4 at tick 1440), from `uv run python -m sim`-equivalent runs of 4032 ticks. Every number below is measured. Criterion 4 is listed under its original measure, which is what the rounds were judged on before the amendment.
+
+| Round | Parameters changed | 1 | 2 | 3 | 4 (original) | Mean population, 12 seeds |
+|---|---|---|---|---|---|---|
+| v3 | | fails on all 4 | fails on 7, 3, 2 | fails on all 4 | 1.04, 1.05, 1.10, 1.00 | 110,653 |
+| 1 | The values above: `ARTERIAL_SHARE` 0.5, `FRONT_BUILD` 2, `CENTRE_BUILD` 1, `FRONT_FLOORS` 6, `CENTRE_FLOORS` 20, `EDGE_FLOORS` 16, `CENTRE_LOW` 12, `CENTRE_REACH` 24, `MINOR_SHARE` 0 | passes | fails on 3, 2 | fails on all 4 | 1.00, 0.98, 1.02, 0.94 | 113,255 |
+| 2 | `ARTERIAL_SHARE` 0.75, `FRONT_BUILD` 16, `FRONT_FLOORS` 16, `CENTRE_LOW` 16 | passes | fails on 7, 3, 11 | passes | 0.80, 0.71, 0.92, 1.00 | 116,436 |
+| 3 (final) | `ARTERIAL_SHARE` 0.8, `FRONT_BUILD` 24, `FRONT_FLOORS` 24, `CENTRE_FLOORS` 48, `CENTRE_LOW` 56 | passes | passes | passes | 0.91, 0.77, 0.96, 0.93 | 116,801 |
+
+- **Round 1:** the cap bonus barely showed in heights, because the target is drawn uniformly between the lowest target and the cap, which halves any change to the cap.
+- **Round 2:** the reversals left in criterion 2 come from the core. Its first plant reaches capacity early, and a tile served by a plant at capacity never redevelops, so the core keeps its first-built heights while band 4-7 keeps rising. Round 3 therefore raises the lowest target near the centre close to the envelope, so first-built heights follow position rather than age.
+- `MINOR_SHARE` stays 0, as decided.
+
+### Amended criteria
+
+- **Criterion 4.** Version 4 changes only how a lot builds once it is reachable, and reach is set by markets (within 4 tiles) and power (within 8). At tick 1440 the edge band is 85-98% empty lots on these seeds, and most of its backbone tiles are the arterials' ends near the corners, which no market or plant has reached yet. A higher build chance there has nothing to act on. Growth spreading outward along the backbone would need market and power placement to follow frontage. That is a separate rule decision, to be considered after the version-4 visual review, and it is not part of this ADR. The criterion now compares only lots that are already reachable.
+- **Criterion 6, size.** The earlier text did not name its baseline. It is now `SIM_VERSION` 3, seed 7, tick 4032, gzipped, with +5% allowed. The measured +2.9% is about 0.8 KB per tick, which is negligible for transfer cost.
+
+### Results, round 3 (measured)
+
+| Criterion | Seed 7 | Seed 3 | Seed 11 | Seed 2 |
+|---|---|---|---|---|
+| 1: band 0-3 minus band 20-23, 90th percentile / median floors | +26 / +29 | +32 / +33 | +30 / +26 | +25 / +25 |
+| 2: largest outward rise of the median | -1 | -3 | -1 | -3 |
+| 3: bands 4-19, major / other median floors; floors per tile ratio | 32 / 28; 1.57 | 33 / 26; 1.44 | 36 / 26; 1.49 | 35 / 27; 1.62 |
+| 4 (amended): empty share, reachable major / other (tiles) | 0.167 (12) / 0.905 (84): 0.19 | 0 (31) / 0.649 (205): 0 | 0 (5) / 0.882 (68): 0 | 0.25 (12) / 0.732 (56): 0.34 |
+| 5: front, court tiles across, floors hidden, sectors over hourly snapshots | avenue, 12, 0, {9} | avenue, 12, 0, {27} | avenue, 12, 0, {9} | avenue, 12, 0, {9} |
+
+- Few major tiles are reachable at tick 1440 (5 to 31 per seed), so criterion 4's ratios rest on small counts. Under version 3 the same measure gives 1.31, 1.61, 1.09 and 1.04.
+- **Criterion 6:**
+  - Mean population over the 12 seeds is 116,801: +2.5% against version 2 (113,952) and +5.6% against version 3 (110,653).
+  - `validate()` was empty on every tick of all 12 runs.
+  - Seed 7 at tick 4032 is 27,909 bytes gzipped (Node `zlib`, default level) against 27,125 under version 3, +2.9%. With Python `gzip` level 9 it is 27,153 against 26,189, +3.7%.
+  - Mean tick time over 288 ticks of seed 7, best of three runs, is 5.10 ms against 5.04 ms, +1.2%.
+- Per-seed population at tick 4032: 7: 105,321; 3: 112,808; 11: 132,436; 2: 123,510; 1: 118,603; 4: 94,242; 5: 115,260; 6: 105,941; 8: 124,032; 9: 127,281; 10: 105,620; 12: 136,555.
+- **Tests** (`tests/test_growth.py`, `tests/test_golden.py`):
+  - Neutral weights reproduce `sim-v3.json` digest for digest.
+  - A tick makes the same number of draws under the real and the neutral weights. The tests fix every draw at 0.0 or 0.999 so both settings take the same branches.
+  - The v3 fixtures continue under version 4.
+  - The envelope's bounds, and frontage weights pointing to the backbone.
+  - Seed 7 after 864 ticks: bands 0-7 are taller than bands 16-23.
+  - Sensitivity cases for `FRONT_BUILD`, `CENTRE_FLOORS` and `EDGE_FLOORS`.
