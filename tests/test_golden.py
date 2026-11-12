@@ -23,7 +23,7 @@ from sim.step import step, tick_rng
 GOLDEN = Path(__file__).parent / "golden" / f"sim-v{R.SIM_VERSION}.json"
 # What is compared: the city itself. "schema" and "sim" are labels, so a format change that keeps
 # the city the same does not touch these files, and a rules change cannot hide behind one.
-FIELDS = ("seed", "tick", "size", "tiles", "power", "events", "mark_ids")
+FIELDS = ("seed", "tick", "size", "plan", "tiles", "power", "events", "mark_ids")
 DAY = R.TICKS_PER_DAY
 
 
