@@ -48,15 +48,31 @@ export function hqSite(snap, { n, pos, inTown, lines }, avoid) {
       const cc = cells.reduce((s, [c]) => s + c, 0) / cells.length, rr = cells.reduce((s, [, r]) => s + r, 0) / cells.length;
       const ring = Math.max(Math.abs(cc + 0.5 - mid), Math.abs(rr + 0.5 - mid));
       const score = ids.reduce((s, i) => s + (tiles[i].f ?? 0), 0) - ring * 50; // near the centre first: it is the landmark
-      if (!best || score > best.score) best = { score, ids, cells, heading, bx, by };
+      if (!best || score > best.score) best = { score, cells, heading };
     }
   }
-  if (!best) return null;
-  const { ids, cells, heading, bx, by } = best, xs = cells.map(([c]) => pos(c)), zs = cells.map(([, r]) => pos(r));
+  return best && placed(snap, { n, pos, lines }, best.cells, best.heading);
+}
+
+// The headquarters' site from a schema-6 snapshot's plan (ADR-0015): the simulation reserves it as `site` tiles
+// from tick 0, so it never moves and hides no building. The same object as hqSite's. The plan's faces use the
+// snapshot's axes, whose y is the renderer's z.
+const FACING = { '+y': 0, '-y': Math.PI, '+x': Math.PI / 2, '-x': -Math.PI / 2 };
+export function planSite(snap, layout) {
+  const s = snap.plan.sites.find((p) => p.use === 'hq'), cells = [];
+  if (!s) return null;
+  for (let c = s.x0; c <= s.x1; c++) for (let r = s.y0; r <= s.y1; r++) cells.push([c, r]);
+  return placed(snap, layout, cells, FACING[s.face]);
+}
+
+// A site's cells ([col, row]) facing `heading`, as hqSite and planSite return it.
+function placed({ tiles }, { n, pos, lines }, cells, heading) {
+  const ids = cells.map(([c, r]) => r * n + c), xs = cells.map(([c]) => pos(c)), zs = cells.map(([, r]) => pos(r));
+  const bx = Math.floor(Math.min(...cells.map(([c]) => c)) / BLOCK), by = Math.floor(Math.min(...cells.map(([, r]) => r)) / BLOCK);
   const x = (Math.min(...xs) + Math.max(...xs)) / 2, z = (Math.min(...zs) + Math.max(...zs)) / 2;
   // How far out (w) the front street's centre line is: the open air the hovercars come down through.
   const street = { 0: lines[by + 1].c - z, [Math.PI]: z - lines[by].c, [Math.PI / 2]: lines[bx + 1].c - x, [-Math.PI / 2]: x - lines[bx].c }[heading];
-  return { tiles: new Set(ids), cells, x, z, heading, street, floors: Math.max(...ids.map((i) => tiles[i].f ?? 0)), sector: by * S + bx };
+  return { tiles: new Set(ids), cells, x, z, heading, street, floors: Math.max(...ids.map((i) => tiles[i].f ?? 0)), sector: by * (n / BLOCK) + bx };
 }
 
 // The headquarters, in a group whose origin is the site's centre on the paving and whose +z is its front: both
