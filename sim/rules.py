@@ -9,7 +9,10 @@ SCHEMA = 6
 #    implements randint, randrange, choice or sample.
 # 3: the static plan (ADR-0015): the headquarters' site and court reserved as site terrain, parks
 #    laid after them, and works that always find ground.
-SIM_VERSION = 3
+# 4: growth weighted by frontage on the plan's backbone and by distance from the centre, under a
+#    height envelope that falls toward the edge (ADR-0015). The same draws; only thresholds and
+#    ranges change.
+SIM_VERSION = 4
 SIZE = 48
 BLOCK = 8  # sectors are BLOCK x BLOCK tiles; streets run between them and are renderer-only
 TICKS_PER_DAY = 288  # one tick every 5 minutes
@@ -73,6 +76,21 @@ HEIGHT_STEP = 8  # new buildings reach up to this many floors above their neighb
 HEIGHT_RADIUS = 2
 PEOPLE_PER_FLOOR = 10
 TALL = 20  # only towers at least this tall make a topped_out event
+
+# Growth weighting (ADR-0015). F, a tile's frontage: 1 facing the boulevard, ARTERIAL_SHARE facing
+# only an arterial, else MINOR_SHARE (the ring road, the 14 m lines and interior tiles). C, its
+# centrality: max(0, 1 - ring / CENTRE_REACH). Weighted floor terms are rounded down.
+# Neutral (version 3's growth): FRONT_BUILD, CENTRE_BUILD, FRONT_FLOORS, CENTRE_FLOORS and
+# CENTRE_LOW 0, EDGE_FLOORS = FLOORS_MAX.
+ARTERIAL_SHARE = 0.8
+MINOR_SHARE = 0
+CENTRE_REACH = 24  # rings
+FRONT_BUILD = 24  # build chance x (1 + FRONT_BUILD F + CENTRE_BUILD C)
+CENTRE_BUILD = 1
+FRONT_FLOORS = 24  # extra floors on the cap and the envelope
+CENTRE_FLOORS = 48  # extra floors on the cap
+EDGE_FLOORS = 16  # the envelope: EDGE_FLOORS + (FLOORS_MAX - EDGE_FLOORS) C + FRONT_FLOORS F
+CENTRE_LOW = 56  # lowest target: FLOORS_MIN + CENTRE_LOW C, never above the cap
 
 # Power
 PLANT_RADIUS = 8  # Chebyshev distance
