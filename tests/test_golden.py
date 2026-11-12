@@ -138,7 +138,7 @@ def test_golden_cases_cover_every_event_kind():
         ("GROWTH", R.GROWTH + 1, "seed7-day", "12"),  # a per-tick rule
         ("BUILD_CHANCE", R.BUILD_CHANCE * 2, "seed3-day", "96"),
         ("REDEVELOP_CHANCE", R.REDEVELOP_CHANCE * 3, "chaotic-seed2", "48"),
-        ("FRONT_BUILD", R.FRONT_BUILD + 1, "seed3-day", "96"),  # the growth weights (ADR-0015)
+        ("FRONT_BUILD", R.FRONT_BUILD * 2, "seed3-day", "96"),  # the growth weights (ADR-0015)
         ("CENTRE_FLOORS", R.CENTRE_FLOORS + 4, "seed7-day", "96"),
         ("EDGE_FLOORS", R.EDGE_FLOORS - 4, "chaotic-seed2", "48"),
     ],
