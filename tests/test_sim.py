@@ -54,10 +54,10 @@ def random_city(seed):
     tiles stay where the plan reserves them, as validate() requires."""
     rng = random.Random(seed)
     city = new_city(seed)
-    sites = set(site_tiles(city["plan"]))
+    sites, kinds = set(site_tiles(city["plan"])), [k for k in R.KINDS if k != "site"]
     tiles = []
     for i in range(R.SIZE * R.SIZE):
-        kind = "site" if i in sites else choice(rng, [k for k in R.KINDS if k != "site"])
+        kind = "site" if i in sites else choice(rng, kinds)
         target = randint(rng, 1, R.FLOORS_MAX) if kind in ("build", "house") else 0
         floors = randrange(rng, target) if kind == "build" else target
         people = randint(rng, 0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0

@@ -73,8 +73,8 @@ export function cityLayout(snap) {
   const within = (col, row, [sx, sz]) => [col / BLOCK - sx, row / BLOCK - sz].every((v) => v >= 0 && v < 2);
   const terrain = (q) => snap.tiles.filter((t, i) => TERRAIN.includes(t.k) && within(i % n, Math.floor(i / n), q)).length;
   // The interchange and the headquarters' court (schema 6's site tiles) stay out of the old town.
-  const road = (q) => snap.tiles.some((t, i) => (t.k === 'road' || t.k === 'site') && within(i % n, Math.floor(i / n), q));
-  const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].filter((q) => !road(q)).map((q) => [terrain(q) + rand(), q]);
+  const kept = (q) => snap.tiles.some((t, i) => (t.k === 'road' || t.k === 'site') && within(i % n, Math.floor(i / n), q));
+  const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].filter((q) => !kept(q)).map((q) => [terrain(q) + rand(), q]);
   const town = quarters.sort((p, q) => p[0] - q[0])[0][1];
   const inTown = (col, row) => within(col, row, town);
   const lo = cross[0].c - cross[0].w / 2, hi = at;
