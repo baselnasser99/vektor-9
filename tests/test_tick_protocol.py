@@ -189,6 +189,42 @@ def test_t8_crash_after_tick_before_head(ref):
     assert_clean(store, ref, 1)
 
 
+def test_bootstrap_crash_after_tick0_before_genesis(ref):
+    store = MemoryStore()
+    store.hooks.append(fault("put", GENESIS_KEY))
+    with pytest.raises(Crash):
+        run(store, 0)
+    assert set(store.objects) == {tick_key(0)}
+    etag = store.objects[tick_key(0)]["etag"]
+    assert run(store, 0)["outcome"] == "bootstrapped"
+    assert store.objects[tick_key(0)]["etag"] == etag and store.writes[tick_key(0)] == 1
+    assert store.writes == {GENESIS_KEY: 1, tick_key(0): 1, head_key(): 1}
+    assert_clean(store, ref, 0)
+
+
+def test_bootstrap_crash_after_genesis_before_head(ref):
+    store = MemoryStore()
+    store.hooks.append(fault("put", head_key()))
+    with pytest.raises(Crash):
+        run(store, 0)
+    assert set(store.objects) == {tick_key(0), GENESIS_KEY}
+    summary = run(store, 0)
+    assert summary["recovery"] == ["head_repaired"] and summary["head_after"] == 0
+    assert store.writes == {GENESIS_KEY: 1, tick_key(0): 1, head_key(): 1}
+    assert_clean(store, ref, 0)
+
+
+def test_bootstrap_crash_after_tick0_then_other_seed_fails_closed(ref):
+    store = MemoryStore()
+    store.hooks.append(fault("put", GENESIS_KEY))
+    with pytest.raises(Crash):
+        run(store, 0)
+    with pytest.raises(FailClosed) as e:
+        run(store, 0, config=Config(SEED + 1, GENESIS, "test"))
+    assert e.value.reason == "divergence"
+    assert set(store.objects) == {tick_key(0)} and store.writes == {tick_key(0): 1}
+
+
 def test_t9_timeout_mid_catch_up(ref):
     store = city(ref, [0])
     store.hooks.append(fault("put", tick_key(4)))  # killed while committing tick 4
