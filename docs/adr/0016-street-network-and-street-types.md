@@ -1,6 +1,6 @@
 # ADR-0016: Street network and street types
 
-**Status:** Proposed (2026-11-12)
+**Status:** Accepted (2026-11-12)
 
 Concept drawing: [`0016-concept.svg`](0016-concept.svg) (seed 7, today on the left and as proposed on the right; drawn, not built).
 
@@ -20,7 +20,7 @@ Method. This pass applies the street-design and masterplan-design methods (hiera
 | The method asks for | This ADR uses |
 |---|---|
 | Average daily traffic | Cars passing a point per hour in the headless traffic (`tests/js/harness.mjs` `city()`) |
-| Pedestrian volumes | The walking network's coverage. Walker counts were not measured (see Open questions) |
+| Pedestrian volumes | The walking network's coverage. Walker counts were not measured (see Decisions, 2) |
 | Land use | The simulation's tile kinds and `masterplan.js` roles |
 | Density | Floors per tile, as measured in ADR-0015 |
 
@@ -204,7 +204,7 @@ The classes come from the measured flow ratios above, in place of the daily-traf
 | Local | Mid streets | about 0.3 |
 | Shared and pedestrian | Shared streets, market and night-market streets, passages | below local |
 
-Each type below has a target speed. Today every car draws 32 to 58 km/h whatever the street; the proposal caps cruising speed by type (R3).
+Each type below has a target speed. Today every car draws 32 to 58 km/h whatever the street; the proposal caps cruising speed by type (roadmap PR 5).
 
 | # | Type (invented display name) | Corridor and width | Cross-section, each side from the building line in | Traffic rules | Where |
 |---|---|---|---|---|---|
@@ -265,7 +265,7 @@ Drawn in `0016-concept.svg`. Seed 7's lines along x are ring, main street, walk,
 - **Priority** where a collector meets a local street.
 - **All-way give-way** only where two equal local streets meet.
 
-How many of today's 38 (seed 7) and 43 (seed 3) give-way crossings become priority junctions was not counted here. PR 3 measures it.
+How many of today's 38 (seed 7) and 43 (seed 3) give-way crossings become priority junctions was not counted here. PR 4 measures it.
 
 **Turn lanes.** None are added. Every carriageway is already full at its width, and the boulevard and avenue already have their inner lane as a left-turn lane. The protected-permitted phase and the pull-in-and-clear rule do the work a pocket would do, without moving a kerb. The left-turn arrows painted today follow the same lane rules (`lanesMay`), so the paint stays true.
 
@@ -287,7 +287,7 @@ How many of today's 38 (seed 7) and 43 (seed 3) give-way crossings become priori
 | Long stops behind permitted lefts where main streets meet each other or the ring road (seed 7 at (292.5, ±429), (±292.5, -292.5), (-429, 292.5); seed 3 at (±292.5, -429), (-292.5, 429), (-292.5, 292.5)) | protected-permitted left, pull-in-and-clear | `baseline.mjs` method as a Node test on both v3 fixtures: long stops at least halved and none over 150 s, with no rise in two cars' bodies overlapping |
 | Long stops where an arterial meets a 14 m lane or a mid street (seed 3: (150, -292.5), (80.5, -292.5), (-292.5, 219.5), (150, 0)) | pull-in-and-clear | the same test |
 | Long stops at give-way crossings of a lane or one-way street (seed 3: (150, 80.5), (80.5, 80.5)) | priority junctions | the same test |
-| Dead ends (seed 7: (-80.5, -150); seed 3: (80.5, 150), (219.5, 150)) | R1: `closed` never builds over a half whose other end meets a corridor carrying no cars; then R6: shared streets | a dead-end test over seeds 0-49, plus the two fixtures asserting none |
+| Dead ends (seed 7: (-80.5, -150); seed 3: (80.5, 150), (219.5, 150)) | PR 2: `closed` never builds over a half whose other end meets a corridor carrying no cars; then PR 7: shared streets | in CI, the frozen v3 fixtures asserting none; the PR also reports a local sweep over seeds 0-49 (measured, not in CI) |
 | No crossing between headquarters and court | walk-only signal on the avenue | the walking network gains the crossing; `hasZebra` true there; browser check of seeds 7 and 3 |
 | Mid streets' sidewalks never walked along | R8 (later): walkers on the full block-corner network | the walking network's coverage of sidewalk length (57.7% today) |
 
@@ -318,29 +318,23 @@ How many of today's 38 (seed 7) and 43 (seed 3) give-way crossings become priori
 | Cost and risk | low: renderer PRs one at a time | medium: one more sim change before genesis | high |
 | Reversibility | revert each PR | before genesis: easy; after: a new schema | revert, but every check redone |
 
-**Decision proposed: A.** B is offered as the one S choice, for the owner to take or leave before PR B (Open question 1). C is not proposed.
+**Decision: option A.** Street classes are not stored in the plan; option B is not taken. Option C is not taken.
 
 ## Classification of every proposal
 
-**(S): changes what the simulation stores.** Must land before PR B and before genesis.
+**(S): changes what the simulation stores.** None. With option A chosen, nothing in this ADR touches the simulation, the snapshot or the plan.
 
-- **None in option A.**
-- Option B only:
-  - S1: every corridor's class in `plan`, with the lane-or-walk draw moved to the simulation.
-  - S2: PR B's frontage weight split by class.
+**(R): renderer only.** Can land at any time, in the roadmap's order:
 
-**(R): renderer only.** Can land at any time:
-
-1. Dead-end fix in `closed`.
-2. Protected-permitted lefts and pull-in-and-clear.
-3. Priority junctions.
-4. Speed by street type.
-5. Raised tables, raised junctions and gateways.
-6. The walk crossing between headquarters and court.
-7. One-way pairs by rule.
-8. Shared streets (a new `STREETS` entry, same 13 m).
-9. Dressing by type: night-market canopies and low lights, market-lane awnings, alley wall lamps, a second row of low lamps on the boulevard and main streets.
-10. Later, walkers along mid streets.
+1. Protected-permitted lefts and pull-in-and-clear.
+2. Dead-end fix in `closed`.
+3. The walk crossing between headquarters and court.
+4. Priority junctions.
+5. Speed by street type; raised tables, raised junctions and gateways.
+6. One-way pairs by rule.
+7. Shared streets (a new `STREETS` entry, same 13 m).
+8. Dressing by type: night-market canopies and low lights, market-lane awnings, alley wall lamps, a second row of low lamps on the boulevard and main streets.
+9. Walkers along mid streets.
 
 **Widths.** No width change is proposed. Every type keeps its corridor's width, so no tile, building, headquarters or interchange piece moves on screen. What moves on screen:
 
@@ -365,9 +359,9 @@ How many of today's 38 (seed 7) and 43 (seed 3) give-way crossings become priori
 
 - Only `state["plan"]["backbone"]`, as ADR-0015 defines it: `F = 1` on the `boulevard` corridors, `ARTERIAL_SHARE` on the `arterial` ones, `MINOR_SHARE` (0) elsewhere.
 - It must not read anything from this catalogue: the renderer's types are not in the snapshot, and the simulation never reads the renderer (ADR-0002).
-- If the owner wants night-market or ring-road frontage weighted, that is option B, and it lands with or before PR B.
+- Night-market and ring-road frontage get no weight of their own: option B, which would have made that possible, is not taken.
 
-**The transect as a shape for PR B's height envelope.** This is a suggestion only; PR B owns the numbers and its acceptance criteria.
+**The transect as a shape for a height envelope.** Kept as an idea only. PR B does not use it (Decisions, 5) and keeps ADR-0015's envelope.
 
 - **The idea.** The transect's zones (T3 to T6) order height from the core outward. The masterplan method adds that transitions should fall at streets, not mid-block.
 - **ADR-0015's centrality term.** `C = max(0, 1 - ring / CENTRE_REACH)` changes every tile. Two faces of one 56 m block can therefore get different caps.
@@ -396,22 +390,21 @@ A separate pass on how buildings look should cover:
 
 ## Roadmap
 
-In order. Every PR is renderer only unless marked. Sizes are estimates.
+In order. Every PR is renderer only (R). Sizes are estimates.
 
 | # | PR | Class | Size | Tests | Depends on |
 |---|---|---|---|---|---|
-| 0 | (Only if option B is taken) every corridor's class in `plan`; `validate()`; `SIM_VERSION` bump and golden; renderer reads the classes from `plan` on new snapshots and draws today's for v3 | S | 200-300 lines | plan identical each tick; `validate()`; contract test that `cityLayout` agrees with the plan; golden | before PR B and genesis |
-| 1 | `closed` never builds over a half that would leave a stub | R | 20-40 lines | dead ends over seeds 0-49 is zero; seed 7 and 3 fixtures; existing lane and walking self-checks | none |
-| 2 | Protected-permitted lefts at main-street and ring-road corners; pull-in-and-clear for permitted lefts | R | 100-150 lines | long-stop test on both fixtures (halved, none over 150 s); no body overlap; the interchange tests unchanged | none |
-| 3 | Priority junctions (collector over local, pair over local) | R | 40-80 lines | long stops at give-way crossings; no stuck lanes; turning cars still give way to walkers | 2 (shares the long-stop test) |
-| 4 | Walk crossing between headquarters and court | R | 40-80 lines | walking network has the crossing on seeds 7 and 3; `hasZebra` there; walk signal heads drawn; browser check | none |
+| 1 | Protected-permitted lefts at main-street and ring-road corners; pull-in-and-clear for permitted lefts. First trace where `life.js` holds a permitted left at the stop line and confirm the cause, before changing it | R | 100-150 lines | long-stop test on both v3 fixtures (halved, none over 150 s); no body overlap; the interchange tests unchanged | none |
+| 2 | `closed` never builds over a half that would leave a stub | R | 20-40 lines | in CI: no dead end on the frozen v3 fixtures (seeds 7 and 3); existing lane and walking self-checks. The PR also reports a local sweep over seeds 0-49 (measured, not in CI) | none |
+| 3 | Walk crossing between headquarters and court | R | 40-80 lines | walking network has the crossing on seeds 7 and 3; `hasZebra` there; walk signal heads drawn; browser check | none |
+| 4 | Priority junctions (collector over local, pair over local) | R | 40-80 lines | long stops at give-way crossings; no stuck lanes; turning cars still give way to walkers | 1 (shares the long-stop test) |
 | 5 | Speed by street type; raised tables, raised junctions, gateways | R | 80-150 lines | speeds per kind in the harness; frame time with `?bench` | none |
-| 6 | One-way pairs by rule; lone one-ways to local | R | 40-80 lines | one pair per axis at most; arrows match `lanesMay`; no dead end; long-stop test | 1, 3 |
-| 7 | Shared streets on built-over halves | R | 200-300 lines | new kind in `STREETS`, `CARS`; no dead end; cars yield; walkers cross; long-stop test | 1, 5, 6 |
+| 6 | One-way pairs by rule (one pair per axis); lone one-ways to local | R | 40-80 lines | one pair per axis at most; arrows match `lanesMay`; no dead end; long-stop test | 2, 4 |
+| 7 | Shared streets on built-over halves | R | 200-300 lines | new kind in `STREETS`, `CARS`; no dead end; cars yield; walkers cross; long-stop test | 2, 5, 6 |
 | 8 | Dressing by type (night-market, market lane, alleys, low lamps) | R | 300-500 lines | headless fingerprint changes only where intended; frame time; style guide updated | 6, 7 |
-| 9 | Walkers along mid streets (full block-corner network, ADR-0009's deferred alternative) | R | large, its own ADR | coverage of sidewalk length; route table size and load time | 7 |
+| 9 | Walkers along mid streets (full block-corner network, ADR-0009's deferred alternative). Its design note counts walkers per street first | R | large, its own ADR | coverage of sidewalk length; route table size and load time | 7 |
 
-PR B (ADR-0015) can land before, between or after 1 to 9. Only row 0 constrains it.
+PR B (ADR-0015) is independent of all of them: it can land before, between or after 1 to 9.
 
 ## Which method shaped what
 
@@ -441,20 +434,22 @@ PR B (ADR-0015) can land before, between or after 1 to 9. Only row 0 constrains 
 - **Option A** changes nothing stored. The simulation, the snapshot, the plan, the fixtures and the golden files are untouched. PR B proceeds as ADR-0015 says.
 - **What changes is the renderer only, one PR at a time:** which mid streets are one way, a new shared-street kind, junction control, car speeds, paint and dressing. Two visitors still see the same streets, since all of it is derived from the seed and the plan.
 - **ADR-0002 holds.** Cars and walkers stay browser-only. They react to the snapshot's streets and sites and invent nothing. Shared streets replace stretches that are already streets in the renderer; they are not simulated land.
-- **ADR-0010 is amended** by PRs 1 and 6 (built-over halves and one-way choice) and **ADR-0009** by PR 2 (permitted lefts), each recorded in its PR.
+- **ADR-0010 is amended** by PRs 2 and 6 (built-over halves and one-way choice) and **ADR-0009** by PR 1 (permitted lefts), each recorded in its PR.
 - **What could break:**
-  - Priority junctions can starve a side street. PR 3 needs the same patience rule as ADR-0011's merges.
+  - Priority junctions can starve a side street. PR 4 needs the same patience rule as ADR-0011's merges.
   - Protected-permitted phases lengthen cycles at 12 crossings, from 40 s to 64 s. Walkers wait longer there, still within the 60-90 s the method gives as the most a walker should wait.
   - Shared streets bring cars onto paving that walkers use. Cars must give way, which needs a walker check like the ramps' (ADR-0011).
   - Changing one-way choices changes every seed's mid streets, as ADR-0010 did.
 - **Cost:** no AWS, no API, no visitor input. Frame time is checked in PRs 5 and 8.
 
-## Open questions
+## Decisions
 
-1. **Option B:** should the plan carry every corridor's class, so that PR B can weight night-market and ring-road frontage? Default: no (option A). If yes, it lands before PR B.
-2. **Walker counts.** This pass measured walking-network coverage, not how many walkers use each street. Should PR 9's ADR count them (people per sector per minute, headless) before designing walkers along mid streets?
-3. **The pull-in-and-clear rule** is inferred from where cars stopped, not from tracing `life.js`. PR 2 should confirm the mechanism first.
-4. **Night-market streets with no pair.** Seed 7's second walk along x borders the old town and gets no one-way pair. Is one pair per axis enough, or should each walk line get one when it does not border the old town?
-5. **Mini-roundabouts** at the ring road's corners, in place of protected-permitted lefts. A 16 x 21 m junction box fits only a mini roundabout with a mountable centre. Worth a prototype after PR 2's numbers?
-6. **The transect envelope** (step by sector ring): offer it to PR B, or leave PR B as ADR-0015 wrote it?
-7. **Other seeds.** Only seeds 7 and 3 were measured. Should PR 1's dead-end test cover seeds 0-49 from fresh runs, or from frozen fixtures only (the fixture rule in `CLAUDE.md`)?
+Settled at acceptance (2026-11-12), in place of the proposal's open questions:
+
+1. **Option A.** Street classes are not stored in the plan (option B is not taken), so this ADR has no S items. PR B reads only the plan's backbone, as ADR-0015 defines it.
+2. **Walker counts.** Walkers are counted per street as part of the design note for the walkers-on-mid-streets PR (roadmap PR 9), not before.
+3. **One-way pairs.** One pair per axis.
+4. **Mini-roundabouts.** No prototype now. Fix left turns first (roadmap PR 1), measure the long stops again, and revisit only if they stay high.
+5. **Height envelope.** No stepped height limit for PR B. The transect idea is kept as an idea only.
+6. **Dead-end tests.** CI uses the frozen fixtures. The dead-end PR also reports a local sweep over seeds 0 to 49 (measured, not in CI).
+7. **Order and the left-turn hold.** The roadmap's order is as listed above. Its first PR traces where `life.js` holds a permitted left at the stop line and confirms the cause before changing anything, since this ADR inferred the cause from where cars stopped, not from the code.
