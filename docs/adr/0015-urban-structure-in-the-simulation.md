@@ -1,6 +1,6 @@
 # ADR-0015: Urban structure in the simulation
 
-**Status:** Proposed (2026-11-12)
+**Status:** Accepted (2026-11-12)
 
 ## Context
 
@@ -160,7 +160,8 @@ Option 2.
 ### Representation
 
 - **Reserved land is a tile kind; what it is for is a small top-level object.** The new terrain kind is `site`. Every existing rule already treats terrain as unbuildable: `step` builds only on `lot`, `built_percent` skips terrain, `hqSite`'s `BUILDABLE` excludes it, and marks apply only to lots. A reserved tile therefore needs no new rule in `step`. Corridors are not tiles (ADR-0003), and a tile kind cannot say which way the headquarters faces. So the backbone and the sites' purposes go in a top-level `plan`.
-- **Stored in every tick, not derived.** `plan` is a pure function of the seed and the schema. Deriving it in the renderer would need a copy of the simulation's site rules in JavaScript, which is exactly what keeping terrain in the tiles avoids. `step` copies it unchanged (`{**state}`).
+- **Stored in every tick, not derived.** `plan` is a pure function of the seed and the simulation version that made the city. Deriving it in the renderer would need a copy of the simulation's site rules in JavaScript, which is exactly what keeping terrain in the tiles avoids.
+- **Immutable after `new_city`.** `step` copies it unchanged (`{**state}`) and never writes it. A test asserts that it is identical in every tick of a run.
 - **Size cost (measured).** On seed 7 at tick 4032, adding the object below and turning 36 tiles into `site` adds 263 bytes raw (152,729 to 152,992) and 121 bytes gzipped (27,033 to 27,154 with Python `gzip` level 9), or 0.45%. Command: a scratch Python script that loads `snapshots/004032.json`, adds the object, rewrites those tiles and compares `gzip.compress(..., 9)` sizes. Nothing was written back.
 
 ```json
@@ -183,10 +184,9 @@ Option 2.
 
 - **Which corridors.** The boulevard through the centre on both axes (`at` 24, role `boulevard`, including its avenue stretches), and the four main streets (`at` 8 and 40 on both axes, role `arterial`). These are the existing 36 m and 21 m corridors, lines 1, 3 and 5 of `cityLayout`. They are the same on every seed.
 - **Widths unchanged.** No tile moves.
-- **How the renderer reads it.**
-  - `cityLayout` keeps computing widths and kinds as today.
-  - At load it asserts that every backbone entry lands on a corridor whose kind is `boulevard` (role `boulevard`) or `street` (role `arterial`), and that no other line has those kinds.
-  - Dressing by role (lamps, signals, frontage) is later masterplan work. This ADR needs only the assert.
+- **Source of truth.** The plan names the backbone corridors; `cityLayout` owns their widths and classes. Python never copies `cityLayout`.
+  - A Node contract test in PR A runs `cityLayout` on v3 fixtures and checks every named corridor: role `boulevard` lands on the 36 m line whose kind is `boulevard` (or `avenue` on its avenue stretches), role `arterial` on a 21 m `street`, and no unnamed line has those classes.
+  - `cityLayout` keeps computing widths and kinds as today. Dressing by role (lamps, signals, frontage) is later masterplan work.
 
 ### Reserved sites
 
@@ -194,8 +194,8 @@ One rule per landmark:
 
 | Landmark | Rule |
 |---|---|
-| Headquarters | A `site` rectangle 4 tiles deep and 6 across, on the east side of the boulevard's north-south arm, facing it (`face` `-x`), on the avenue stretch: columns 24-27, rows 9-14 (sector 9) or rows 33-38 (sector 27). It straddles that sector's mid street, as `hqSite`'s sites do, so the cut and the twin towers' gap stay as built. North or south is drawn once from its own generator, `"{seed}:plan"`. Both candidates, with the court, are clear of the core, the hub plaza, the interchange, the rail and the works on seeds 0 to 499 under today's `lay_terrain` (measured: `lay_terrain(seed)` checked against the 72 candidate tiles). Parks are laid after them and skip their tiles. |
-| Headquarters court (forecourt) | A `site` rectangle 2 tiles deep and 6 across, directly across the avenue: columns 22-23, the same rows. With the campus's own front plaza (in the model) it makes the forecourt on the backbone. The open mid street west of it lines up with the gap between the towers, where the eye floats. |
+| Headquarters | A `site` rectangle 4 tiles deep and 6 across, on the east side of the boulevard's north-south arm, facing it (`face` `-x`), on the avenue stretch: columns 24-27, rows 9-14 (sector 9) or rows 33-38 (sector 27). It straddles that sector's mid street, as `hqSite`'s sites do, so the cut and the twin towers' gap stay as built. North or south is chosen per seed, deterministically: one draw from its own generator, `"{seed}:plan"`. Both candidates, with the court, are clear of the core, the hub plaza, the interchange, the rail and the works on seeds 0 to 499 under today's `lay_terrain` (measured: `lay_terrain(seed)` checked against the 72 candidate tiles). Parks are laid after them and skip their tiles. |
+| Headquarters court (forecourt) | A `site` rectangle 2 tiles deep and 6 across, directly across the avenue: columns 22-23, the same rows. The block east of the avenue is 4 tiles deep (columns 24-27, up to the mid street at x = 28; measured with `cityLayout` on the seed 3 and 7 fixtures), so the 4-deep headquarters fills it and the court cannot sit on the same block. With the campus's own front plaza (in the model) it makes the forecourt on the backbone. No market opens on it and nothing grows on it: it is terrain. |
 | Telecom tower | Unchanged: the hub plaza (park terrain, 4 x 4 tiles at the centre). |
 | Interchange | Unchanged: road terrain, sectors 16, 17, 22, 23. |
 | Station | Unchanged: the end of the seed's railway nearer the centre (rail terrain). |
@@ -206,13 +206,13 @@ One rule per landmark:
 | Old town | Stays a renderer rule, with one extra exclusion: a quarter holding a `site` tile is skipped, as one holding road land is today. The court lies in quarter (1, 1) or (1, 3), so the old town takes the other west quarter. |
 
 - **A reserved tile before its landmark exists:** a `site` tile is terrain. It has `f = t = p = 0` and `b = 0`, and its `on` follows power like any tile. It never changes.
-- **Drawn from tick 0:** the headquarters and its court are drawn on their sites from tick 0, as the tower and the interchange are now. So there is no "before" on schema 6. A staged reveal would be a renderer choice derived from the snapshot (open question 4).
+- **Drawn from tick 0:** the headquarters stands on its site from tick 0, among empty lots, as the tower and the interchange do now. There is no staged reveal.
 
 ### Growth weighting
 
-These are new constants in `sim/rules.py`, with first values to be tuned in PR B. For each tile, computed from its position and `state["plan"]["backbone"]`:
+These are new constants in `sim/rules.py`, with first values to be tuned in PR B: only until the acceptance criteria pass on the four seeds, and at most three rounds of parameter changes. For each tile, computed from its position and `state["plan"]["backbone"]`:
 
-- **Frontage `F`:** 1 if the tile faces a `boulevard` corridor, `ARTERIAL_SHARE` (0.5) if it faces only an `arterial`, else 0.
+- **Frontage `F`:** 1 if the tile faces a `boulevard` corridor, `ARTERIAL_SHARE` (0.5) if it faces only an `arterial`, else `MINOR_SHARE`. `MINOR_SHARE` is 0 in version 4; it stays a named parameter so the ring road and the 14 m lines can get a weight later without a new rule.
 - **Centrality `C`:** `max(0, 1 - ring / CENTRE_REACH)`, with `CENTRE_REACH = 24`.
 
 Then:
@@ -239,11 +239,16 @@ Purity and draws:
 
 ### validate() for schema 6
 
-- `plan` is present and equals `plan_for(seed)`, the function `new_city` uses. That checks its shape and that it never changes.
-- The `site` tiles are exactly the tiles inside `plan.sites`' rectangles.
-- Every terrain tile, `site` included, has `f = t = p = 0`. This is a new rule for all terrain, which no current code breaks.
-- `KINDS` and `TERRAIN` include `site`. Unknown kinds are rejected, as today.
-- In the tests, not in `validate()` (they follow from `plan_for`): for seeds 0 to 49, the headquarters' front edge lies on the boulevard, the court is directly across it, and neither overlaps other terrain or the core.
+`validate()` checks only what any schema-6 tick must satisfy, whatever simulation version made it:
+
+- **The plan's format:** `backbone` and `sites` with the fields, roles, uses and faces above, and integer coordinates.
+- **Sites match the grid:** the `site` tiles are exactly the tiles inside `plan.sites`' rectangles, no more and no fewer.
+- **Sites are sound:** every rectangle is in bounds, and no site overlaps road, rail or works terrain or the core.
+- Every terrain tile, `site` included, has `f = t = p = 0`. This is a new rule for all terrain, which no current code breaks. `KINDS` and `TERRAIN` include `site`; unknown kinds are rejected, as today.
+
+"`plan` equals `new_city(seed)`'s plan" is a test for the current `SIM_VERSION` only. It never goes in `validate()` or `resume_error()`. Reason: `validate()` must keep accepting historic ticks, for replay and for L2's RepairHead (ADR-0013, ADR-0014), and a later version may lay out a different plan for the same seed.
+
+Also in the tests, not in `validate()`: for seeds 0 to 49, the headquarters' front edge lies on the boulevard and the court is directly across it.
 
 ### Relationship to ADR-0002, ADR-0007 and ADR-0012
 
@@ -263,8 +268,12 @@ A fresh schema-6 genesis with no migration. Nothing is live: no AWS resources ex
 
 ### Consequences
 
-- The renderer accepts schemas 4, 5 and 6. Schema 6 reads the headquarters and court from `plan`, draws `site` tiles, and skips the reserved quarter for the old town.
-- New golden files: `tests/golden/sim-v3.json` in PR A, and the next version's in PR B (open question 1). `sim-v1.json` and `sim-v2.json` stay. `plan` joins the golden test's digested fields.
+- The renderer accepts schemas 4, 5 and 6, and all three stay drawable through M1. Schema 6 reads the headquarters and court from `plan`, draws `site` tiles, and skips the reserved quarter for the old town.
+- **Versions.** ADR-0013 never lets a recorded golden file be rewritten, so each PR bumps `SIM_VERSION` once:
+  - `SIM_VERSION` 3 (PR A): schema 6, `plan`, `site` terrain, the headquarters site and court, and the seed-443 works fix. Golden file `tests/golden/sim-v3.json`.
+  - `SIM_VERSION` 4 (PR B): the weighted growth. Golden file `tests/golden/sim-v4.json`.
+  - `sim-v1.json` and `sim-v2.json` stay. `plan` joins the golden test's digested fields.
+- **`snapshots/` is never regenerated inside a PR.** Browser checks use runs in a separate scratch folder.
 - The v1 and v2 frozen fixtures stay, and so do the tests that read them. New frozen fixtures (`sim-v3-seed7-t288`, `sim-v3-seed3-t288`, and their successors after PR B) serve any new seed-specific renderer test.
 - `URBAN_AUDIT.md`, `URBAN_MASTERPLAN.md` and `URBAN_DEPENDENCIES.md` stay as the record of the version-1 city. They are not rewritten.
 - `resume_error` refuses schema-5 snapshots for schema-6 code, as intended. The local `snapshots/` (v2) can still be drawn, but not continued.
@@ -297,15 +306,19 @@ Each criterion is measured with `tools/urban_metrics.mjs` on seeds 7, 3, 11 and 
 **PR A: schema 6, `new_city` and the renderer read.**
 
 - *Sim:*
-  - `SCHEMA = 6` and the next `SIM_VERSION`, since `new_city`'s output changes.
+  - `SCHEMA = 6` and `SIM_VERSION = 3`.
   - `site` in `TERRAIN`.
   - `plan_for(seed)`.
   - The sites laid in `lay_terrain` before the parks.
   - `validate()` as above.
   - `plan` in the golden test's fields.
+  - **The seed-443 works fix.** Today `new_city(443)` lays out no works terrain. It is the only such seed in 0 to 9999 (measured: `new_city(seed)` for every seed in that range, counting `works` tiles). PR A fixes `lay_works` so every seed gets works.
 - *Tests:*
-  - `plan` static over ticks; `site` tiles never change.
+  - `plan` identical in every tick of a run; `site` tiles never change.
+  - `plan` equals `new_city(seed)`'s plan, for the current `SIM_VERSION` only.
   - The site rules for seeds 0 to 49.
+  - `@example(443)` on `test_new_city_lays_out_terrain_around_the_core`, which asserts works exist.
+  - A sweep of seeds 0 to 9999 reported in the PR: seeds without works before and after. After must be 0.
   - The new golden file.
   - Fixtures `sim-v3-seed7-t288` and `sim-v3-seed3-t288`.
 - *Renderer:*
@@ -313,7 +326,7 @@ Each criterion is measured with `tools/urban_metrics.mjs` on seeds 7, 3, 11 and 
   - `cityPlan` builds the headquarters from `plan` on schema 6 (the same object `hqSite` returns).
   - `buildCity` draws the court.
   - The old-town exclusion.
-  - The backbone assert.
+  - The backbone contract test (Node), as above.
   - A JS test that the headquarters is fixed and on the avenue across ticks of a v3 fixture series.
 - *Docs:* ADR-0003 version 6 entry; ADR-0012 note.
 - *Size (estimated):* about 300 to 400 changed lines, half of them tests.
@@ -321,7 +334,7 @@ Each criterion is measured with `tools/urban_metrics.mjs` on seeds 7, 3, 11 and 
   - After the sim side passes its tests, before the renderer: stop if the golden or `validate()` shows anything unexpected.
   - After a browser check of seeds 7 and 3 at ticks 288 and 4032 (the campus on the avenue, the court, the cut and the walking and lane self-checks): stop and show it before opening the PR.
 
-**PR B: weighted growth (the next `SIM_VERSION`).**
+**PR B: weighted growth (`SIM_VERSION = 4`).**
 
 - *Sim:* the constants above; `F` and `C`; `step`'s lot branch, `height_cap` and `new_build`.
 - *Tests:*
@@ -331,7 +344,7 @@ Each criterion is measured with `tools/urban_metrics.mjs` on seeds 7, 3, 11 and 
   - The metrics tool's acceptance run on four seeds, recorded in the PR. It is not in CI: four 4032-tick runs take about six minutes.
 - *Size (estimated):* about 150 to 250 changed lines.
 - *Stop points:*
-  - If criterion 1 or 3 fails on any seed with weights within twice the proposed values, stop and report instead of tuning further.
+  - If any criterion still fails on any seed after three rounds of parameter changes, stop and report instead of tuning further.
   - If tick time rises more than 10%, stop.
 
 ### Proposed, drawn (not measured)
@@ -351,15 +364,15 @@ The headquarters on the north candidate. `|` and `-`: arterials. `‖` and `=`: 
   r5  R14 | R16   R18 ‖ R18   R16 | R14
 ```
 
-## Open questions
+## Decisions on the review questions
 
-1. **Version numbers.**
-   - ADR-0013 never lets a recorded golden file be rewritten, so PR A (new terrain) and PR B (new growth) each bump `SIM_VERSION`: 3, then 4.
-   - The alternative is to stack PR B on PR A and land one bump, 3, as the brief named it. That couples the two reviews.
-2. **Headquarters side.** North and south drawn per seed, or always north, so documents and the default view are the same on every seed?
-3. **Court size.** 2 tiles deep (12 tiles) or 4 (24, a full half-block, as the v1 audit's "open court" was)? Should a market be allowed to open on it?
-4. **Staged reveal.** Should the headquarters stand from tick 0 among empty lots, or appear when its sector reaches some built share? If staged, the renderer would decide it from the snapshot.
-5. **Parameter values.** The weights above are first guesses. Is a tuning budget of one PR acceptable, or should criteria 1 and 3 be relaxed if they cost population?
-6. **Old schemas in the renderer.** How long do schemas 4 and 5, and with them `hqSite`, stay drawable after the genesis? Until the v1 and v2 fixtures are retired?
-7. **Local snapshots.** PR A's browser check needs a v3 run. Should it regenerate the shared `snapshots/` folder, or use a separate folder that leaves `snapshots/` (v2) as it is?
-8. **Minor corridors.** Should the ring road and the 14 m lines get a small frontage weight, or stay at 0?
+Settled at acceptance, in place of the open questions of the proposal:
+
+1. **Versions.** Two bumps: `SIM_VERSION` 3 for PR A, 4 for PR B (see Consequences).
+2. **Headquarters side.** North or south per seed, deterministic from `"{seed}:plan"`.
+3. **Court.** The block east of the avenue is 4 tiles deep (measured), and the headquarters fills it. So the court sits across the avenue, 2 tiles deep, as proposed. No market opens on it and nothing grows on it.
+4. **Timing.** The headquarters stands from tick 0.
+5. **Tuning.** Only until the acceptance criteria pass on the four seeds, at most three rounds of parameter changes.
+6. **Old schemas.** Schemas 4, 5 and 6 stay drawable through M1.
+7. **Local snapshots.** `snapshots/` is never regenerated inside a PR.
+8. **Minor corridors.** The ring road and the 14 m lines get frontage weight 0 in version 4, kept as the named parameter `MINOR_SHARE`.
