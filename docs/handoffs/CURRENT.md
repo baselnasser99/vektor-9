@@ -1,40 +1,39 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-12 00:44 (+02:00)
-Milestone: M1 (the city goes live), before L2. L1 and the RNG module (SIM_VERSION 2) are done; urban masterplan step 3a done; M0c hover inspector still open
-Branch: `main` @ `5b1046f` (merge of PR #59), equal to `origin/main`. Local-only branch `local/handoff-history` @ `392ba92` keeps the old handoff history (not pushed)
-Working tree: clean apart from untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`). Ignored `snapshots/` (v2) and `snapshots-v1/` (listed in `.git/info/exclude`) are shared: don't clean them
+Updated: 2026-11-12 22:30 (+02:00)
+Milestone: M1 (the city goes live), after L2 and PR A of ADR-0015. M0c hover inspector still open
+Branch: `main` @ `a75e861` (merge of PR #62), equal to `origin/main`. Local-only branch `local/handoff-history` @ `392ba92` keeps the old handoff history (not pushed)
+Working tree: clean apart from untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`). Ignored `snapshots/` (v3), `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done this session (verified)
-- PR #56 (`a76660c`): schema 5 records `sim`; `validate()` checks format, `resume_error()` decides whether this code may advance a snapshot; golden outputs per version. ADR-0013.
-- PR #57 (`71ce9ba`): AWS M1 plan and urban audit under `docs/proposals/`; `PROJECT_PLAN.md` reworded; handoff process below.
-- PR #58 (`f5d88b8`, head `5433dc9`, CI passed): SIM_VERSION 2. `sim/rng.py` builds `randint`, `randrange`, `choice` and `sample` on `random()` alone, and every draw in `sim/` goes through it (a test enforces it). Golden `sim-v2.json` (v1 kept), a three-day golden case, a test continuing the v1 fixture. ADR-0013 revision; F1 wording in ADR-0003/0013. Masterplan guard test reads `tests/fixtures/sim-v1-seed3-t288.json.gz`. Traffic fix in `life.js`: at the interchange's widening merge (2 lanes into 3) crossing ways now take turns; regression tests read the v2 fixtures of seeds 7 and 3. Tick time unchanged within noise; `buildCity` fingerprint unchanged by the traffic fix.
-- PR #59 (`5b1046f`, head `5078623`, CI passed; branch `fix-black-screen` kept): the P0 black screen while navigating is fixed.
-  - Cause: a flagship conduit riser with zero height was scaled flat (`scale.y = 0`), its baked normals were zero, the steel shader output NaN, and bloom spread those pixels into screen-aligned black blocks.
-  - Fix: `riser()` in `landmarks.js` skips a riser with no height.
-  - Self-check: `mergeByMaterial` asserts when a part arrives scaled flat (singular normal matrix); `tests/js/merge.test.mjs` covers it. Frame time unchanged within noise.
-- Local snapshots: `snapshots/` is now v2 (seed 7, schema 5, sim 2, 4,033 files, ticks 0-4032), so the seed-7 JS tests and the default page use the v2 city locally; `snapshots-v1/` keeps the v1 schema-4 history. Both are ignored. The `snapshots-v2/` copies (main checkout and `.claude/worktrees/sim-rng/`) are gone, with their exclude entry.
+- PR #60 (merge `2fba117`): ADR-0015 (urban structure in the simulation) Accepted.
+- PR #61 (merge `f69ed53`): L2 tick handler and protocol, ADR-0014, local only; includes the three bootstrap crash tests in `tests/test_tick_protocol.py`.
+- PR #62 (merge `a75e861`, head `2baf8f1`, CI passed): schema 6, SIM_VERSION 3. `new_city` lays out a static `plan` (backbone at 8, 24, 40 on both axes; `hq` and `court` sites as `site` terrain); the HQ stands on the plan's site from tick 0, facing the avenue, with the court across it; seed 443 gets works (`lay_works` retries). Schema-6 code refuses schema-5 snapshots (fresh genesis, no migration). Renderer draws schemas 4, 5 and 6. Golden `sim-v3.json`; v3 fixtures for seeds 7 and 3. ADR-0015 criterion 6 amended: 12-seed mean population within ±10% (v2 113,952, v3 110,653, -2.9%). ADR-0003: schema 6.
+- Local snapshots: `snapshots/` is now v3 (seed 7, schema 6, sim 3, 4,033 files, ticks 0 to 4032). `snapshots-v2/` (schema 5, sim 2) and `snapshots-v1/` are kept; both are in `.git/info/exclude`. The seed-7 JS tests (`snapshot(7)`, `localSeries` in `tests/js/harness.mjs`) read `snapshots/` when present; the Node suite passes on the v3 folder.
 
-## Handoff workflow
-- Handoff updates are docs-only commits on `main`, pushed only with the owner's approval. Local `main` tracks `origin/main` exactly. PR branches are cut from `origin/main`.
+## Closed follow-ups
+- F2: implemented as `ResumeRefused` in L2. F3: a fresh schema-6 genesis, per ADR-0015. Permanent HQ anchoring. Seed 443 without works.
 
 ## In progress / not done
-- Fixture rule (in `CLAUDE.md`): renderer tests that assert one seed's specific outcome read a frozen fixture via `fixture()`, not a fresh sim run.
-- The urban docs (`docs/proposals/URBAN_*`, ADR-0012's seed-7 roles, screenshots) describe the v1 city. Under v2 seed 7's HQ, old town, parks and works sit elsewhere.
-- Review follow-ups still open: F2 (in L2 a `resume_error` refusal is terminal and non-retryable; recover by rolling forward); F3 (decision D3: fresh schema-5 genesis vs 4 to 5 migration); F6 (optional `sim-v1` tag).
-- Proposals awaiting a decision: correctness must not rely on reserved concurrency; always bundle a pinned `boto3` (closes U1); GLB with meshopt and fingerprinted assets at deployment.
-- Urban, carried over: permanent IKARO HQ anchoring; ADR-0012 follow-ups; seed 3 car dead ends (v1); traffic standstills outside the interchange; walkers off mid streets; dirt-track cars don't tilt; plant ignores blackouts; HQ campus 8 m wider than its model; no `.gitattributes`.
-- Branches kept: `sim-rng`, `docs-proposals`, `sim-versioning`, `fix-black-screen` (local and remote, with worktrees), `local/handoff-history` (local only), older PR branches.
+- PR B: growth weighted by frontage and distance from the centre (SIM_VERSION 4), judged by the 12-seed mean population in ADR-0015; adds a test continuing the v3 fixtures under v4.
+- Court visual check: `http://localhost:8000/web/?bench=1000x625&view=20,30,-180,-32,0,-225` (seed 7, tick 4032).
+- A pedestrian crossing between the HQ and the court (renderer follow-up).
+- S1 to S4, with the pinned `boto3` decided in ADR-0014 (U1 closes at S1).
+- The root duplicates of `docs/proposals/`; the `.gitattributes` PR.
+- F6 (optional sim tags); GLB with meshopt; the public cost view promised on `PROJECT_PLAN.md` line 8.
+- The `URBAN_*` proposal docs still describe the v1 city.
+- Branch and worktree cleanup. Local branches kept: `blender-plant`, `claude/audit-fixes-04845d`, `claude/highway-interchange-adr-0011-fa5fef`, `claude/keen-kilby-474fe2`, `claude/l2-tick-handler-306ebb`, `claude/musing-bouman-ca762f`, `claude/pickup-92c597`, `claude/screen-blackness-snapshots-aaaa07`, `claude/train-station-fd11db`, `claude/urban-structure-adr-4b0018`, `docs-proposals`, `fix-black-screen`, `fix/adr-0015-schema-6-static-plan-2aa7f4`, `interchange`, `interchange-circulation`, `interchange-west`, `l2-tick-handler`, `local/handoff-history`, `masterplan-table`, `parked-walkers`, `perf-far-lods`, `rigid-props`, `sim-rng`, `sim-v3-site-plan`, `sim-versioning`, `street-mix`, `tidy-perf`, `train-station`, `urban-structure-adr` (most also on `origin`). Worktrees under `.claude/worktrees/`: `adr-0015-schema-6-static-plan-2aa7f4`, `audit-fixes-04845d`, `blender-tower-asset-ebe299`, `city-preview-2a14c8`, `city-preview-pickup-860447`, `cyberpunk-pedestrian-system-93ab30`, `docs-proposals`, `highway-interchange-adr-0011-fa5fef`, `keen-kilby-474fe2`, `l2-tick-handler-306ebb`, `musing-bouman-ca762f`, `pickup-92c597`, `pickup-cb1bc0`, `screen-blackness-snapshots-aaaa07`, `sim-rng`, `sim-versioning`, `train-station-fd11db`, `urban-structure-adr-4b0018`.
 
 ## Checks
-- On `main` @ `5b1046f`: `uv run pytest` → 60 passed; Node suite → 62 passed; `ruff check` and `ruff format --check` → pass; `node --check` on `web/src` and `tests/js` → ok.
+- On `main` @ `a75e861`: `uv run pytest` → 192 passed (90 s); Node suite → 70 passed (44 s; 37 s on the v3 `snapshots/`); `ruff check` and `ruff format --check` → pass.
 - CDK synth: n/a (no CDK app). Deployed: no. No AWS resources exist.
 
 ## Decisions
-- M1 direction approved: EventBridge Scheduler, Lambda, S3, CloudFront, CloudWatch, SNS, CDK in Python; recovery R1; three buckets; pre-gzipped glTF.
-- No AWS deployment and no L2 without explicit approval.
+- ADR-0015: schema 6 is a fresh genesis; validate() and resume_error() never compare against `new_city(seed)`; criterion 6 uses the 12-seed mean.
+- No AWS deployment without explicit approval.
 
 ## Next
-1. In parallel: L2 (tick handler and protocol, ADR-0014, local only), and a timeboxed urban structure ADR: an arterial and boulevard backbone plus reserved landmark sites as terrain in `new_city` (schema 6), then growth weighted by frontage and distance from the centre (SIM_VERSION 3), both before any AWS genesis.
-2. Clean up the root duplicates of `docs/proposals/`; the `.gitattributes` PR.
-3. CDK S1 to S4.
+1. PR B (SIM_VERSION 4).
+2. S1.
+3. The cleanups (root duplicates, `.gitattributes`, branches and worktrees).
+One session at a time.
