@@ -17,10 +17,13 @@ from sim.state import (
     counter,
     hub_plaza,
     interchange,
+    lay_terrain,
     load,
     new_city,
     new_tile,
+    plan_for,
     power_grid,
+    site_tiles,
     validate,
     xy,
 )
@@ -47,16 +50,18 @@ junk = st.recursive(
 
 
 def random_city(seed):
-    """Any mix of tiles in any valid state, to push the rules past what new_city() makes."""
+    """Any mix of tiles in any valid state, to push the rules past what new_city() makes. Site
+    tiles stay where the plan reserves them, as validate() requires."""
     rng = random.Random(seed)
+    city = new_city(seed)
+    sites, kinds = set(site_tiles(city["plan"])), [k for k in R.KINDS if k != "site"]
     tiles = []
-    for _ in range(R.SIZE * R.SIZE):
-        kind = choice(rng, R.KINDS)
+    for i in range(R.SIZE * R.SIZE):
+        kind = "site" if i in sites else choice(rng, kinds)
         target = randint(rng, 1, R.FLOORS_MAX) if kind in ("build", "house") else 0
         floors = randrange(rng, target) if kind == "build" else target
         people = randint(rng, 0, floors * R.PEOPLE_PER_FLOOR * 2) if kind == "house" else 0
         tiles.append(new_tile(kind, rng, floors, target, people))
-    city = new_city(seed)
     return {**city, "tiles": tiles, "power": apply_power(tiles)}
 
 
@@ -186,17 +191,18 @@ def test_newer_rules_continue_an_older_version_and_say_so(monkeypatch):
     assert (older["sim"], after["sim"]) == (R.SIM_VERSION - 1, R.SIM_VERSION)
 
 
-def test_this_version_continues_a_version_1_snapshot():
-    """A snapshot made by version 1 (tests/fixtures, seed 7 at tick 288) is valid, may be
-    continued, and every tick after it is labelled with this version."""
-    path = Path(__file__).parent / "fixtures" / "sim-v1-seed7-t288.json.gz"
+@pytest.mark.parametrize("version", [1, 2])
+def test_schema_6_code_refuses_to_continue_a_schema_5_snapshot(version):
+    """Snapshots made by versions 1 and 2 (tests/fixtures, seed 7 at tick 288) are schema 5. Schema
+    6 starts a fresh genesis with no migration (ADR-0015), so this code refuses to advance them
+    rather than continue them without a plan. Continuing an older rules version within one schema
+    is test_newer_rules_continue_an_older_version_and_say_so's to check."""
+    path = Path(__file__).parent / "fixtures" / f"sim-v{version}-seed7-t288.json.gz"
     state = json.loads(gzip.decompress(path.read_bytes()))
-    assert (state["schema"], state["sim"], state["tick"]) == (5, 1, 288)
-    assert validate(state) == [] and resume_error(state) is None
-    for _ in range(10):
-        state, _ = step(state, [], tick_rng(state))
-        assert state["sim"] == R.SIM_VERSION and validate(state) == []
-    assert state["tick"] == 298
+    assert (state["schema"], state["sim"], state["tick"]) == (5, version, 288)
+    assert "plan" not in state and "schema 5" in resume_error(state)
+    with pytest.raises(ValueError, match="cannot advance"):
+        step(state, [], tick_rng(state))
 
 
 def test_rules_version_is_independent_of_the_schema(monkeypatch):
@@ -328,6 +334,7 @@ def test_grid_lookups_match_a_full_scan(seed, radius):
 @settings(max_examples=20, deadline=None)
 @given(seeds)
 @example(110)  # the rail once dipped into the core here and broke in two
+@example(443)  # its works once fell wholly on a park, so it had none (ADR-0015)
 def test_new_city_lays_out_terrain_around_the_core(seed):
     tiles = new_city(seed)["tiles"]
     c = R.SIZE // 2
@@ -412,3 +419,83 @@ def test_interchange_land_is_four_whole_blocks_kept_for_the_highway(seed):
     for _ in range(50):
         state, _ = step(state, [], tick_rng(state))
     assert {i for i, t in enumerate(state["tiles"]) if t["k"] == "road"} == land
+
+
+@pytest.mark.parametrize("seed", range(50))
+def test_plan_reserves_the_headquarters_and_its_court_on_the_avenue(seed):
+    """The site rules (ADR-0015): the headquarters fills the block east of the boulevard's avenue
+    stretch, north or south of the centre, straddling that sector's mid street and fronting the
+    boulevard; the court is directly across it. Without the plan, only parks would be on them."""
+    plan = new_city(seed)["plan"]
+    c, b = R.SIZE // 2, R.BLOCK
+    assert plan["backbone"] == [
+        {"along": a, "at": at, "role": role}
+        for a in ("x", "y")
+        for at, role in ((c - 2 * b, "arterial"), (c, "boulevard"), (c + 2 * b, "arterial"))
+    ]
+    hq, court = plan["sites"]
+    assert hq["use"] == "hq" and hq["face"] == "-x" and court["use"] == "court"
+    assert (hq["x0"], hq["x1"]) == (c, c + 3)  # front edge on the boulevard, 4 deep: the block
+    assert (court["x0"], court["x1"]) == (c - 2, c - 1)  # across the boulevard, 2 deep
+    assert (hq["y0"], hq["y1"]) == (court["y0"], court["y1"])
+    assert hq["y0"] // b in (c // b - 2, c // b + 1)  # an avenue sector
+    assert (hq["y0"] % b, hq["y1"] % b) == (1, b - 2)  # 3 tiles each side of the mid street
+    bare = lay_terrain(seed, {"sites": []})
+    assert {bare[i] for i in site_tiles(plan) if i in bare} <= {"park"}
+
+
+@settings(max_examples=5, deadline=None)
+@given(seeds)
+def test_plan_is_the_same_in_every_tick(seed):
+    state = new_city(seed)
+    plan, sites = state["plan"], site_tiles(state["plan"])
+    for _ in range(100):
+        state, _ = step(state, [], tick_rng(state))
+        assert state["plan"] == plan
+        assert all(state["tiles"][i]["k"] == "site" for i in sites)
+    assert {i for i, t in enumerate(state["tiles"]) if t["k"] == "site"} == set(sites)
+
+
+def test_this_version_lays_out_the_plan_new_city_makes():
+    """For the current SIM_VERSION only: a stored plan is new_city(seed)'s. Never in validate() or
+    resume_error(), which must accept history whose version laid out another plan (ADR-0015)."""
+    for seed in (7, 3, 443):
+        state = new_city(seed)
+        for _ in range(3):
+            state, _ = step(state, [], tick_rng(state))
+        assert state["plan"] == plan_for(seed) == new_city(seed)["plan"]
+
+
+def test_validate_checks_the_plan_against_the_grid():
+    city = new_city(7)
+    assert validate(city) == []
+    plan, sites = city["plan"], site_tiles(city["plan"])
+
+    def errors(kinds=None, extra=None):
+        tiles = [dict(t) for t in city["tiles"]]
+        for i, kind in (kinds or {}).items():
+            tiles[i]["k"] = kind
+        sites_list = plan["sites"] + ([extra] if extra else [])
+        return validate({**city, "tiles": tiles, "plan": {**plan, "sites": sites_list}})
+
+    def one(x, y):
+        return {"use": "court", "x0": x, "y0": y, "x1": x, "y1": y}
+
+    lot = next(i for i, t in enumerate(city["tiles"]) if t["k"] == "lot")
+    assert any("outside the plan" in e for e in errors({lot: "site"}))
+    assert any("not site" in e for e in errors({sites[0]: "lot"}))
+    for kind in ("road", "rail", "works"):
+        i = next(i for i, t in enumerate(city["tiles"]) if t["k"] == kind)
+        assert any(f"overlaps {kind}" in e for e in errors(extra=one(*xy(i))))
+    c = R.SIZE // 2
+    assert any("overlaps the core" in e for e in errors({c * R.SIZE + c: "site"}, one(c, c)))
+    out = {"use": "court", "x0": R.SIZE - 1, "y0": 0, "x1": R.SIZE, "y1": 0}
+    assert any("out of bounds" in e for e in errors(extra=out))
+    for bad in (
+        None,
+        [],
+        {"backbone": []},
+        {**plan, "sites": [{"use": "mall"}]},
+        {**plan, "backbone": [{"along": "z", "at": 8, "role": "arterial"}]},
+    ):
+        assert validate({**city, "plan": bad}), bad

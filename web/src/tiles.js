@@ -96,16 +96,30 @@ export function plaza(kit, rand, lit) {
     const [x, z] = [-3.5 + Math.floor(rand() * 3) * 3.5, [-3.3, 2.3, 2.3][Math.floor(rand() * 3)]];
     spots.set(`${x},${z}`, [x, z, pick(rand, CAR_COLORS)]);
   }
-  const kiosk = rand() < 0.5;
-  for (const [key, car] of spots) if (!(kiosk && key === '3.5,2.3')) g.userData.parked.push(car); // the kiosk's corner
-  if (kiosk) {
-    const warm = pick(rand, WARM);
-    part(g, box(3, 2.6, 2.4, 1), kit.steel(palette.charcoal), 4, 1.5, 4);
-    if (lit) {
-      part(g, box(2.6, 0.6, 0.15, 1), kit.sign(pick(rand, WORDS), warm), 4, 3.2, 5.25);
-      part(g, box(2.4, 0.9, 0.1, 1), kit.glow(palette.warmWindow, 1), 4, 1.4, 5.22);
-    }
+  const hasKiosk = rand() < 0.5;
+  for (const [key, car] of spots) if (!(hasKiosk && key === '3.5,2.3')) g.userData.parked.push(car); // the kiosk's corner
+  if (hasKiosk) kiosk(kit, g, rand, lit, 4, 4);
+  return g;
+}
+
+// A kiosk at (x, z), its lit sign and window facing +z.
+function kiosk(kit, g, rand, lit, x, z) {
+  const warm = pick(rand, WARM);
+  part(g, box(3, 2.6, 2.4, 1), kit.steel(palette.charcoal), x, 1.5, z);
+  if (lit) {
+    part(g, box(2.6, 0.6, 0.15, 1), kit.sign(pick(rand, WORDS), warm), x, 3.2, z + 1.25);
+    part(g, box(2.4, 0.9, 0.1, 1), kit.glow(palette.warmWindow, 1), x, 1.4, z + 1.22);
   }
+}
+
+// The headquarters' court (ADR-0015): a tile of the forecourt the simulation reserves across the avenue from the
+// campus. Paving edge to edge, so the tiles read as one square; steel bollards along its kerb where it meets the
+// avenue (kerb: the tile's +x side does); a lit kiosk on some tiles.
+export function court(kit, rand, lit, kerb) {
+  const g = new THREE.Group();
+  part(g, box(TILE, 0.2, TILE, 1), kit.concrete(palette.slate), 0, 0.1, 0);
+  if (kerb) for (let z = -TILE / 2 + 1.5; z < TILE / 2; z += 2.5) part(g, cyl(0.1, 0.1, 0.9, 8), kit.steel(palette.charcoal, 0.6), TILE / 2 - 0.6, 0.65, z);
+  if (rand() < 0.35) kiosk(kit, g, rand, lit, -3, -3);
   return g;
 }
 

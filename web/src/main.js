@@ -16,8 +16,9 @@ import { airships, cloudDeck, districtGlows, horizon, moon, rain, rainAmount, st
 
 document.body.style.background = css(palette.nightZenith); // dark while the city builds
 // Snapshot schemas this renderer draws (ADR-0003). 5 only adds the simulation version "sim" (ADR-0013),
-// which the city does not depend on, so schema-4 snapshots draw the same way.
-const SCHEMAS = [4, 5];
+// which the city does not depend on, so schema-4 snapshots draw the same way. 6 adds the plan and its site tiles
+// (ADR-0015): the headquarters stands where the plan puts it, its court across the avenue.
+const SCHEMAS = [4, 5, 6];
 
 const params = new URLSearchParams(location.search);
 const snapUrl = params.get('snap') ?? '../snapshots/004032.json';

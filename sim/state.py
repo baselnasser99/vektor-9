@@ -125,9 +125,39 @@ def interchange():
     return [y * R.SIZE + x for y in range(c - b, c + b) for x in range(e - b, e + b)]
 
 
-def lay_terrain(seed):
+def plan_for(seed):
+    """The static plan (ADR-0015), fixed for the life of the city: the backbone corridors (the
+    boulevard and the main streets, which cityLayout draws 36 m and 21 m wide on every seed; `at` is
+    the tile boundary each runs on) and the reserved sites, as inclusive tile rectangles. The
+    headquarters fills the block east of the boulevard's avenue stretch, north or south of the
+    centre, straddling that sector's mid street and facing the avenue; its court is across it."""
+    rng = random.Random(f"{seed}:plan")
+    c, b = R.SIZE // 2, R.BLOCK
+    by = choice(rng, (c // b - 2, c // b + 1))  # the avenue's sectors: the second out each way
+    y0, y1 = by * b + 1, by * b + b - 2
+    backbone = [
+        {"along": along, "at": at, "role": "boulevard" if at == c else "arterial"}
+        for along in ("x", "y")
+        for at in (c - 2 * b, c, c + 2 * b)
+    ]
+    hq = {"use": "hq", "x0": c, "y0": y0, "x1": c + R.HQ_DEPTH - 1, "y1": y1, "face": "-x"}
+    court = {"use": "court", "x0": c - R.COURT_DEPTH, "y0": y0, "x1": c - 1, "y1": y1}
+    return {"backbone": backbone, "sites": [hq, court]}
+
+
+def site_tiles(plan):
+    """Tile indices inside the plan's site rectangles, in row order."""
+    return sorted(
+        y * R.SIZE + x
+        for s in plan["sites"]
+        for y in range(s["y0"], s["y1"] + 1)
+        for x in range(s["x0"], s["x1"] + 1)
+    )
+
+
+def lay_terrain(seed, plan):
     """Tile index -> terrain kind: the hub plaza, a railway in from one edge, the interchange's
-    land, a few parks, an old industrial site.
+    land, the plan's reserved sites, a few parks, an old industrial site.
 
     Everything but the plaza stays clear of the starting core, so the city grows around it.
     Integer math only.
@@ -138,6 +168,7 @@ def lay_terrain(seed):
     terrain = lay_rail(rng, clear)
     terrain.update(dict.fromkeys(hub_plaza(), "park"))
     terrain.update(dict.fromkeys(interchange(), "road"))
+    terrain.update(dict.fromkeys(site_tiles(plan), "site"))  # before the parks, which skip them
     rails = [xy(i) for i, k in terrain.items() if k == "rail"]
     lay_parks(rng, clear, terrain, rails)
     lay_works(rng, clear, terrain, rails)
@@ -210,7 +241,8 @@ def lay_parks(rng, clear, terrain, rails):
 
 def lay_works(rng, clear, terrain, rails):
     """The old industrial site into terrain: a rectangle with one corner missing, set against the
-    railway, if any rail tile is at the right distance from the center."""
+    railway, if any rail tile is at the right distance from the center. A placement that lands only
+    on other terrain is drawn again, up to WORKS_TRIES times."""
     n, c = R.SIZE, R.SIZE // 2
     sidings = [
         (x, y)
@@ -219,24 +251,31 @@ def lay_works(rng, clear, terrain, rails):
     ]
     if not sidings:
         return
-    rx, ry = choice(rng, sidings)
-    (w, h), sx, sy = R.WORKS_SIZE, choice(rng, (1, -1)), choice(rng, (1, -1))
-    xs = range(rx + 1, rx + 1 + w) if sx > 0 else range(rx - w, rx)
-    ys = range(ry + 1, ry + 1 + h) if sy > 0 else range(ry - h, ry)
-    corner = (choice(rng, (xs[0], xs[-1])), choice(rng, (ys[0], ys[-1])))
-    for y in ys:
-        for x in xs:
-            i = y * n + x
-            if 0 <= x < n and 0 <= y < n and (x, y) != corner and i not in terrain and not clear[i]:
-                terrain[i] = "works"
+    for _ in range(R.WORKS_TRIES):
+        rx, ry = choice(rng, sidings)
+        (w, h), sx, sy = R.WORKS_SIZE, choice(rng, (1, -1)), choice(rng, (1, -1))
+        xs = range(rx + 1, rx + 1 + w) if sx > 0 else range(rx - w, rx)
+        ys = range(ry + 1, ry + 1 + h) if sy > 0 else range(ry - h, ry)
+        corner = (choice(rng, (xs[0], xs[-1])), choice(rng, (ys[0], ys[-1])))
+        works = [
+            y * n + x
+            for y in ys
+            for x in xs
+            if 0 <= x < n and 0 <= y < n and (x, y) != corner
+            and y * n + x not in terrain and not clear[y * n + x]
+        ]  # fmt: skip
+        if works:  # seed 443's first placement fell wholly on a park (ADR-0015)
+            terrain.update(dict.fromkeys(works, "works"))
+            return
 
 
 def new_city(seed):
     """A small core around the center: one plant just off the hub plaza, a couple of markets, a
     few low houses, and the terrain (hub plaza, railway, interchange, parks, industrial site) the
-    city will grow around."""
+    city will grow around, and the static plan that reserves land for the headquarters."""
     rng = random.Random(seed)
-    terrain = lay_terrain(seed)
+    plan = plan_for(seed)
+    terrain = lay_terrain(seed, plan)
     c = R.SIZE // 2
     plant = (c + R.HUB_PLAZA, c + R.HUB_PLAZA)
     core = [
@@ -270,6 +309,7 @@ def new_city(seed):
         "tick": 0,
         "seed": seed,
         "size": R.SIZE,
+        "plan": plan,
         "tiles": tiles,
         "power": apply_power(tiles),
         "events": [],
@@ -277,8 +317,63 @@ def new_city(seed):
     }
 
 
+def is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
 def is_count(v):
-    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+    return is_int(v) and v >= 0
+
+
+def plan_errors(plan, tiles):
+    """What is wrong with a snapshot's plan (ADR-0015): its format, and its sites against the grid.
+    Never compared with plan_for(seed): a later version may lay out another plan for a seed."""
+    if not (isinstance(plan, dict) and set(plan) == {"backbone", "sites"}
+            and all(isinstance(v, list) for v in plan.values())):  # fmt: skip
+        return ["plan must be an object with lists backbone and sites"]
+    errors = [
+        f"plan: bad corridor {b!r}"
+        for b in plan["backbone"]
+        if not (
+            isinstance(b, dict)
+            and set(b) == {"along", "at", "role"}
+            and b["along"] in ("x", "y")
+            and is_count(b["at"])
+            and b["at"] <= R.SIZE
+            and b["role"] in R.ROLES
+        )
+    ]
+    c, reserved = R.SIZE // 2, set()
+    for site in plan["sites"]:
+        keys = {"use", "x0", "y0", "x1", "y1"}
+        if isinstance(site, dict) and site.get("use") == "hq":
+            keys.add("face")
+        if not (isinstance(site, dict) and set(site) == keys and site["use"] in R.SITE_USES
+                and site.get("face", "-x") in R.FACES
+                and all(is_int(site[k]) for k in ("x0", "y0", "x1", "y1"))):  # fmt: skip
+            errors.append(f"plan: bad site {site!r}")
+            continue
+        x0, y0, x1, y1 = site["x0"], site["y0"], site["x1"], site["y1"]
+        if not (0 <= x0 <= x1 < R.SIZE and 0 <= y0 <= y1 < R.SIZE):
+            errors.append(f"plan: site {site['use']} out of bounds")
+            continue
+        if chebyshev(max(x0, min(c, x1)), max(y0, min(c, y1)), c, c) <= R.START_RADIUS + 1:
+            errors.append(f"plan: site {site['use']} overlaps the core")
+        reserved.update(y * R.SIZE + x for y in range(y0, y1 + 1) for x in range(x0, x1 + 1))
+    kinds = [t.get("k") if isinstance(t, dict) else None for t in tiles]
+    if len(kinds) != R.SIZE * R.SIZE:
+        return errors  # the tiles are already reported
+    for i in sorted(reserved):
+        if kinds[i] in ("road", "rail", "works"):
+            errors.append(f"plan: a site overlaps {kinds[i]} at {xy(i)}")
+        elif kinds[i] != "site":
+            errors.append(f"plan: site tile {xy(i)} is {kinds[i]!r}, not site")
+    errors += [
+        f"tile {xy(i)}: site outside the plan's sites"
+        for i, k in enumerate(kinds)
+        if k == "site" and i not in reserved
+    ]
+    return errors
 
 
 def validate(state):
@@ -323,6 +418,10 @@ def validate(state):
             errors.append(f"{where}: house without floors")
         if t["k"] != "house" and t["p"]:
             errors.append(f"{where}: only houses have residents")
+        if t["k"] in R.TERRAIN and t["t"]:
+            errors.append(f"{where}: terrain has no floors")
+
+    errors += plan_errors(state.get("plan"), tiles)
 
     power = state.get("power")
     if not isinstance(power, dict) or not all(is_count(power.get(k)) for k in POWER_KEYS):

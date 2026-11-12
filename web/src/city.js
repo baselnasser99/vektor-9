@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, outward, part, rng } from './geometry.js';
 import { powerPlant } from './plant.js';
-import { construction, market, plaza, storefront } from './tiles.js';
+import { construction, court, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
 import { LOOK_STEP, lightingIdentity } from './facade.js';
@@ -12,7 +12,7 @@ import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, verge, works } from './terrain.js';
 import { buildInterchange, hasInterchange } from './interchange.js';
 import { warningLamp } from './parts.js';
-import { buildHQ, hqSite } from './headquarters.js';
+import { buildHQ, hqSite, planSite } from './headquarters.js';
 import { masterplan } from './masterplan.js';
 import { BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
 
@@ -72,8 +72,9 @@ export function cityLayout(snap) {
   // Old town: of the four 2x2-sector quarters touching the centre, the one with the least terrain.
   const within = (col, row, [sx, sz]) => [col / BLOCK - sx, row / BLOCK - sz].every((v) => v >= 0 && v < 2);
   const terrain = (q) => snap.tiles.filter((t, i) => TERRAIN.includes(t.k) && within(i % n, Math.floor(i / n), q)).length;
-  const road = (q) => snap.tiles.some((t, i) => t.k === 'road' && within(i % n, Math.floor(i / n), q)); // the interchange stays out of the old town
-  const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].filter((q) => !road(q)).map((q) => [terrain(q) + rand(), q]);
+  // The interchange and the headquarters' court (schema 6's site tiles) stay out of the old town.
+  const kept = (q) => snap.tiles.some((t, i) => (t.k === 'road' || t.k === 'site') && within(i % n, Math.floor(i / n), q));
+  const quarters = [[mid - 2, mid - 2], [mid, mid - 2], [mid - 2, mid], [mid, mid]].filter((q) => !kept(q)).map((q) => [terrain(q) + rand(), q]);
   const town = quarters.sort((p, q) => p[0] - q[0])[0][1];
   const inTown = (col, row) => within(col, row, town);
   const lo = cross[0].c - cross[0].w / 2, hi = at;
@@ -177,11 +178,11 @@ function settleProps(root, warp, food, benches) {
 }
 
 // The plan buildCity draws from, shared with the headless tests (tests/js/harness.mjs): the street layout; the
-// headquarters' site (headquarters.js), whose 24 tiles are drawn as one campus with nothing else on them, and the
+// headquarters' site (headquarters.js: the snapshot's plan from schema 6, else picked per snapshot), whose 24 tiles are drawn as one campus with nothing else on them, and the
 // mid street it straddles stopping at the campus (layout.cut), so streets.js paves it over; and the masterplan
 // (masterplan.js, layout.plan), which nothing reads yet.
 export function cityPlan(snap) {
-  const layout = cityLayout(snap), hq = hqSite(snap, layout, new Set(crossing(snap).corners));
+  const layout = cityLayout(snap), hq = snap.plan ? planSite(snap, layout) : hqSite(snap, layout, new Set(crossing(snap).corners));
   if (hq) layout.cut = hqCut(layout, hq);
   layout.plan = masterplan(snap, layout, hq);
   return { layout, hq };
@@ -218,7 +219,8 @@ export function buildCity(kit, snap) {
     const family = t.k === 'house' && familyOf(t, near[i], !concrete);
     const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row, signature.has(i)), build: () => construction(kit, t.f, rand, t.on, fw),
       market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit), lot: () => plaza(kit, rand, t.on),
-      rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit) }[t.k]();
+      rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit),
+      site: () => court(kit, rand, t.on, (col + 1) % HALF === 0) }[t.k](); // the HQ's own site tiles are skipped above
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
     // and each quarter-block keeps a courtyard behind; inner lots sit anywhere on theirs.
     const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;

@@ -1,7 +1,7 @@
 // The masterplan (ADR-0012): what each of the 36 sectors is for, derived once per load from the snapshot, the
 // street layout and the headquarters' site, with no randomness. Nothing is stored and no tile is hidden or changed:
 // builders may later dress a sector by its role, but none reads this yet.
-import { BLOCK, HUB, TILE } from './world.js';
+import { BLOCK, CARS, HUB, TILE } from './world.js';
 
 // The roles, in precedence order: a sector takes the first whose rule it meets (residential always does).
 // The fixed ones (old, centre, gateway, industry, park) come from the seed's terrain and street plan and never
@@ -43,7 +43,7 @@ export function masterplan(snap, layout, hq) {
 // a promenade or an entrance (ADR-0012). { j, axis, v0, v1, kind, closable }: corridor j along axis between v0 and
 // v1 m; kind is what kindAt draws there today; closable says whether building it over would still leave the
 // sector's middle crossing a straight run on the crossing mid street (that street a two-way or one-way street with
-// both its halves open), not a dead end.
+// both its halves open), not a dead end, and the main corridor at its far end open to cars both ways.
 function approachOf(layout, hq, S) {
   const { pos, mids, kindAt } = layout, along = hq.heading === 0 || hq.heading === Math.PI ? 'z' : 'x', across = along === 'z' ? 'x' : 'z';
   const [sx, sy] = [hq.sector % S, Math.floor(hq.sector / S)], [a, b] = along === 'z' ? [sx, sy] : [sy, sx];
@@ -51,7 +51,8 @@ function approachOf(layout, hq, S) {
   const deep = hq.cells.map(([c, r]) => (along === 'z' ? r : c));
   const first = Math.min(...deep) % BLOCK === 0 ? b * BLOCK + BLOCK / 2 : b * BLOCK; // the half the campus leaves
   const [v0, v1] = [pos(first) - TILE / 2, pos(first + BLOCK / 2 - 1) + TILE / 2]; // its four tiles, edge to edge
+  const far = layout.lines[first % BLOCK === 0 ? b : b + 1], ends = [-1, 1].map((d) => kindAt(far, across, l.c + d * (l.w / 2 + 1)));
   const halves = [1, 5].map((t) => kindAt(other, across, (pos(a * BLOCK + t) + pos(a * BLOCK + t + 1)) / 2)); // the middle of each half
   const street = (k) => k === 'local' || k === 'oneway';
-  return { j: l.j, axis: along, v0, v1, kind: kindAt(l, along, (v0 + v1) / 2), closable: street(l.kind[along]) && halves.every(street) };
+  return { j: l.j, axis: along, v0, v1, kind: kindAt(l, along, (v0 + v1) / 2), closable: street(l.kind[along]) && halves.every(street) && ends.every((k) => CARS.has(k)) };
 }
