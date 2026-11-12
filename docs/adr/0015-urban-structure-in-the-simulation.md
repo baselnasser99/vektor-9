@@ -376,3 +376,14 @@ Settled at acceptance, in place of the open questions of the proposal:
 6. **Old schemas.** Schemas 4, 5 and 6 stay drawable through M1.
 7. **Local snapshots.** `snapshots/` is never regenerated inside a PR.
 8. **Minor corridors.** The ring road and the 14 m lines get frontage weight 0 in version 4, kept as the named parameter `MINOR_SHARE`.
+
+## Implementation notes (PR A)
+
+Where PR A departs from the plan above, and why:
+
+- **The version-1 continuation test.** ADR-0013's fixture test continued a version-1 snapshot. That snapshot is schema 5, and this ADR has schema-6 code refuse schema 5 (fresh genesis, no migration), so the test now checks that the version-1 and version-2 fixtures are refused. Continuing an older rules version within one schema is still tested with a patched `SIM_VERSION`. PR B can restore the fixture form with the v3 fixtures.
+- **`masterplan.js` `closable`.** Seed 11's site leaves an approach that ends on a walk. `closable` said it could be built over, but that left a dead end. An approach is now closable only if the corridor at its far end carries cars both ways. Nothing applies the approach yet.
+- **No JS test across a v3 fixture series.** There are only the two tick-288 fixtures. A Python test checks that the plan is identical in every tick, and the site was measured constant in every hourly snapshot of four 4032-tick runs.
+- **No ADR-0012 note** in this PR.
+- **The works fix** draws a new placement, up to `WORKS_TRIES` times, only when one lays no tile. Every seed whose first placement lands keeps the same works.
+- **Criterion 6, population.** It misses ±15% on seeds 3 (-22%) and 2 (-27%). The 36 reserved tiles change which random draws each lot gets, so every run diverges from version 2. Final population follows the number of power plants, which open at random. Measured on twelve seeds, the change runs from -27% to +56%, and the mean is -3%. The criterion is tighter than this run-to-run spread, so PR B should judge population on a mean over many seeds.
