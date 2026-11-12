@@ -1,18 +1,21 @@
 """Constants for the simulation. Tuning these changes behavior, not the snapshot schema."""
 
 # The snapshot format (ADR-0003). Bump when keys, kinds or their meaning change.
-SCHEMA = 5
+SCHEMA = 6
 # The simulation rules (ADR-0013). Bump when new_city() or step() can give a different result for
 # any input: a constant here, a rule, the order or kind of random draws (all through sim/rng.py).
 # The golden-output test (tests/test_golden.py) fails until this is bumped and recorded.
 # 2: every draw is built on random() alone, so the rules no longer depend on how a Python version
 #    implements randint, randrange, choice or sample.
-SIM_VERSION = 2
+# 3: the static plan (ADR-0015): the headquarters' site and court reserved as site terrain, parks
+#    laid after them, and works that always find ground.
+SIM_VERSION = 3
 SIZE = 48
 BLOCK = 8  # sectors are BLOCK x BLOCK tiles; streets run between them and are renderer-only
 TICKS_PER_DAY = 288  # one tick every 5 minutes
 
-TERRAIN = ("rail", "park", "works", "road")  # laid out by new_city; never built on, never changed
+# Laid out by new_city; never built on, never changed. "site": land the plan reserves (ADR-0015).
+TERRAIN = ("rail", "park", "works", "road", "site")
 KINDS = ("lot", "build", "house", "market", "plant", *TERRAIN)
 EVENT_KINDS = (
     "commissioned",
@@ -53,6 +56,15 @@ PARK_DISTANCE = (9, 17)  # Chebyshev distance of a park's center from the city c
 PARK_SPACING = 8
 WORKS_SIZE = (5, 4)
 WORKS_DISTANCE = (13, 19)  # the industrial site sits beside the railway this far out
+WORKS_TRIES = 50  # placements tried until one lands on free ground
+
+# The static plan (ADR-0015): the backbone corridors the renderer already lays out (cityLayout owns
+# their widths), and land reserved from tick 0 for the headquarters and its court across the avenue.
+ROLES = ("arterial", "boulevard")
+SITE_USES = ("hq", "court")
+FACES = ("+x", "-x", "+y", "-y")
+HQ_DEPTH = 4  # tiles: the whole block east of the avenue
+COURT_DEPTH = 2  # tiles, across the avenue from it
 
 # Buildings
 FLOORS_MIN = 2
