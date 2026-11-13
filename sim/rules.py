@@ -92,6 +92,18 @@ CENTRE_FLOORS = 48  # extra floors on the cap
 EDGE_FLOORS = 16  # the envelope: EDGE_FLOORS + (FLOORS_MAX - EDGE_FLOORS) C + FRONT_FLOORS F
 CENTRE_LOW = 56  # lowest target: FLOORS_MIN + CENTRE_LOW C, never above the cap
 
+# Landmark clearance (ADR-0015, round 4): the renderer's landmarks in floors (its floor is 3.5 m;
+# tests/js/landmarks.test.mjs checks these against the models), and the envelope near each, so
+# they stand above their neighbours from the air. A zone is the tiles 1 to RADIUS tiles
+# (Chebyshev) outside the tower's plaza, or outside the headquarters' site and its court together;
+# there the envelope is at most int(SHARE x the landmark's floors). Neutral: RADIUS 0.
+TOWER_FLOORS = 75  # the telecom tower's top, 262.8 m
+HQ_FLOORS = 45  # the headquarters' roof, 156.25 m
+TOWER_CLEAR_RADIUS = 3
+TOWER_CLEAR_SHARE = 0.5
+HQ_CLEAR_RADIUS = 2
+HQ_CLEAR_SHARE = 0.6
+
 # Power
 PLANT_RADIUS = 8  # Chebyshev distance
 PLANT_CAPACITY = 6000  # a plant at capacity keeps the lights on but its area stops growing

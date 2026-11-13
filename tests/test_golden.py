@@ -150,9 +150,11 @@ def test_golden_outputs_catch_a_rule_change(monkeypatch, name, value, case, tick
     assert outputs[tick] != golden
 
 
-# The growth weights at the values that switch them off (sim/rules.py): version 3's growth.
+# The growth weights and landmark clearance at the values that switch them off (sim/rules.py):
+# version 3's growth.
 NEUTRAL = {"FRONT_BUILD": 0, "CENTRE_BUILD": 0, "FRONT_FLOORS": 0, "CENTRE_FLOORS": 0,
-           "CENTRE_LOW": 0, "EDGE_FLOORS": R.FLOORS_MAX}  # fmt: skip
+           "CENTRE_LOW": 0, "EDGE_FLOORS": R.FLOORS_MAX,
+           "TOWER_CLEAR_RADIUS": 0, "HQ_CLEAR_RADIUS": 0}  # fmt: skip
 
 
 def test_neutral_weights_reproduce_version_3(monkeypatch):

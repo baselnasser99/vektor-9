@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sim import rules as R
-from sim.state import new_city, validate, xy
+from sim.state import chebyshev, hub_plaza, new_city, plan_for, site_tiles, validate, xy
 from sim.step import RINGS, built_percent, height_cap, resume_error, step, tick_rng, weights
 from tests.test_golden import NEUTRAL
 
@@ -91,24 +91,25 @@ def test_the_envelope_bounds_every_cap(avg):
     falls toward the edge: at the edge ring, EDGE_FLOORS plus the frontage floors, about."""
     plan, tiles = new_city(7)["plan"], houses(avg)
     w = weights(plan)
-    for i, (f, c, _) in enumerate(w):
+    for i, (f, c, _, top) in enumerate(w):
         x, y = xy(i)
         cap = height_cap(x, y, tiles, w[i])
         envelope = R.EDGE_FLOORS + int((R.FLOORS_MAX - R.EDGE_FLOORS) * c) + int(R.FRONT_FLOORS * f)
-        assert R.FLOORS_MIN + 2 <= cap <= min(R.FLOORS_MAX, envelope)
+        assert R.FLOORS_MIN + 2 <= cap <= min(top, envelope) and top <= R.FLOORS_MAX
         if RINGS[i] == 23:
             assert cap <= R.EDGE_FLOORS + R.FRONT_FLOORS + 1
     # Off the backbone, the envelope never rises from one ring to the next going out.
     off = {RINGS[i]: R.EDGE_FLOORS + int((R.FLOORS_MAX - R.EDGE_FLOORS) * c)
-           for i, (f, c, _) in enumerate(w) if f == R.MINOR_SHARE}  # fmt: skip
+           for i, (f, c, _, _) in enumerate(w) if f == R.MINOR_SHARE}  # fmt: skip
     assert [off[r] for r in sorted(off)] == sorted(off.values(), reverse=True)
 
 
 def test_the_centre_grows_taller_than_the_edge():
-    """ADR-0015's short-horizon property: seed 7 after three days, the median floors of houses in
-    bands 0-7 exceed those of bands 16-23."""
+    """ADR-0015's short-horizon property: seed 7 after five days, the median floors of houses in
+    bands 0-7 exceed those of bands 16-23. (The ADR asked for three days; with the landmark
+    clearance, seed 7 has no house beyond ring 12 by then, measured.)"""
     state = new_city(7)
-    for _ in range(3 * R.TICKS_PER_DAY):
+    for _ in range(5 * R.TICKS_PER_DAY):
         state, _ = step(state, [], tick_rng(state))
     floors = lambda lo, hi: sorted(  # noqa: E731
         t["f"] for i, t in enumerate(state["tiles"]) if t["k"] == "house" and lo <= RINGS[i] <= hi
@@ -116,3 +117,68 @@ def test_the_centre_grows_taller_than_the_edge():
     inner, outer = floors(0, 7), floors(16, 23)
     assert inner and outer
     assert inner[len(inner) // 2] > outer[len(outer) // 2]
+
+
+def clearance_zones(plan):
+    """{tile index: cap} for the landmark clearance, built from the tiles themselves (the plaza from
+    hub_plaza, the campus from the plan's hq and court sites), not from sim.step's rectangles."""
+    zones = {}
+    for landmark, radius, cap in (
+        (hub_plaza(), R.TOWER_CLEAR_RADIUS, int(R.TOWER_CLEAR_SHARE * R.TOWER_FLOORS)),
+        (site_tiles(plan), R.HQ_CLEAR_RADIUS, int(R.HQ_CLEAR_SHARE * R.HQ_FLOORS)),
+    ):
+        spots = [xy(j) for j in landmark]
+        for i in range(R.SIZE**2):
+            x, y = xy(i)
+            d = min(chebyshev(x, y, px, py) for px, py in spots)
+            if 0 < d <= radius:
+                zones[i] = min(zones.get(i, R.FLOORS_MAX), cap)
+    return zones
+
+
+@pytest.mark.parametrize("seed", [7, 3])
+def test_no_building_near_a_landmark_rises_above_its_clearance(seed):
+    """Over three days from a new city, no building or building site within a landmark's clearance
+    zone has, or aims at, more floors than the zone allows."""
+    state = new_city(seed)
+    zones = clearance_zones(state["plan"])
+    assert zones
+    for _ in range(3 * R.TICKS_PER_DAY):
+        state, _ = step(state, [], tick_rng(state))
+        for i, cap in zones.items():
+            t = state["tiles"][i]
+            assert t["k"] not in ("build", "house") or max(t["f"], t["t"]) <= cap, (seed, i, t)
+
+
+def test_the_headquarters_clearance_holds_north_and_south():
+    """The headquarters' site is north of the centre on some seeds and south on others; the
+    clearance follows it, and only the tower's and its zones are capped."""
+    plans = {}
+    for seed in range(50):
+        plan = plan_for(seed)
+        plans.setdefault(plan["sites"][0]["y0"] < R.SIZE // 2, plan)
+        if len(plans) == 2:
+            break
+    assert len(plans) == 2
+    tiles = houses(R.FLOORS_MAX)
+    for plan in plans.values():
+        w, zones = weights(plan), clearance_zones(plan)
+        assert any(cap == int(R.HQ_CLEAR_SHARE * R.HQ_FLOORS) for cap in zones.values())
+        for i, (_, _, _, top) in enumerate(w):
+            assert top == zones.get(i, R.FLOORS_MAX)
+            if i in zones:
+                assert height_cap(*xy(i), tiles, w[i]) <= zones[i]
+
+
+def test_clearance_radius_0_is_neutral(monkeypatch):
+    """Radius 0 switches the clearance off: every envelope ceiling is FLOORS_MAX again, and the
+    other weights are untouched, which is round 3's growth (checked against its golden outputs when
+    the clearance was added, ADR-0015)."""
+    plan = new_city(7)["plan"]
+    real = weights(plan)
+    monkeypatch.setattr(R, "TOWER_CLEAR_RADIUS", 0)
+    monkeypatch.setattr(R, "HQ_CLEAR_RADIUS", 0)
+    neutral = weights(plan)
+    assert all(top == R.FLOORS_MAX for *_, top in neutral)
+    assert [w[:3] for w in neutral] == [w[:3] for w in real]
+    assert any(w[3] < R.FLOORS_MAX for w in real)
