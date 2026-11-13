@@ -100,7 +100,7 @@ CENTRE_LOW = 56  # lowest target: FLOORS_MIN + CENTRE_LOW C, never above the cap
 TOWER_FLOORS = 75  # the telecom tower's top, 262.8 m
 HQ_FLOORS = 45  # the headquarters' roof, 156.25 m
 TOWER_CLEAR_RADIUS = 3
-TOWER_CLEAR_SHARE = 0.5
+TOWER_CLEAR_SHARE = 0.6  # 45 floors: nothing near the tower is taller than the headquarters
 HQ_CLEAR_RADIUS = 2
 HQ_CLEAR_SHARE = 0.6
 
