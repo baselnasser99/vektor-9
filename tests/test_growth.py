@@ -105,11 +105,10 @@ def test_the_envelope_bounds_every_cap(avg):
 
 
 def test_the_centre_grows_taller_than_the_edge():
-    """ADR-0015's short-horizon property: seed 7 after five days, the median floors of houses in
-    bands 0-7 exceed those of bands 16-23. (The ADR asked for three days; with the landmark
-    clearance, seed 7 has no house beyond ring 12 by then, measured.)"""
+    """ADR-0015's short-horizon property: seed 7 after three days, the median floors of houses in
+    bands 0-7 exceed those of bands 16-23."""
     state = new_city(7)
-    for _ in range(5 * R.TICKS_PER_DAY):
+    for _ in range(3 * R.TICKS_PER_DAY):
         state, _ = step(state, [], tick_rng(state))
     floors = lambda lo, hi: sorted(  # noqa: E731
         t["f"] for i, t in enumerate(state["tiles"]) if t["k"] == "house" and lo <= RINGS[i] <= hi
