@@ -90,3 +90,21 @@ export function city(snap, adjust) {
   };
   return { layout, streets, roads, net, run };
 }
+
+// The point d along a lane's polyline E, as [x, z].
+export function on(E, d) {
+  d = Math.max(0, Math.min(E.len, d));
+  let i = 1;
+  while (i < E.cum.length - 1 && E.cum[i] < d) i++;
+  const f = (d - E.cum[i - 1]) / Math.max(1e-9, E.cum[i] - E.cum[i - 1]), a = E.pts[i - 1], b = E.pts[i];
+  return [a[0] + (b[0] - a[0]) * f, a[2] + (b[2] - a[2]) * f];
+}
+// A car's body on lane E at d: a 4.4 x 1.9 m rectangle along its path (axles 1.4 m either side, as life.js places it).
+export function body(E, d) {
+  const r = on(E, d - 1.4), f = on(E, d + 1.4), l = Math.hypot(f[0] - r[0], f[1] - r[1]) || 1, u = [(f[0] - r[0]) / l, (f[1] - r[1]) / l];
+  return { c: [(r[0] + f[0]) / 2, (r[1] + f[1]) / 2], u, v: [-u[1], u[0]] };
+}
+export const overlap = (A, B) => [A.u, A.v, B.u, B.v].every((ax) => {
+  const ext = (R) => 2.2 * Math.abs(R.u[0] * ax[0] + R.u[1] * ax[1]) + 0.95 * Math.abs(R.v[0] * ax[0] + R.v[1] * ax[1]);
+  return Math.abs((A.c[0] - B.c[0]) * ax[0] + (A.c[1] - B.c[1]) * ax[1]) < ext(A) + ext(B);
+});
