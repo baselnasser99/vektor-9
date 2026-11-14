@@ -453,3 +453,38 @@ Settled at acceptance (2026-11-12), in place of the proposal's open questions:
 5. **Height envelope.** No stepped height limit for PR B. The transect idea is kept as an idea only.
 6. **Dead-end tests.** CI uses the frozen fixtures. The dead-end PR also reports a local sweep over seeds 0 to 49 (measured, not in CI).
 7. **Order and the left-turn hold.** The roadmap's order is as listed above. Its first PR traces where `life.js` holds a permitted left at the stop line and confirms the cause before changing anything, since this ADR inferred the cause from where cars stopped, not from the code.
+
+## Implementation note: roadmap 1, left turns (2026-11-15)
+
+**Traced cause.** On the frozen v3 fixtures (seeds 7 and 3, 10 minutes after a 60 s warm-up), every long stop at a lit crossing with a left-turner at its head was held in `life.js` `mayGo` (at `355fff5`, lines 371-382):
+
+- During green, by line 379. The oncoming lane's front car counted as oncoming traffic even when it was itself a left-turner standing at its line, so two opposing left-turners held each other for the whole green. At (292.5, -429) on seed 7, the head car spent 57 s held this way and 5 s by real oncoming straight cars; at (150, -292.5) on seed 3, 81 s.
+- At the end of the phase, by lines 375, 379 and 381. The window to clear was about a second (`left + ALL_RED < need`), and when one of the pair went, the other then saw it committed or in the crossing.
+- No car ever waited inside the crossing: none of the 183 long stops was in a junction box. So ADR-0009's "clears at the end of the phase" never applied to a car still at the stop line.
+
+**Fix** (`life.js`, renderer only):
+
+- An oncoming car that is itself turning left no longer counts as oncoming traffic; the two pass in front of each other, as in the protected phase.
+- Pull in and clear: with oncoming cars coming, the first car waiting to turn left drives to a wait point in the crossing (the furthest its nose stays clear of the oncoming ways, `A.wait`) and goes once they stop, at the latest in the all-red. One car at a time waits there.
+- Where main streets meet each other or the ring road (`N.lead`, 12 crossings on seed 7), a 7 s protected left phase leads each street's green and runs straight into it, with no amber or all-red between (its lefts stay permitted). Oncoming straight and right cars there wait while a left turn from the arrow is still crossing their path. Cycle: 54 s, not the 64 s estimated above.
+- Safety rules at lit crossings: a car does not enter while a left turn from the other street is still in the crossing or committed to it. It does not enter a way that a car from the same approach is committed to, or has not yet pulled clear of; where the boulevard ends at the ring road, both of its lanes turn left into one, and their bodies overlapped before this change. The room beyond is kept for cars already in the crossing headed the same way, so a waiting left-turner is never stranded in the box.
+- Signal heads: main corners get a left head (over a main street's inner lane, or above the ring road's pole head). A protected left phase lights a green arrow (`signalGreen`), so its shape tells it from a permitted green. Nothing blinks.
+
+**Measured** (`tests/js/traffic_metrics.mjs`; the before column is `main` at `355fff5`, by the same method):
+
+| | Seed 7 before | after | Seed 3 before | after |
+|---|---|---|---|---|
+| Long stops (> 75 s) behind a waiting left-turner | 46 | 6 | 86 | 8 |
+| All long stops | 56 | 6 | 127 | 16 |
+| Over 150 s | 20 | 0 | 23 | 0 |
+| Cars per hour per main-street, boulevard and avenue lane | 138.0 | 136.7 | 129.0 | 137.2 |
+| Cars stopped 300 s or more | 0 | 0 | 0 | 0 |
+
+`tests/js/left_turns.test.mjs` holds these thresholds (left-turn stops down at least 75%, all long stops at least halved, throughput within 5%). It also checks the following over the whole run:
+
+- No straight or right car goes during a protected phase.
+- No car enters a crossing while a left turn from the other street is in it.
+- No turning car's body overlaps another's in a crossing.
+- No car is stuck.
+
+Frame time (`?bench=1000x625`, one aerial view, local v4 snapshots, 3 loads each; median of 120 frames): 61.3, 53.4 and 54.2 ms before; 53.6, 53.9 and 54.3 ms after. The browser pane was hidden while it ran, so these are indicative.

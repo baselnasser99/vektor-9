@@ -20,33 +20,39 @@ const fract = (v) => v - Math.floor(v);
 // One controller per lit crossing (streets.js roadNet nodes of type 'signal' and 'round'), shared by its cars,
 // signal heads and walkers. Phases run in turn, each green, then AMBER, then ALL_RED: each street straight on and
 // right with left turns permitted (they give way to oncoming cars); where the boulevard meets another street, a
-// protected left phase follows each street's own; at the roundabout no left turns (the ring does that); a walk
-// crossing a car street gets a phase of its own for walkers. Each crossing's offset is its own, so neighbours do
-// not all change together. Opposing approaches always share a phase; crossing streets never go together.
+// protected left phase follows each street's own; where main streets meet each other or the ring road (ADR-0016),
+// a protected left phase leads each street's own and runs straight into it (no amber or all-red: its lefts go on,
+// permitted, and oncoming cars wait for the ones still turning); at the roundabout no left turns (the ring does
+// that); a walk crossing a car street gets a phase of its own for walkers. Each crossing's offset is its own, so
+// neighbours do not all change together. Opposing approaches always share a phase; crossing streets never go
+// together.
 const set = (...m) => new Set(m);
+const span = (p) => p.green + (p.flows ? 0 : AMBER + ALL_RED);
 function control(N) {
-  const prot = N.type === 'signal' && [N.kinds.x, N.kinds.z].some((k) => WIDE.has(k));
+  const kinds = [N.kinds.x, N.kinds.z], prot = N.type === 'signal' && kinds.some((k) => WIDE.has(k));
+  const lead = N.type === 'signal' && kinds.includes('street') && kinds.every((k) => k === 'street' || k === 'ring');
+  N.lead = lead;
   N.phases = ['x', 'z'].flatMap((axis) => {
     if (!N.kinds[axis]) return [{ axis, moves: set(), green: 12 }]; // walkers cross the car street
     if (N.type === 'round') return [{ axis, moves: set('straight', 'right'), green: 32 }];
-    return prot ? [{ axis, moves: set('straight', 'right'), green: 15 }, { axis, moves: set('left'), green: 7, left: true }]
-      : [{ axis, moves: set('straight', 'right', 'left'), green: 15 }];
+    const arrow = { axis, moves: set('left'), green: 7, left: true };
+    if (prot) return [{ axis, moves: set('straight', 'right'), green: 15 }, arrow];
+    return [...(lead ? [{ ...arrow, flows: true }] : []), { axis, moves: set('straight', 'right', 'left'), green: 15 }];
   });
-  N.cycle = N.phases.reduce((sum, p) => sum + p.green + AMBER + ALL_RED, 0);
+  N.cycle = N.phases.reduce((sum, p) => sum + span(p), 0);
   N.offset = N.cycle * fract(Math.sin(N.x * 12.9898 + N.z * 78.233) * 43758.5453);
 }
 // The phase running at N at time t, and how far into it; kept on N for the rest of that frame (cars, heads and
 // walkers all ask).
-function phaseAt(N, t) {
+export function phaseAt(N, t) {
   if (N.at === t) return N.now;
   let u = (t + N.offset) % N.cycle, now = { phase: N.phases[0], into: 0 };
   for (const phase of N.phases) {
-    const span = phase.green + AMBER + ALL_RED;
-    if (u < span) {
+    if (u < span(phase)) {
       now = { phase, into: u };
       break;
     }
-    u -= span;
+    u -= span(phase);
   }
   N.at = t;
   return (N.now = now);
@@ -54,7 +60,7 @@ function phaseAt(N, t) {
 // Seconds of green and amber left for `move` from the street along `axis` at N (<= 0: red).
 function goLeft(N, axis, move, t) {
   const { phase, into } = phaseAt(N, t);
-  return phase.axis === axis && phase.moves.has(move) ? phase.green + AMBER - into : 0;
+  return phase.axis === axis && phase.moves.has(move) ? phase.green + (phase.flows ? 0 : AMBER) - into : 0;
 }
 const registry = new Map(); // node key -> node, for walkLight
 export const zebraUse = new Map(); // `${node key}|${axis}` -> the lights' time a walker was last on that zebra (people.js)
@@ -202,6 +208,35 @@ function paths(roads, warp, hub) {
     const f = Math.max(0, Math.min(1, (d - E.cum[i - 1]) / Math.max(1e-9, E.cum[i] - E.cum[i - 1]))), a = E.pts[i - 1], b = E.pts[i];
     return [a[0] + (b[0] - a[0]) * f, a[2] + (b[2] - a[2]) * f];
   };
+  // Ways through that come within CLEAR of each other: for each pair, how far along its own way a car must be before
+  // its body is clear of the other's path (Infinity: not until it has left the way).
+  const clearsAmong = (ways) => {
+    for (const A of ways) {
+      A.clears = new Map();
+      for (const B of ways) {
+        let last = -1;
+        if (B !== A) for (let d = 0; d <= A.len; d += 0.5) if (near(B, ...on(A, d)) < CLEAR) last = d;
+        if (last >= 0) A.clears.set(B, last + CAR / 2 >= A.len ? Infinity : last + CAR / 2);
+      }
+    }
+  };
+  // At lit crossings: ways from one approach that come near each other (out of one lane they start along each other;
+  // where the boulevard ends, both its lanes turn into one), so a car waits until one ahead on another is clear; and
+  // a permitted left's wait point (A.wait, where its centre stands), the furthest a car can pull into the crossing
+  // with its nose still clear of the oncoming lanes' ways, to clear when they stop.
+  for (const N of nodes) {
+    if (N.type !== 'signal') continue;
+    for (const I of N.ins) {
+      if (I === N.ins.find((J) => J.axis === I.axis && J.dir === I.dir)) clearsAmong(N.ins.filter((J) => J.axis === I.axis && J.dir === I.dir).flatMap((J) => J.moves.map((mv) => mv.edge)));
+      const oncoming = N.ins.filter((O) => O.axis === I.axis && O.dir !== I.dir).flatMap((O) => O.moves.filter((mv) => mv.move !== 'left').map((mv) => mv.edge));
+      for (const { move, edge: A } of I.moves) {
+        if (move !== 'left') continue;
+        let d = 0;
+        while (d + 0.5 <= A.len && !oncoming.some((B) => near(B, ...on(A, d + 0.5 + CAR / 2)) < CLEAR)) d += 0.5;
+        if (d >= 1) A.wait = d;
+      }
+    }
+  }
   for (const N of nodes) {
     if (N.type !== 'free' || N.ins.length < 2) continue;
     for (const I of N.ins) {
@@ -211,18 +246,8 @@ function paths(roads, warp, hub) {
       for (const w of I.walks ?? []) if (nose > w.a - 0.5 && nose - CAR < w.b + 0.5) nose = w.a - 1;
       I.hold = Math.max(0, E.len - nose - 0.3);
     }
-    // Ways through that come within CLEAR of each other (joining, crossing, or one lane in splitting apart, where
-    // two lanes in widen into more lanes out): for each pair, how far along its own way a car must be before its
-    // body is clear of the other's path (Infinity: not until it has left the way).
-    const ways = N.ins.flatMap((I) => I.moves.map((m) => m.edge));
-    for (const A of ways) {
-      A.clears = new Map();
-      for (const B of ways) {
-        let last = -1;
-        if (B !== A) for (let d = 0; d <= A.len; d += 0.5) if (near(B, ...on(A, d)) < CLEAR) last = d;
-        if (last >= 0) A.clears.set(B, last + CAR / 2 >= A.len ? Infinity : last + CAR / 2);
-      }
-    }
+    // Ways joining, crossing, or one lane in splitting apart (where two lanes in widen into more lanes out).
+    clearsAmong(N.ins.flatMap((I) => I.moves.map((m) => m.edge)));
   }
   // Self-checks: every lane into a crossing has somewhere to go, and no way through one is zero long (a car can never
   // get past the end of one), or cars would queue there for good.
@@ -355,7 +380,9 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
     const mv = c.choice, N = L.end;
     if (!mv) return false;
     const last = mv.out.edge.cars.at(-1), inBox = mv.edge.cars.at(-1);
-    if ((last && last.d < CAR + 4) || (inBox && inBox.d < CAR + 3)) return false; // no room beyond: never block the crossing
+    // At a lit crossing the room beyond is kept for cars already in it headed the same way (one waiting to turn left).
+    const ahead = N.type === 'signal' ? [...N.box].filter((b) => b.choice.out === mv.out).length * (CAR + 2) : 0;
+    if ((last && last.d < CAR + 4 + ahead) || (inBox && inBox.d < CAR + 3)) return false; // no room beyond: never block the crossing
     if (N.type === 'free') return N.ins.length < 2 || merging(c, L, mv.out, N); // a split goes on; a merge takes turns
     if (mv.move !== 'straight' && t - (zebraUse.get(`${N.key}|${mv.out.axis}`) ?? -1e9) < 0.6) return false; // walkers on the zebra it turns across
     if (N.type === 'priority') { // under the median ramps: the avenue goes on; the side street waits for a gap in it
@@ -368,18 +395,49 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
       N.holder = c;
       return true;
     }
+    // Never into a crossing a left turn from the other street is still clearing or committed to, nor onto a way that
+    // a car from the same approach is committed to or has not yet pulled clear of; and where the left arrow runs
+    // straight into the green (N.lead), straight on or right not while an oncoming car turns left across it (one
+    // waiting at its wait point stands clear).
+    if (N.type === 'signal') {
+      for (const b of N.box) {
+        if ((b.edge.from.axis !== L.axis && b.choice.move === 'left') || (b.edge.from.axis === L.axis && b.edge.from.dir === L.dir && b.d < (b.edge.clears?.get(mv.edge) ?? -1))) return false;
+        if (N.lead && mv.move !== 'left' && b.edge.from.dir !== L.dir && b.choice.move === 'left' && !b.held) return false;
+      }
+      for (const I of N.ins) {
+        const f = I.edge.cars[0];
+        if (f?.cleared && (I.axis !== L.axis ? f.choice.move === 'left' : I.dir === L.dir && f.choice.edge.clears?.has(mv.edge))) return false;
+      }
+    }
+    if (mv.edge.cars.some((h) => h.held)) return false; // one car at a time waits in the crossing
     const left = goLeft(N, L.axis, mv.move, t), need = (mv.edge.len + Math.max(0, dist) + 2) / 7; // timed at a slow car's pace
     if (mv.move !== 'left' || phaseAt(N, t).phase.left) return left > need; // enough phase left to clear it
-    // A permitted left gives way to oncoming cars, and clears at the end of the phase once they stop coming (with
-    // AMBER left they no longer commit), finishing in the all-red, as drivers do.
-    if (left <= 0 || left + ALL_RED < need) return false;
+    // A permitted left gives way to oncoming cars. With them coming, the first car waiting pulls into the crossing
+    // to its wait point and clears once they stop (with AMBER left they no longer commit), at the latest in the
+    // all-red, as drivers do (ADR-0016); the other street waits for it.
+    if (left <= 0) return false;
+    if (!oncoming(N, L, left) && left + ALL_RED >= need) return true;
+    if (mv.edge.wait === undefined) return false;
+    c.held = true;
+    return true;
+  };
+  // Whether oncoming cars still come through N against a left turn from L, with `left` s of its go left: a car at the
+  // front of an oncoming lane committed to the crossing, or still coming within 30 m before AMBER, or one in the
+  // crossing. Oncoming cars turning left themselves pass in front of it, as in the protected left phase.
+  const oncoming = (N, L, left) => {
     for (const O of N.ins) {
       if (O.axis !== L.axis || O.dir === L.dir) continue;
       const f = O.edge.cars[0];
-      if (f && (f.cleared || (left > AMBER && O.edge.len - f.d < 30))) return false;
+      if (f && f.choice?.move !== 'left' && (f.cleared || (left > AMBER && O.edge.len - f.d < 30))) return true;
     }
-    for (const b of N.box) if (b.edge.from.axis === L.axis && b.edge.from.dir !== L.dir) return false;
-    return true;
+    for (const b of N.box) if (b.edge.from.axis === L.axis && b.edge.from.dir !== L.dir && b.choice?.move !== 'left') return true;
+    return false;
+  };
+  // A car waiting at its wait point in the crossing goes once no oncoming car comes and no walker is on the zebra it
+  // turns across.
+  const release = (c, t) => {
+    const L = c.link, N = c.edge.node;
+    if (!oncoming(N, L, goLeft(N, L.axis, 'left', t)) && t - (zebraUse.get(`${N.key}|${c.choice.out.axis}`) ?? -1e9) >= 0.6) c.held = false;
   };
   let t = 0;
   const moved = [], edges = [...links.map((L) => L.edge), ...links.flatMap((L) => (L.moves ?? []).map((mv) => mv.edge))];
@@ -401,6 +459,10 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
             if (dist < 4 && mayGo(c, L, dist, t)) c.cleared = true;
             else room = Math.min(room, Math.max(0, dist));
           }
+        }
+        if (c.held && !E.link) {
+          release(c, t);
+          if (c.held) room = Math.min(room, Math.max(0, E.wait - c.d));
         }
         if (lead && E.link?.hold && !c.cleared) room = Math.min(room, Math.max(0, E.len - c.d - CAR / 2 - 0.3 - E.link.hold)); // behind a car let go into a merge, it still waits its own turn
         if (E.link) room = giveWay(c, E, room);
@@ -434,7 +496,7 @@ export function traffic(kit, roads, onFrame, warp, hub, parked = []) {
       if (next.link) {
         c.link = next.link;
         c.choice = choose(next.link);
-        c.cleared = false;
+        c.cleared = c.held = false;
       } else next.node.box.add(c);
     }
     moved.length = 0;
@@ -485,9 +547,12 @@ function parkedCars(kit, geo, parked) {
 // The traffic lights of the lit crossings, drawn, sized by the street. Every approach gets a pole on its right-hand
 // kerb just behind its zebra, with a head at 3 m facing the cars coming; main streets add a mast arm with one head
 // over their lanes; the boulevard two on the arm (the one over the left-turn lane shows the protected left phase)
-// and one on the median's nose for the left-turn lane. Every zebra at a lit crossing has a walk signal at each end,
-// facing across the street at the people waiting on the other side. Heads are red on top, amber, green below, so
-// position carries the meaning as well as colour; walk signals a red hand over a cold white walker. Nothing blinks.
+// and one on the median's nose for the left-turn lane; where main streets meet each other or the ring road, a left
+// head over a main street's inner lane, or on the ring road's pole above its head. A protected left phase lights a
+// green arrow, so its shape tells it from the square lamps of a permitted green. Every zebra at a lit crossing has a
+// walk signal at each end, facing across the street at the people waiting on the other side. Heads are red on top,
+// amber, green below, so position carries the meaning as well as colour; walk signals a red hand over a cold white
+// walker. Nothing blinks.
 // Crossings of local streets have no lights. Instanced: a lamp moves only when its state changes.
 const HEAD = { y: 3.2, arm: 5.9 };
 function signals(kit, roads, warp, onFrame, clock) {
@@ -512,13 +577,14 @@ function signals(kit, roads, warp, onFrame, clock) {
       const ground = (L.lift ? L.lift(along) : L.y) - 0.65;
       if (ground > 0.5) continue; // out on a highway ramp: no kerb to stand on
       const face = axis === 'z' ? (dir > 0 ? Math.PI : 0) : (-dir * Math.PI) / 2; // toward the cars coming
-      const top = big ? HEAD.arm + 0.7 : HEAD.y + 0.8, protectedLeft = N.phases.some((p) => p.left);
+      const top = big ? HEAD.arm + 0.7 : HEAD.y + (N.lead ? 2.05 : 0.8), protectedLeft = N.phases.some((p) => p.left);
       posts.push([...at(axis, c + right * (kerb + 0.6), along, ground + top / 2), top]);
       heads.push({ p: at(axis, c + right * (kerb + 0.35), along, ground + HEAD.y), face, N, axis, move: 'straight' });
+      if (N.lead && !big) heads.push({ p: at(axis, c + right * (kerb + 0.35), along, ground + HEAD.y + 1.25), face, N, axis, move: 'left' });
       if (big) {
         const span = kerb + 0.6 - (inner - 1.6); // from the pole out over the innermost lane
         arms.push({ p: at(axis, c + right * (kerb + 0.6 - span / 2), along, ground + top - 0.1), axis, span });
-        const over = wide ? [[inner, protectedLeft ? 'left' : 'straight'], [(inner + outer) / 2 + 1.6, 'straight']] : [[(inner + outer) / 2, 'straight']];
+        const over = wide ? [[inner, protectedLeft ? 'left' : 'straight'], [(inner + outer) / 2 + 1.6, 'straight']] : N.lead ? [[inner, 'left'], [outer, 'straight']] : [[(inner + outer) / 2, 'straight']];
         for (const [o, move] of over) heads.push({ p: at(axis, c + right * o, along, ground + HEAD.arm), face, N, axis, move });
       }
       if (wide && L.zebra) { // on the median's nose, for the left-turn lane
@@ -547,6 +613,8 @@ function signals(kit, roads, warp, onFrame, clock) {
   const housing = mesh(box(0.4, 1.15, 0.34, 1), steel, n);
   const lenses = mesh(mergeGeometries([0.35, 0, -0.35].map((y) => box(0.26, 0.26, 0.04, 0).translate(0, y, 0.18))), dark, n);
   const lamps = [[palette.crimson, 6], [palette.amber, 3], [palette.signalGreen, 3]].map(([c, k]) => mesh(box(0.27, 0.27, 0.2, 0), kit.glow(c, k), n)); // deep enough that its top shows from above
+  const arrow = new THREE.Shape([[-0.12, 0], [-0.02, 0.09], [-0.02, 0.035], [0.12, 0.035], [0.12, -0.035], [-0.02, -0.035], [-0.02, -0.09]].map(([x, y]) => new THREE.Vector2(x, y)));
+  lamps.push(mesh(new THREE.ExtrudeGeometry(arrow, { depth: 0.2, bevelEnabled: false }).translate(0, 0, -0.1), kit.glow(palette.signalGreen, 3), n)); // pointing to the drivers' left
   const walkBox = mesh(box(0.34, 0.66, 0.24, 1), steel, w);
   const walkLens = mesh(mergeGeometries([0.15, -0.15].map((y) => box(0.24, 0.24, 0.04, 0).translate(0, y, 0.13))), dark, w);
   const walkLamps = [[palette.crimson, 5], [palette.coldWhite, 2]].map(([c, k]) => mesh(box(0.25, 0.25, 0.08, 0), kit.glow(c, k), w));
@@ -583,7 +651,7 @@ function signals(kit, roads, warp, onFrame, clock) {
     };
     heads.forEach((h, i) => {
       const g = goLeft(h.N, h.axis, h.move, t);
-      show(h, i, g <= 0 ? 0 : g < AMBER ? 1 : 2, lamps, [0.35, 0, -0.35], 0.24);
+      show(h, i, g <= 0 ? 0 : g < AMBER ? 1 : h.move === 'left' && phaseAt(h.N, t).phase.left ? 3 : 2, lamps, [0.35, 0, -0.35, -0.35], 0.24);
     });
     walks.forEach((h, i) => show(h, i, walkAt(h.N, h.cross, t) > 0 ? 1 : 0, walkLamps, [0.15, -0.15], 0.15));
     if (changed) for (const l of [...lamps, ...walkLamps]) l.instanceMatrix.needsUpdate = true;
