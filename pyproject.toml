@@ -7,6 +7,20 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest", "hypothesis", "ruff"]
+infra = [
+    "aws-cdk-lib==2.277.0",
+    "constructs==10.8.1",
+]
+# bundled into the tick package (ADR-0017): boto3 and every dependency, exact
+lambda = [
+    "boto3==1.44.3",
+    "botocore==1.44.3",
+    "jmespath==1.1.0",
+    "python-dateutil==2.9.0.post0",
+    "s3transfer==0.19.3",
+    "six==1.17.0",
+    "urllib3==2.8.0",
+]
 
 [tool.uv]
 package = false

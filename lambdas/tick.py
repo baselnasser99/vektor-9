@@ -33,6 +33,16 @@ TICK_CACHE = "public, max-age=31536000, immutable"
 HEAD_CACHE = "public, max-age=30"
 DECODE_ERRORS = (OSError, EOFError, ValueError, zlib.error)  # bad gzip, bad JSON, bad UTF-8
 
+# the EMF contract, also read by infra/ for the alarms
+METRIC_NAMESPACE = "Vektor9"
+METRIC_DIMENSION = "Stage"
+HEAD_TICK = "HeadTick"
+TICKS_PUBLISHED = "TicksPublished"
+TICKS_BEHIND = "TicksBehind"
+DELIVERY_DELAY_SECONDS = "DeliveryDelaySeconds"
+PUBLISH_FAILURES = "PublishFailures"
+RECOVERY_ACTIONS = "RecoveryActions"
+
 
 class FailClosed(Exception):
     """The run must not continue and writes nothing more: an invalid or foreign head, a
@@ -344,20 +354,20 @@ def _emit_run(emit, config, run, now, duration_ms):
     if run["due"] is not None and run["head_after"] is not None:
         behind = max(0, run["due"] - run["head_after"])
     metrics = {
-        "HeadTick": run["head_after"],
-        "TicksPublished": run["published"],
-        "TicksBehind": behind,
-        "DeliveryDelaySeconds": run["delay"],
-        "PublishFailures": int(run["outcome"] in ("failed", "error")),
-        "RecoveryActions": len(run["recovery"]),
+        HEAD_TICK: run["head_after"],
+        TICKS_PUBLISHED: run["published"],
+        TICKS_BEHIND: behind,
+        DELIVERY_DELAY_SECONDS: run["delay"],
+        PUBLISH_FAILURES: int(run["outcome"] in ("failed", "error")),
+        RECOVERY_ACTIONS: len(run["recovery"]),
     }
     metrics = {k: v for k, v in metrics.items() if v is not None}
-    units = {"DeliveryDelaySeconds": "Seconds", "HeadTick": "None", "TicksBehind": "Count"}
+    units = {DELIVERY_DELAY_SECONDS: "Seconds", HEAD_TICK: "None", TICKS_BEHIND: "Count"}
     emf = {
         "CloudWatchMetrics": [
             {
-                "Namespace": "Vektor9",
-                "Dimensions": [["Stage"]],
+                "Namespace": METRIC_NAMESPACE,
+                "Dimensions": [[METRIC_DIMENSION]],
                 "Metrics": [{"Name": k, "Unit": units.get(k, "Count")} for k in metrics],
             }
         ],
@@ -373,7 +383,7 @@ def _emit_run(emit, config, run, now, duration_ms):
         "duration_ms": duration_ms,
         **detail,
     }
-    emit(json.dumps({"_aws": emf, "Stage": config.stage, **metrics, **detail}))
+    emit(json.dumps({"_aws": emf, METRIC_DIMENSION: config.stage, **metrics, **detail}))
     emit(json.dumps(summary))
     return summary
 
