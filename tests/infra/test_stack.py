@@ -313,7 +313,7 @@ def test_synth_is_deterministic(templates):
 def test_package_is_pure_python_without_bytecode_and_boto3_supports_conditional_puts():
     root = Path(stack.code_dir())
     files = [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()]
-    assert "lambdas/tick.py" in files and "sim/step.py" in files
+    assert {"lambdas/__init__.py", "lambdas/tick.py", "sim/step.py"} <= set(files)
     assert not [f for f in files if f.endswith(".pyc") or "__pycache__" in f]
     assert {f.split("/")[0] for f in files} >= {"boto3", "botocore", "s3transfer", "urllib3"}
     # import the staged copy only (-S: no site-packages), as the runtime would load it
