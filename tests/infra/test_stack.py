@@ -16,6 +16,7 @@ from aws_cdk.assertions import Template  # noqa: E402
 from infra import package, stack  # noqa: E402
 from infra.app import build  # noqa: E402
 from lambdas import tick  # noqa: E402
+from sim import rules  # noqa: E402
 
 GENESIS = "2026-12-01T00:00:00Z"
 EMAIL = "alerts@example.com"
@@ -256,6 +257,13 @@ def test_prod_versioned_retained_and_only_old_heads_expire(templates):
     ]
     releases = of_type(t, "AWS::S3::Bucket")[logical(t, "AWS::S3::Bucket", "Releases")]
     assert "LifecycleConfiguration" not in releases["Properties"]
+
+
+def test_head_lifecycle_prefix_follows_the_schema(templates):
+    t = templates["prod"]
+    data = of_type(t, "AWS::S3::Bucket")[logical(t, "AWS::S3::Bucket", "Data")]["Properties"]
+    (rule,) = data["LifecycleConfiguration"]["Rules"]
+    assert rule["Prefix"] == f"city/v{rules.SCHEMA}/latest.json"
 
 
 def test_dev_unversioned_destroyed_without_auto_delete(templates):
