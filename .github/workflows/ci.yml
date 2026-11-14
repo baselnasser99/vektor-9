@@ -22,3 +22,6 @@ jobs:
         with:
           node-version: 22
       - run: node --import ./tests/js/three-loader.mjs --test "tests/js/*.test.mjs"
+      # CDK synth of both stages and the template tests; no AWS credentials or secrets
+      - run: uv sync --locked --group infra --group lambda
+      - run: uv run --group infra --group lambda pytest tests/infra
