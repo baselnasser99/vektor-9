@@ -1,6 +1,7 @@
 """One tick of the city: step(state, marks, rng) -> (new_state, events). Pure and deterministic."""
 
 import random
+from functools import cache
 
 from sim import rules as R
 from sim.cycles import blackout_window, wave
@@ -56,8 +57,60 @@ def event(kind, x, y):
     return {"kind": kind, "sector": sector(x, y), "x": x, "y": y}
 
 
-def height_cap(x, y, tiles):
-    """Tallest a new building here may be: a few floors above its neighbors' average."""
+# Ring of every tile index: its Chebyshev distance from the centre in tiles, 0 for the centre four.
+RINGS = [
+    max(abs(2 * x + 1 - R.SIZE), abs(2 * y + 1 - R.SIZE)) // 2 for x, y in map(xy, range(R.SIZE**2))
+]
+
+
+def outside(x, y, rect):
+    """Chebyshev distance in tiles from (x, y) to the rectangle (x0, y0, x1, y1); 0 inside."""
+    x0, y0, x1, y1 = rect
+    return max(x0 - x, x - x1, y0 - y, y - y1, 0)
+
+
+@cache
+def _weights(backbone, campus, arterial, minor, reach, front_build, centre_build, clear):
+    best = {}  # tile index: the strongest backbone role it faces
+    for along, at, role in backbone:
+        for i in range(R.SIZE**2):
+            # A corridor along x on boundary `at` is faced by rows at - 1 and at; along y, columns.
+            if xy(i)[1 if along == "x" else 0] in (at - 1, at) and best.get(i) != "boulevard":
+                best[i] = role
+    c0, h = R.SIZE // 2, R.HUB_PLAZA
+    plaza = (c0 - h, c0 - h, c0 + h - 1, c0 + h - 1)  # sim.state.hub_plaza's tiles
+    (tower_r, tower_cap), (hq_r, hq_cap) = clear
+    out = []
+    for i, ring in enumerate(RINGS):
+        f = {"boulevard": 1, "arterial": arterial}.get(best.get(i), minor)
+        c = max(0, 1 - ring / reach)
+        top = R.FLOORS_MAX
+        for rect, radius, cap in ((plaza, tower_r, tower_cap), (campus, hq_r, hq_cap)):
+            if 0 < outside(*xy(i), rect) <= radius:
+                top = min(top, cap)
+        out.append((f, c, 1 + front_build * f + centre_build * c, top))
+    return tuple(out)
+
+
+def weights(plan):
+    """(F, C, growth factor, highest envelope) for every tile index: its frontage on the plan's
+    backbone, its centrality, what its build chance is multiplied by, and the landmark clearance
+    over its envelope (ADR-0015). Cached per plan and constants, so a tick pays for one lookup."""
+    backbone = tuple((b["along"], b["at"], b["role"]) for b in plan["backbone"])
+    sites = [s for s in plan["sites"] if s["use"] in ("hq", "court")]
+    campus = (min(s["x0"] for s in sites), min(s["y0"] for s in sites),
+              max(s["x1"] for s in sites), max(s["y1"] for s in sites))  # fmt: skip
+    clear = ((R.TOWER_CLEAR_RADIUS, int(R.TOWER_CLEAR_SHARE * R.TOWER_FLOORS)),
+             (R.HQ_CLEAR_RADIUS, int(R.HQ_CLEAR_SHARE * R.HQ_FLOORS)))  # fmt: skip
+    return _weights(backbone, campus, R.ARTERIAL_SHARE, R.MINOR_SHARE, R.CENTRE_REACH,
+                    R.FRONT_BUILD, R.CENTRE_BUILD, clear)  # fmt: skip
+
+
+def height_cap(x, y, tiles, w):
+    """Tallest a new building here may be: a few floors above its neighbors' average, more on the
+    backbone and toward the centre, never above the envelope that falls toward the edge and stays
+    below the landmarks near them."""
+    f, c, _, top = w
     r = R.HEIGHT_RADIUS
     floors = [
         tiles[ny * R.SIZE + nx]["f"]
@@ -66,11 +119,19 @@ def height_cap(x, y, tiles):
         if tiles[ny * R.SIZE + nx]["k"] == "house"
     ]
     avg = sum(floors) // len(floors) if floors else 0
-    return max(R.FLOORS_MIN + 2, min(R.FLOORS_MAX, avg + R.HEIGHT_STEP))
+    front = int(R.FRONT_FLOORS * f)
+    # `top` is FLOORS_MAX, as before, so no building gets taller than any version has drawn, or a
+    # landmark's clearance.
+    envelope = min(top, R.EDGE_FLOORS + int((R.FLOORS_MAX - R.EDGE_FLOORS) * c) + front)
+    wanted = avg + R.HEIGHT_STEP + front + int(R.CENTRE_FLOORS * c)
+    return min(envelope, max(R.FLOORS_MIN + 2, wanted))
 
 
-def new_build(x, y, tiles, rng, tick, low=R.FLOORS_MIN):
-    return new_tile("build", rng, target=randint(rng, low, height_cap(x, y, tiles)), tick=tick)
+def new_build(x, y, tiles, rng, tick, w, low=None):
+    cap = height_cap(x, y, tiles, w)
+    if low is None:
+        low = min(cap, R.FLOORS_MIN + int(R.CENTRE_LOW * w[1]))
+    return new_tile("build", rng, target=randint(rng, low, cap), tick=tick)
 
 
 def built_percent(tiles):
@@ -92,6 +153,7 @@ def step(state, marks, rng):
     events = []
 
     # Visitor marks: malformed ones are dropped, each valid ID is handled at most once.
+    w = weights(state["plan"])
     seen = set(state["mark_ids"])
     mark_ids = list(state["mark_ids"])
     for m in marks:
@@ -101,7 +163,7 @@ def step(state, marks, rng):
         mark_ids.append(m["id"])
         i = m["y"] * R.SIZE + m["x"]
         if tiles[i]["k"] == "lot":
-            tiles[i] = new_build(m["x"], m["y"], old, rng, tick)
+            tiles[i] = new_build(m["x"], m["y"], old, rng, tick, w[i])
             events.append(event("commissioned", m["x"], m["y"]))
 
     # Growth and decay read last tick's layout and power: a change shows up for neighbors next tick.
@@ -121,9 +183,9 @@ def step(state, marks, rng):
         booming, declining = booms[s], declines[s]
         k = t["k"]
         if k == "lot":
-            chance = R.BUILD_CHANCE * (R.BOOM_BUILD_BONUS if booming else 1)
+            chance = R.BUILD_CHANCE * (R.BOOM_BUILD_BONUS if booming else 1) * w[i][2]
             if can_grow and not declining and rng.random() < chance and has_market:
-                tiles[i] = new_build(x, y, old, rng, tick)
+                tiles[i] = new_build(x, y, old, rng, tick, w[i])
             elif (
                 rng.random() < R.MARKET_OPEN_CHANCE
                 and not has_market
@@ -163,9 +225,9 @@ def step(state, marks, rng):
                 and not declining
                 and built[s] >= R.REDEVELOP_BUILT
                 and rng.random() < R.REDEVELOP_CHANCE
-                and height_cap(x, y, old) >= t["f"] + 2
+                and height_cap(x, y, old, w[i]) >= t["f"] + 2
             ):
-                tiles[i] = new_build(x, y, old, rng, tick, low=t["f"] + 2)
+                tiles[i] = new_build(x, y, old, rng, tick, w[i], low=t["f"] + 2)
         elif k == "market":
             if not houses_near(x, y, R.MARKET_RADIUS) and rng.random() < R.MARKET_CLOSE_CHANCE:
                 tiles[i] = new_tile("lot", rng, tick=tick)

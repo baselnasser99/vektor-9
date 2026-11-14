@@ -138,6 +138,9 @@ def test_golden_cases_cover_every_event_kind():
         ("GROWTH", R.GROWTH + 1, "seed7-day", "12"),  # a per-tick rule
         ("BUILD_CHANCE", R.BUILD_CHANCE * 2, "seed3-day", "96"),
         ("REDEVELOP_CHANCE", R.REDEVELOP_CHANCE * 3, "chaotic-seed2", "48"),
+        ("FRONT_BUILD", R.FRONT_BUILD * 2, "seed3-day", "96"),  # the growth weights (ADR-0015)
+        ("CENTRE_FLOORS", R.CENTRE_FLOORS + 4, "seed7-day", "96"),
+        ("EDGE_FLOORS", R.EDGE_FLOORS - 4, "chaotic-seed2", "48"),
     ],
 )
 def test_golden_outputs_catch_a_rule_change(monkeypatch, name, value, case, tick):
@@ -145,6 +148,22 @@ def test_golden_outputs_catch_a_rule_change(monkeypatch, name, value, case, tick
     monkeypatch.setattr(R, name, value)
     outputs, _ = run(case)
     assert outputs[tick] != golden
+
+
+# The growth weights and landmark clearance at the values that switch them off (sim/rules.py):
+# version 3's growth.
+NEUTRAL = {"FRONT_BUILD": 0, "CENTRE_BUILD": 0, "FRONT_FLOORS": 0, "CENTRE_FLOORS": 0,
+           "CENTRE_LOW": 0, "EDGE_FLOORS": R.FLOORS_MAX,
+           "TOWER_CLEAR_RADIUS": 0, "HQ_CLEAR_RADIUS": 0}  # fmt: skip
+
+
+def test_neutral_weights_reproduce_version_3(monkeypatch):
+    """Version 4 only adds weights to version 3's growth (ADR-0015): switched off, every golden
+    case gives version 3's recorded outputs, digest for digest."""
+    v3 = json.loads((GOLDEN.parent / "sim-v3.json").read_text())["cases"]
+    for name, value in NEUTRAL.items():
+        monkeypatch.setattr(R, name, value)
+    assert {case: run(case)[0] for case in CASES} == v3
 
 
 def write(force=False):
