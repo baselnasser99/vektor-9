@@ -1,7 +1,6 @@
 """The core stack (ADR-0017): data and releases buckets, the tick function, its schedule, the
 first-deployment alarms and the alert topic. Hosting is S2; the CI stack and budget are S4."""
 
-import json
 import tempfile
 from dataclasses import dataclass
 from functools import cache
@@ -18,8 +17,8 @@ from aws_cdk import aws_scheduler_targets as targets
 from aws_cdk import aws_sns as sns
 
 from infra import package
-from lambdas.store_memory import MemoryStore
-from lambdas.tick import Config, iso, load_config, run_tick
+from lambdas import tick as T
+from lambdas.tick import iso, load_config
 from sim import rules as R
 
 STAGES = ("dev", "prod")
@@ -63,24 +62,6 @@ def stage_config(stage, get):
     return StageConfig(stage, cfg.seed, iso(cfg.genesis), email, reserved == "true")
 
 
-@cache
-def metric_contract():
-    """(namespace, dimension, metric names) read from one real EMF line of the handler (a
-    bootstrap against an in-memory store), so the alarms cannot drift from what it emits."""
-    lines = []
-    run_tick(
-        MemoryStore(),
-        Config(seed=0, genesis=0, stage="contract"),
-        now=0,
-        scheduled_time=None,
-        remaining_ms=lambda: 60_000,
-        emit=lines.append,
-    )
-    emf = json.loads(lines[0])["_aws"]["CloudWatchMetrics"][0]
-    (dimension,) = emf["Dimensions"][0]
-    return emf["Namespace"], dimension, tuple(m["Name"] for m in emf["Metrics"])
-
-
 _staging = []  # TemporaryDirectory objects, removed when the process exits
 
 
@@ -95,9 +76,6 @@ class CoreStack(Stack):
     def __init__(self, scope, construct_id, *, config, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
         removal = RemovalPolicy.RETAIN if config.prod else RemovalPolicy.DESTROY
-        namespace, dimension, metrics = metric_contract()
-        if "TicksPublished" not in metrics:
-            raise RuntimeError(f"the handler no longer emits TicksPublished: {metrics}")
 
         private = dict(
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
@@ -220,9 +198,9 @@ class CoreStack(Stack):
             "CityStalled",
             alarm_description="No tick published for 15 minutes.",
             metric=cw.Metric(
-                namespace=namespace,
-                metric_name="TicksPublished",
-                dimensions_map={dimension: config.stage},
+                namespace=T.METRIC_NAMESPACE,
+                metric_name=T.TICKS_PUBLISHED,
+                dimensions_map={T.METRIC_DIMENSION: config.stage},
                 statistic="Sum",
                 period=five,
             ),

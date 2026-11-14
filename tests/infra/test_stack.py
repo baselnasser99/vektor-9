@@ -15,6 +15,7 @@ from aws_cdk.assertions import Template  # noqa: E402
 
 from infra import package, stack  # noqa: E402
 from infra.app import build  # noqa: E402
+from lambdas import tick  # noqa: E402
 
 GENESIS = "2026-12-01T00:00:00Z"
 EMAIL = "alerts@example.com"
@@ -270,21 +271,20 @@ def test_dev_unversioned_destroyed_without_auto_delete(templates):
 @pytest.mark.parametrize("stage", stack.STAGES)
 def test_alarms_follow_the_handler_and_notify_the_topic(templates, stage):
     t = templates[stage]
-    namespace, dimension, metrics = stack.metric_contract()
-    assert "TicksPublished" in metrics
+    namespace, dimension = tick.METRIC_NAMESPACE, tick.METRIC_DIMENSION
     alarms = of_type(t, "AWS::CloudWatch::Alarm")
     assert len(alarms) == 2
     stalled = alarms[logical(t, "AWS::CloudWatch::Alarm", "CityStalled")]["Properties"]
     errors = alarms[logical(t, "AWS::CloudWatch::Alarm", "TickErrors")]["Properties"]
-    assert (stalled["Namespace"], stalled["MetricName"]) == (namespace, "TicksPublished")
+    assert (stalled["Namespace"], stalled["MetricName"]) == (namespace, tick.TICKS_PUBLISHED)
     assert stalled["Dimensions"] == [{"Name": dimension, "Value": stage}]
     assert (stalled["Statistic"], stalled["Period"], stalled["Threshold"]) == ("Sum", 300, 1)
     assert stalled["ComparisonOperator"] == "LessThanThreshold"
     assert (stalled["EvaluationPeriods"], stalled["DatapointsToAlarm"]) == (3, 3)
     assert stalled["TreatMissingData"] == "breaching"
     assert (errors["Namespace"], errors["MetricName"]) == ("AWS/Lambda", "Errors")
-    tick = {"Ref": logical(t, "AWS::Lambda::Function", "Tick")}
-    assert errors["Dimensions"] == [{"Name": "FunctionName", "Value": tick}]
+    fn = {"Ref": logical(t, "AWS::Lambda::Function", "Tick")}
+    assert errors["Dimensions"] == [{"Name": "FunctionName", "Value": fn}]
     assert (errors["Statistic"], errors["Period"], errors["Threshold"]) == ("Sum", 300, 1)
     assert errors["ComparisonOperator"] == "GreaterThanOrEqualToThreshold"
     assert (errors["EvaluationPeriods"], errors["DatapointsToAlarm"]) == (3, 2)
