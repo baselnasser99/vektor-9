@@ -488,3 +488,12 @@ Settled at acceptance (2026-11-12), in place of the proposal's open questions:
 - No car is stuck.
 
 Frame time (`?bench=1000x625`, one aerial view, local v4 snapshots, 3 loads each; median of 120 frames): 61.3, 53.4 and 54.2 ms before; 53.6, 53.9 and 54.3 ms after. The browser pane was hidden while it ran, so these are indicative.
+
+## Addendum (2026-11-15): the turn fallback, and arrows from the lane graph
+
+This addendum records current behaviour. It does not change the accepted text above.
+
+- **The turn fallback.** Where none of a lane's rule moves (`lanesMay`, or `turnsAt` at the interchange) exists at a crossing, and it is not the boulevard's outer lane merging where it narrows, the lane takes any turn that fits: a right into the cross street's outer lane, a left into its inner lane (`streets.js` `laneMoves`, moved there from `life.js`).
+- **Where it applies today.** At (429, 0), the boulevard heading +x meets the ring road with no road straight on (the highway out is reached by the expressway). The middle lane, which may only go straight on by `lanesMay`, turns left and right. Two lanes therefore turn right into the ring road's single lane, and two lanes turn left.
+- **Known issue.** This is to be replaced by an explicit rule in a later traffic PR. It is a suspected, unproven cause of junction overlaps.
+- **Arrows.** The road arrows are now painted from the moves `laneMoves` gives each lane, the same moves the cars use, so paint and traffic cannot disagree. `tests/js/arrows.test.mjs` checks this on the frozen v3 fixtures. The middle lane at (429, 0) shows left and right, and the boulevard's outer lane at (150, 0) shows straight and right (it goes on into the avenue's outer lane, ADR-0011). Lanes left bare: one-lane streets, the roundabout's approaches, the interchange's split and merge points and ramps, lanes coming in from out of town, and blocks of 16 m or less.

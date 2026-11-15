@@ -9,7 +9,7 @@ import { HQ_MODELS } from './headquarters.js';
 import { hqEye } from './eye.js';
 import { hqFleet } from './aircars.js';
 import { buildCity, cityLayout } from './city.js';
-import { REACH, buildDesert, farSprawl, outOfTown } from './desert.js';
+import { REACH, buildDesert, farSprawl } from './desert.js';
 import { steam, traffic, trains } from './life.js';
 import { people } from './people.js';
 import { airships, cloudDeck, districtGlows, horizon, moon, rain, rainAmount, stars } from './atmosphere.js';
@@ -54,7 +54,7 @@ onFrame(() => {
   for (const { group, at } of details) group.visible = (x - at[0]) ** 2 + y * y * 0.5 + (z - at[1]) ** 2 < DETAIL * DETAIL;
 });
 const desert = buildDesert(kit, edge, lines, onFrame, layout);
-const cars = traffic(kit, outOfTown(roads, edge, layout), onFrame, warp, hub, parked);
+const cars = traffic(kit, roads, onFrame, warp, hub, parked); // roads: carried out of town already (streets.js)
 scene.add(city, desert, farSprawl(edge), cars);
 // People on the sidewalks, crossing with the cars' lights (P shows the crowd settings).
 scene.add(steam(food, warp, onFrame));

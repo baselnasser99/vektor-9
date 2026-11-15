@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { palette } from './palette.js';
 import { box, cyl, part, rng } from './geometry.js';
 import { CAR_COLORS, WIDE, pick } from './world.js';
-import { ZEBRA_W, lanesMay } from './streets.js';
+import { ZEBRA_W, laneMoves } from './streets.js';
 
 const MOVING = [...CAR_COLORS, palette.sodium]; // taxis are commoner on the move than parked
 const CAR = 4.4; // car length
@@ -97,7 +97,7 @@ function carParts() {
 // and at each crossing a connector for every move a car in that lane may make (I.moves): straight on, a right turn
 // from the outer lane into the cross street's outer lane, a left turn from the inner lane into its inner lane, both
 // smooth curves through the crossing; at the roundabout, round the island on the car's own ring. Lane rules
-// (streets.js lanesMay) say which lane may go where. Dead-end lanes are dropped first.
+// (streets.js lanesMay, applied by laneMoves) say which lane may go where. Dead-end lanes are dropped first.
 function paths(roads, warp, hub) {
   const { nodes, links } = roads, shift = [0, 0];
   const lineOf = (L, along) => (L.axis === 'x' ? [along, L.at] : [L.at, along]);
@@ -125,14 +125,6 @@ function paths(roads, warp, hub) {
   }
   // Connectors through each crossing.
   const heading = (L) => (L.axis === 'x' ? [L.dir, 0] : [0, L.dir]);
-  const moveOf = (I, O) => {
-    const [ix, iz] = heading(I), [ox, oz] = heading(O), cross = ix * oz - iz * ox;
-    if (cross === 0) return ix === ox && iz === oz ? 'straight' : null; // never a u-turn
-    return cross > 0 ? 'right' : 'left';
-  };
-  // Straight on into the same lane; where a crossing has its own lane rules (I.may, interchange.js turnsAt) into the
-  // lane in the same place across the road, as the number of lanes changes there.
-  const fits = (I, O, m) => (m === 'straight' ? (I.may ? Math.abs(O.off - I.off) < 0.1 : O.k === I.k) : m === 'right' ? O.k === O.n - 1 : O.k === 0);
   const curve = (N, I, O, m) => {
     const a = lineOf(I, I.to), b = lineOf(O, O.from), y0 = heightAt(I, I.to), y1 = heightAt(O, O.from), pts = [];
     if (N.type === 'round') {
@@ -168,27 +160,9 @@ function paths(roads, warp, hub) {
     }
     return pts;
   };
-  // A street that stops short (at a walk, or at the headquarters' campus) is a dead end: its lanes carry no
-  // traffic either way, and neither do lanes that only lead into one.
-  for (let dead = [null]; dead.length;) {
-    dead = links.filter((L) => L.end && !L.end.outs.some((O) => L.end.type === 'free' || moveOf(L, O)));
-    const gone = new Set(dead.flatMap((L) => [L, ...links.filter((O) => O.start === L.end && O.end === L.start && O.axis === L.axis)]));
-    for (const L of gone) {
-      links.splice(links.indexOf(L), 1);
-      L.start?.outs.splice(L.start.outs.indexOf(L), 1);
-      L.end?.ins.splice(L.end.ins.indexOf(L), 1);
-    }
-  }
-  for (const N of nodes) for (const I of N.ins) {
-    if (N.type === 'free') { // the interchange: on along the road or onto a ramp, joined end to end, no stopping
-      I.moves = N.outs.map((O) => ({ move: O.ramp ? 'right' : 'straight', out: O, edge: edge([I.edge.pts.at(-1), O.edge.pts[0]], { node: N, from: I, next: O.edge }) }));
-      continue;
-    }
-    const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left') && (!I.may || I.may.includes(m)));
-    let ok = options.filter(({ O, m }) => (I.may ?? lanesMay(I.kind, I.k, I.n)).includes(m) && fits(I, O, m));
-    if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === Math.min(I.k, O.n - 1)); // where the boulevard narrows, its outer lane merges
-    if (!ok.length) ok = options.filter(({ O, m }) => m !== 'straight' && fits(I, O, m));
-    I.moves = ok.map(({ O, m }) => ({ move: m, out: O, edge: edge(curve(N, I, O, m), { node: N, from: I, next: O.edge }) }));
+  laneMoves(roads); // dead-end lanes dropped, and each lane's moves (streets.js, which paints its arrows from them)
+  for (const N of nodes) for (const I of N.ins) for (const mv of I.moves) {
+    mv.edge = edge(N.type === 'free' ? [I.edge.pts.at(-1), mv.out.edge.pts[0]] : curve(N, I, mv.out, mv.move), { node: N, from: I, next: mv.out.edge });
   }
   // Merges (a free node with two lanes in), where the two lanes run into one: where each lane's cars wait their turn
   // (L.hold, metres short of the node), far enough back that a car's nose there clears the other lane by a car's

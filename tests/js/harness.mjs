@@ -18,7 +18,6 @@ globalThis.document ??= { createElement: () => ({ width: 1, height: 1, getContex
 const THREE = await import('three');
 const { cityPlan } = await import('../../web/src/city.js');
 const { buildStreets } = await import('../../web/src/streets.js');
-const { outOfTown } = await import('../../web/src/desert.js');
 const { traffic } = await import('../../web/src/life.js');
 const { network } = await import('../../web/src/people.js');
 
@@ -78,7 +77,7 @@ export function city(snap, adjust) {
   const { layout, hq } = cityPlan(snap);
   adjust?.(layout, hq);
   const streets = buildStreets(kit, layout, new THREE.Group());
-  const roads = outOfTown(streets.roads, streets.hi, layout);
+  const roads = streets.roads; // carried out of town, with the interchange's lanes and each lane's moves
   const net = network(layout);
   const frame = [];
   const cars = traffic(kit, roads, (f) => frame.push(f), still, streets.hub, []);

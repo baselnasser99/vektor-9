@@ -35,8 +35,8 @@ export function buildDesert(kit, edge, lines, onFrame, layout) {
   return mergeByMaterial(root);
 }
 
-// The main streets' lanes carried on out of town to the edge of the world (streets.js roadNet: links marked out),
-// so cars come and go in the fog rather than at the city edge: the boulevard's up the ramps and along the causeway,
+// The main streets' lanes carried on out of town to the edge of the world (streets.js roadNet: links marked out;
+// called once, by streets.js buildStreets), so cars come and go in the fog rather than at the city edge: the boulevard's up the ramps and along the causeway,
 // the rest along its dirt track, over the ground. Every link gets lift(along), its road height there.
 export function outOfTown(roads, edge, layout) {
   const height = duneHeight(edge), deck = DECK + 0.6;
