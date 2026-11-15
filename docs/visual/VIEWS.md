@@ -41,13 +41,15 @@ Extra views, for the subjects named:
 | 18 | Road arrows on the boulevard heading +x into the ring road at (429, 0) | `400,4,15,424,0,4` |
 | 19 | Expressway deck, ramps and parapets, from above the outer blocks | `350,26,48,285,6,0` |
 | 20 | Road arrows at a driver's eye height (1.6 m), the boulevard heading +x into (150, 0) | `118,1.6,8.3,134,0,9.9` |
+| 21 | Deck joins at the expressway's inner end: the median ramps and the loops leave it, parapets meeting across the end | `238,14,12,262,8,0` |
+| 22 | Deck join where the inbound sweep ramp comes out from under the expressway (a known level step, capped parapets) | `368,15,-34,338,7,-12` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 
 ## Which views for which change
 
 - Road surface, markings, arrows: 11, 15, 18, 20, then 07 and 09.
-- Expressway decks, ramps and their parapets: 19, 03, 18.
+- Expressway decks, ramps and their parapets: 19, 21, 22, then 03 and 18.
 - Traffic and junctions: 07, 17, 01.
 - Dead ends and street changes: 08, then 05 and 10.
 - HQ, court and avenue: 02, 16.

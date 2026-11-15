@@ -161,20 +161,19 @@ function crossings(ctx, s, segs) {
 }
 
 // Along each block of a street (between the lane paint's ends a and b at crossings l0 and l1), the parts that
-// depend on its kind. Approaches: a darker, oilier band down the middle of each lane where cars wait at the light
-// (wear), and on main streets and the boulevard an arrow in each lane. The ring road: bays between the traffic lanes
-// and the kerb, in runs of three 6 m bays marked off with short lines, then a kerb build-out with a tree; about half
-// the bays hold a parked car facing the traffic. The boulevard: small cold-white studs set into the road along each
+// depend on its kind. Approaches: on main streets and the boulevard an arrow in each lane, painted straight on the
+// road (since 2026-11-15 there is no darker wear band under it). The ring road: bays between the traffic lanes and
+// the kerb, in runs of three 6 m bays marked off with short lines, then a kerb build-out with a tree; about half the
+// bays hold a parked car facing the traffic. The boulevard: small cold-white studs set into the road along each
 // zebra's edges, lit, so its crossings read from far off.
 const BAY = 6;
 function block(ctx, s, a, b, l0, l1) {
   const { kit, paint, rand, root } = ctx, { lanes, edge, median } = STREETS[s.kind], R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
-  const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = WIDE.has(s.kind) || s.kind === 'street' || s.kind === 'oneway';
+  const big = WIDE.has(s.kind) || s.kind === 'street' || s.kind === 'oneway';
   for (const [end, dir, l] of [[b, 1, l1], [a, -1, l0]]) { // dir: the way the cars approaching this end drive
     if (end < ctx.lo + 1 || end > ctx.hi - 1 || (s.kind === 'oneway' && dir !== s.line.flow[s.axis])) continue; // one way: arrows show which
     lanes.forEach((off) => {
-      const o = dir * right * off, len = Math.min(14, b - a);
-      lay(ctx, s, len, 0.01, 1.3, wear, end - dir * len / 2, o, 0.005);
+      const o = dir * right * off;
       if (big && !round(ctx, s, l) && b - a > 16) ctx.slots.push({ s, l, v: end - dir * 7, o, dir }); // painted once the lanes' moves are known
     });
   }

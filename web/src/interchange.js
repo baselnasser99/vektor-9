@@ -11,6 +11,7 @@ import { box, cyl, part, REPEAT, rng } from './geometry.js';
 import { streetLamp, tree } from './parts.js';
 import { STREETS } from './world.js';
 import { kerbOf, lanesMay, stopAt } from './streets.js';
+import { parapetGeometry } from './parapets.js';
 
 export const HIGH = 7.8; // deck centre; its top at 8.4 m, its underside at 7.2 m, over signal arms (6.6 m) and lamps (6.9 m)
 const TOP = HIGH + 0.6;
@@ -234,25 +235,28 @@ export function buildInterchange(kit, root, layout, snap) {
     part(root, box(2.4, 0.6, 9.6, 0), pier, x, y - 0.93, z0);
   });
   gantries(kit, root, layout);
-  // Every other deck, as drawn (decksDrawn), on slim piers.
+  // Every other deck, as drawn (decksDrawn), on slim piers. Where it lies on another deck at its level or under the
+  // expressway's, its top is a few centimetres under that deck's (no flicker; a slip road under its ramp); elsewhere
+  // its top is its own height, so where two decks part or a ramp leaves the expressway's end, the surfaces meet.
   const surface = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // the streets' asphalt, so a ramp's low end runs into its lane
+  const shapes = outlines(layout);
   for (const { deck: d, pts, half } of decksDrawn(layout)) {
     if (pts.length < 2) continue;
-    part(root, ribbon(pts, () => 0, half, d.ramp !== undefined ? -0.66 : -0.63, 0.6), surface); // its top a few centimetres under any deck it joins: no flicker
+    const under = pts.map((p) => onExpressway(layout, p) || shapes.some((S) => S.D.deck !== d && Math.abs((heightOn(S, p) ?? Infinity) - p[1]) < 0.3));
+    part(root, ribbon(pts, () => 0, half, (i) => (under[i] ? (d.ramp !== undefined ? -0.66 : -0.63) : -0.6), 0.6), surface);
     if (median.includes(d)) continue;
     pts.forEach((p, i) => {
       const [x, y, z] = p;
       if (i % 6 === 3 && y > 2.5 && !onExpressway(layout, p)) part(root, box(1.4, y - 0.6, 1.4, 0), pier, x, (y - 0.6) / 2, z);
     });
   }
-  // Parapets along every deck edge (barriers): cast concrete, wider at the foot, under a steel cap rail with a faint
-  // glowing strip set in it; one geometry per run and layer, merged with the rest by material.
-  const parapet = kit.concrete(palette.roseGrey), cap = kit.steel(palette.slate, 0.45);
-  for (const run of barriers(layout)) {
-    part(root, ribbon(run, () => 0, () => 0.25, -0.03, 0.98, 0.5), parapet);
-    part(root, ribbon(run, () => 0, () => 0.07, 0.95, 0.07), cap);
-    part(root, ribbon(run, () => 0, () => 0.025, 1.02, 0.01), strip);
-  }
+  // Parapets along every deck edge (barriers, drawn by parapets.js), the concrete shaded by vertex colours.
+  const parapets = parapetGeometry(barriers(layout)), cast = kit.concrete(palette.weatheredConcrete).clone();
+  cast.vertexColors = true;
+  cast.name += ':parapet';
+  part(root, parapets.concrete, cast);
+  part(root, parapets.steel, kit.steel(palette.wornGunmetal, 0.5));
+  part(root, parapets.lamps, kit.glow(palette.agedAmber, 0.5));
   park(kit, root, layout, snap);
   yard(kit, root, layout);
 }
@@ -283,59 +287,152 @@ export function decksDrawn(layout) {
   }));
 }
 
-// Whether p [x, y, z] lies on deck D (one of decksDrawn) at about its height, within its edge plus pad.
-export function onDeckOf(D, p, pad = 0.5) {
-  const { pts, half } = D;
-  for (let m = 1; m < pts.length; m++) {
-    const [a, b] = [pts[m - 1], pts[m]], dx = b[0] - a[0], dz = b[2] - a[2];
-    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[2] - a[2]) * dz) / (dx * dx + dz * dz || 1)));
-    const y = a[1] + (b[1] - a[1]) * t, h = half(m - 1) + (half(m) - half(m - 1)) * t;
-    if (Math.abs(y - p[1]) < 1.2 && Math.hypot(p[0] - a[0] - t * dx, p[2] - a[2] - t * dz) < h + pad) return true;
-  }
-  return false;
+// Each deck's outline, for barriers and the deck seams: every deck as drawn (decksDrawn) with its two edges, L and
+// R, as polylines [x, y, z] (y its top).
+function outlines(layout) {
+  const P = plan(layout);
+  return (P.outlines ??= decksDrawn(layout).filter((D) => D.pts.length > 1).map((D) => {
+    const side = (s) => D.pts.map((p, i) => { const [nx, nz] = normal(D.pts, i), o = s * D.half(i); return [p[0] + nx * o, p[1], p[2] + nz * o]; });
+    return { D, L: side(-1), R: side(1) };
+  }));
 }
+// The height of outline S's deck at q [x, y, z] if q is on it in plan, else null.
+function heightOn(S, q) {
+  const { D, L, R } = S;
+  for (let i = 1; i < L.length; i++) {
+    const poly = [L[i - 1], L[i], R[i], R[i - 1]];
+    let inside = false;
+    for (let a = 0, b = 3; a < 4; b = a++) {
+      const [xa, , za] = poly[a], [xb, , zb] = poly[b];
+      if (za > q[2] !== zb > q[2] && q[0] < ((xb - xa) * (q[2] - za)) / (zb - za) + xa) inside = !inside;
+    }
+    if (!inside) continue;
+    const [a, b] = [D.pts[i - 1], D.pts[i]], dx = b[0] - a[0], dz = b[2] - a[2];
+    const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[2] - a[2]) * dz) / (dx * dx + dz * dz || 1)));
+    return a[1] + (b[1] - a[1]) * t;
+  }
+  return null;
+}
+const flat = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+// Where segment a-b crosses segment c-d in plan, as a fraction along a-b, or null.
+function crossing(a, b, c, d) {
+  const rx = b[0] - a[0], rz = b[2] - a[2], sx = d[0] - c[0], sz = d[2] - c[2], den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c[0] - a[0]) * sz - (c[2] - a[2]) * sx) / den, u = ((c[0] - a[0]) * rz - (c[2] - a[2]) * rx) / den;
+  return t > 1e-9 && t < 1 - 1e-9 && u >= -1e-9 && u <= 1 + 1e-9 ? t : null;
+}
+// The inward normal of segment a-b: whichever of its two normals is on the side of ref, [x, z].
+function inward(a, b, ref) {
+  const dx = b[0] - a[0], dz = b[2] - a[2], l = Math.hypot(dx, dz) || 1, n = [-dz / l, dx / l];
+  return n[0] * ref[0] + n[1] * ref[1] < 0 ? [-n[0], -n[1]] : n;
+}
+// Where two inward normals meet at a corner: the vector to the corner of the two lines a metre inward, at most 2.5 m
+// long (at a sharp nose, where two decks part, the parapets merge), or null where the two turn right back.
+const mitre = (m, n) => {
+  const s = Math.hypot(m[0] + n[0], m[1] + n[1]), f = Math.min(2.5, Math.sqrt(2 / Math.max(1e-9, 1 + m[0] * n[0] + m[1] * n[1])));
+  return s < 1e-3 ? null : [((m[0] + n[0]) / s) * f, ((m[1] + n[1]) / s) * f];
+};
 
-// The parapets: polylines [[x, y, z], ...] (y the deck top) along which buildInterchange draws them, 0.25 m in from
-// every deck edge: both sides of the expressway and across its inner end, and both sides of every other deck as
-// drawn. An edge is open only where it joins something a car drives onto: another deck at its level (a ramp peeling
-// off or joining, two decks parting or meeting), the expressway's deck, or a street at its level (a ramp's low end,
-// below 1.5 m in a street's corridor). The expressway's outer end carries on as the highway out of town
-// (desert.js). Openings are found every metre along each edge; tests/js/interchange.test.mjs checks the coverage.
+// The parapets (parapets.js draws them): runs { pts, cross, caps } along every deck edge, on the edge itself: both
+// sides of the expressway and across its inner end, and both sides of every other deck as drawn. An edge is open
+// only where it joins something a car drives onto: another deck within 1.2 m of its height, the expressway's deck
+// (under which a ramp's edges are hidden), or a street at its level (a ramp's low end, below 1.5 m in a street's
+// corridor). Each edge is cut exactly where it crosses another deck's outline or a street corridor's side, and
+// every metre between, so where an edge runs into another deck its run ends on the same point as the run of that
+// deck's edge coming out of it. Such ends are joined: at one height (the higher), their cross vectors mitred.
+// Every other end is an opening and is capped: where the expressway's outer end carries on as the highway out of
+// town (desert.js), where a ramp comes down into a street, and where the two sweep ramps come out from under the
+// expressway (they drop while still under it, so their edges and its own cross there a step apart in height).
+// cross[i] is the inward normal at point i, mitred where the run bends. Runs keep a point every 3 m or so.
+// tests/js/barriers.test.mjs checks the joins, the caps and the coverage.
 export function barriers(layout) {
   const P = plan(layout);
   if (P.barriers) return P.barriers;
-  const { x0, z0, edge } = P, drawn = decksDrawn(layout), IN = 0.25, runs = [];
-  const fine = (line) => line.flatMap((p, i) => { // a point every metre or less along line
-    if (!i) return [p];
-    const q = line[i - 1], n = Math.max(1, Math.ceil(Math.hypot(p[0] - q[0], p[2] - q[2])));
-    return Array.from({ length: n }, (_, k) => q.map((v, j) => v + ((p[j] - v) * (k + 1)) / n));
-  });
-  // The runs of line that are not open, each kept as a point every 3 m and its ends (a straight line's as its ends;
-  // on the tightest loop a 3 m chord is 4 cm off the curve).
-  const split = (line, open) => {
-    let run = [];
-    for (const p of [...fine(line), null]) {
-      if (p && !open(p)) run.push(p);
-      else {
-        if (run.length > 1) runs.push(line.length === 2 ? [run[0], run.at(-1)] : run.filter((_, i) => i % 3 === 0 || i === run.length - 1));
-        run = [];
+  const { x0, z0, edge } = P, H = WIDE / 2, shapes = outlines(layout);
+  const box = [[x0, TOP, z0 - H], [edge, TOP, z0 - H], [edge, TOP, z0 + H], [x0, TOP, z0 + H]];
+  const bounds = (S) => { // an outline's sides and ends, as segments
+    const ring = S ? [...S.L, ...[...S.R].reverse(), S.L[0]] : [...box, box[0]];
+    return ring.slice(1).map((p, i) => [ring[i], p]);
+  };
+  const walls = new Map([[null, bounds(null)], ...shapes.map((S) => [S, bounds(S)])]);
+  const sides = layout.cross.flatMap((l) => [-1, 1].flatMap((s) => [['x', l.c + (s * l.w) / 2], ['z', l.c + (s * l.w) / 2]]));
+  const atStreet = (q) => q[1] < 1.5 && inStreet(layout, q, (l) => l.w / 2);
+  const open = (self, q) => {
+    if (!self) return shapes.some((S) => Math.abs((heightOn(S, q) ?? Infinity) - TOP) < 1.2);
+    return onExpressway(layout, q) || atStreet(q) || shapes.some((S) => S !== self && Math.abs((heightOn(S, q) ?? Infinity) - q[1]) < 1.2);
+  };
+  // Every edge: its line, the way inward at each of its points, and whose edge it is (null: the expressway's).
+  const edges = [
+    { line: [box[0], box[1]], ref: () => [0, 1], self: null },
+    { line: [box[3], box[2]], ref: () => [0, -1], self: null },
+    { line: [box[0], box[3]], ref: () => [1, 0], self: null },
+    ...shapes.flatMap((S) => ['L', 'R'].map((k) => ({ line: S[k], ref: (i) => [S.D.pts[i][0] - S[k][i][0], S.D.pts[i][2] - S[k][i][2]], self: S }))),
+  ];
+  const runs = [];
+  for (const { line, ref, self } of edges) {
+    let run = null;
+    const close = () => {
+      if (run && run.pts.length > 1) runs.push(run);
+      run = null;
+    };
+    for (let k = 1; k < line.length; k++) {
+      const [a, b] = [line[k - 1], line[k]], n = Math.max(1, Math.ceil(flat(a, b))), ts = new Set([0, 1]);
+      for (let j = 1; j < n; j++) ts.add(j / n);
+      for (const [S, segs] of walls) if (S !== self) for (const [c, d] of segs) { const t = crossing(a, b, c, d); if (t !== null) ts.add(t); }
+      for (const [axis, v] of sides) { // a street corridor's sides, where the deck is low enough to meet the street
+        const [pa, pb] = axis === 'x' ? [a[0], b[0]] : [a[2], b[2]], t = (v - pa) / (pb - pa);
+        if (t > 1e-9 && t < 1 - 1e-9 && Math.min(a[1], b[1]) < 1.5) ts.add(t);
+      }
+      const t = [...ts].sort((p, q) => p - q), at = (f) => a.map((v, j) => v + (b[j] - v) * f);
+      const r0 = ref(k - 1), r1 = ref(k), dir = [r0[0] + r1[0], r0[1] + r1[1]];
+      for (let m = 1; m < t.length; m++) {
+        if (t[m] - t[m - 1] < 1e-9) continue;
+        if (open(self, at((t[m - 1] + t[m]) / 2))) { close(); continue; }
+        run ??= { pts: [at(t[m - 1])], refs: [dir], corner: [t[m - 1] === 0] };
+        run.pts.push(at(t[m]));
+        run.refs.push(dir);
+        run.corner.push(t[m] === 1);
       }
     }
-  };
-  const onOther = (p, self) => drawn.some((D) => D !== self && onDeckOf(D, p));
-  const atStreet = (p) => p[1] < 1.5 && inStreet(layout, p, (l) => l.w / 2);
-  for (const s of [-1, 1]) split([[x0, TOP, z0 + s * (WIDE / 2 - IN)], [edge, TOP, z0 + s * (WIDE / 2 - IN)]], (p) => onOther(p));
-  split([[x0 + IN, TOP, z0 - WIDE / 2 + IN], [x0 + IN, TOP, z0 + WIDE / 2 - IN]], (p) => onOther(p));
-  for (const D of drawn) {
-    if (D.pts.length < 2) continue;
-    for (const side of [-1, 1]) {
-      const line = D.pts.map((p, i) => {
-        const [nx, nz] = normal(D.pts, i), o = side * (D.half(i) - IN);
-        return [p[0] + nx * o, p[1], p[2] + nz * o];
-      });
-      split(line, (p) => onExpressway(layout, p) || atStreet(p) || onOther(p, D));
-    }
+    close();
   }
+  // A point every 3 m or so, the ends and the edge's own corners kept; then the inward normals, mitred.
+  for (const run of runs) {
+    const keep = [0];
+    let since = 0;
+    for (let i = 1; i < run.pts.length; i++) {
+      since += flat(run.pts[i], run.pts[i - 1]);
+      if (since >= 2.9 || run.corner[i] || i === run.pts.length - 1) { keep.push(i); since = 0; }
+    }
+    const pts = keep.map((i) => run.pts[i]), refs = keep.map((i) => run.refs[i]);
+    run.normals = pts.slice(1).map((p, i) => inward(pts[i], p, refs[i + 1]));
+    run.pts = pts;
+    run.cross = pts.map((_, i) => (i === 0 ? run.normals[0] : i === pts.length - 1 ? run.normals.at(-1) : mitre(run.normals[i - 1], run.normals[i]) ?? run.normals[i]));
+    run.caps = [true, true];
+    delete run.refs;
+    delete run.corner;
+  }
+  // Join the ends that meet: on the same point in plan (2 cm), within 30 cm in height (the parapet's foot reaches 35 cm into the deck).
+  const ends = runs.flatMap((run) => [0, 1].map((e) => ({ run, e, i: e ? run.pts.length - 1 : 0 })));
+  const normalAt = ({ run, e }) => (e ? run.normals.at(-1) : run.normals[0]);
+  for (const A of ends) {
+    if (!A.run.caps[A.e]) continue;
+    const p = A.run.pts[A.i];
+    const B = ends.find((B) => B.run !== A.run && B.run.caps[B.e] && flat(p, B.run.pts[B.i]) < 0.02 && Math.abs(p[1] - B.run.pts[B.i][1]) < 0.3);
+    const m = B && mitre(normalAt(A), normalAt(B));
+    if (!m) continue;
+    const q = B.run.pts[B.i], meet = [(p[0] + q[0]) / 2, Math.max(p[1], q[1]), (p[2] + q[2]) / 2];
+    for (const { run, i } of [A, B]) { // the lower one raised to the meeting height, eased in over its last 3 m
+      const raise = meet[1] - run.pts[i][1], step = i ? -1 : 1;
+      for (let j = i, d = 0; j >= 0 && j < run.pts.length && d < 3; d += flat(run.pts[j], run.pts[j + step] ?? run.pts[j]), j += step) {
+        run.pts[j] = [run.pts[j][0], run.pts[j][1] + raise * (1 - d / 3), run.pts[j][2]];
+      }
+    }
+    A.run.pts[A.i] = B.run.pts[B.i] = meet;
+    A.run.cross[A.i] = B.run.cross[B.i] = m;
+    A.run.caps[A.e] = B.run.caps[B.e] = false;
+  }
+  for (const run of runs) delete run.normals;
   return (P.barriers = runs);
 }
 
@@ -451,10 +548,11 @@ function normal(pts, i) {
   const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dz = b[2] - a[2], l = Math.hypot(dx, dz);
   return [dz / l, -dx / l];
 }
-// A band along polyline pts: shifted off(k) across at point k, half(k) either side of that (top times that at its
-// top), from dy to dy + h above each point; top, both sides and bottom, each face with its own vertices (crisp
+// A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
+// each point (dy a number, or dy(k) per point); top, both sides and bottom, each face with its own vertices (crisp
 // edges), UVs in metres.
-function ribbon(pts, off, half, dy, h, top = 1) {
+function ribbon(pts, off, half, dy, h) {
+  const lift = typeof dy === 'function' ? dy : () => dy;
   const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
   let run = 0;
   for (let f = 0; f < 4; f++) {
@@ -463,8 +561,8 @@ function ribbon(pts, off, half, dy, h, top = 1) {
       if (i) run += f === 0 ? Math.hypot(p[0] - pts[i - 1][0], p[2] - pts[i - 1][2]) : 0;
       const [nx, nz] = normal(pts, i), u = (f === 0 ? run : i * 4) / REPEAT;
       for (const [s, y] of [ring[f], ring[(f + 1) % 4]]) {
-        const o = off(i) + s * half(i) * (y === h ? top : 1);
-        pos.push(p[0] + nx * o, p[1] + dy + y, p[2] + nz * o);
+        const o = off(i) + s * half(i);
+        pos.push(p[0] + nx * o, p[1] + lift(i) + y, p[2] + nz * o);
         uv.push(u, (o + y) / REPEAT);
       }
     });
