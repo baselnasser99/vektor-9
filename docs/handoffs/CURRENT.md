@@ -36,6 +36,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 ## Open
 - ADR-0016 roadmap, renderer-only, in order: (1) left turns, done in PR #66; (2) the dead-end fix; (3) the HQ-to-court crossing; (4) priority junctions; (5) speeds and calming; (6) one-way pairs; (7) shared streets; (8) dressing by type; (9) walkers on mid streets.
 - A pre-existing overlap: a straight car stuck in a junction can be driven through by the crossing street.
+- #66 left-turn arrows not yet visually checked by the owner; owner reports road arrows that point to nothing.
 - Court paving contrast.
 - Make the Node harness's use of `snapshots/` opt-in, so local and CI runs match.
 - Building variety: a later renderer pass with a download size budget; the Blender skills apply there.
@@ -58,9 +59,10 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - CDK synth: both stages with dummy context, no credentials. Deployed: no. No AWS resources exist.
 
 ## Next
-1. S2, hosting: explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files.
-2. Traffic step 2 (the dead-end fix), then the HQ-to-court crossing and priority junctions.
-3. S3.
-4. S4.
-5. D1, the dev deploy. Needs the owner's explicit approval.
+Visual work before AWS (owner decision, 2026-11-15).
+1. Visual baseline: a read-only refresh of the city plan SVG for the current SIM_VERSION, the status of every `URBAN_MASTERPLAN` roadmap step, and fixed camera views for before/after shots.
+2. Roads and traffic: the dead-end fix, car overlap in junctions, the HQ-to-court crossing, priority junctions, road variety within the existing corridor widths, and a review of the road surface arrows.
+3. Urban design per `URBAN_MASTERPLAN`: sector roles, the frontier, the IKARO approach and court, tower island access, parks, skyline signs.
+4. Architecture: new building models and street infrastructure, renderer-only. The Blender skill pack is chosen by a side-by-side comparison, with a download size budget.
+5. Then S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, and D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
 One session at a time.
