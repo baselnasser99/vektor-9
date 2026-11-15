@@ -276,29 +276,47 @@ function paintArrow(ctx, roads, { s, l, v, o, dir }) {
   return [{ key, axis: s.axis, dir, at: I.at, moves }];
 }
 
-// An arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s): a head straight
-// ahead and a bent arm for each turn, one for each of its moves.
+// An arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s), one for each of its
+// moves: filled, stretched along the lane (6.3 m by 2.5 m at most) so it still reads from a driver's low view, as
+// road arrows are. One shaft 0.3 m wide; a solid head straight ahead; each turn a branch curving smoothly off the
+// shaft at the same point, 55 degrees out, with its own solid head, clear of the straight one. One flat mesh per
+// set of moves (arrowGlyph), laid on the road.
 function arrow(ctx, s, v, off, dir, moves) {
-  const right = s.axis === 'x' ? 1 : -1, side = dir * right; // across, toward the right-hand kerb of these cars
-  const stroke = (p, q) => { // a painted stroke from p to q, each [along, across]
-    const [x0, z0] = spot(s, ...p), [x1, z1] = spot(s, ...q);
-    part(ctx.root, box(0.18, 0.02, Math.hypot(x1 - x0, z1 - z0), 0), ctx.paint, (x0 + x1) / 2, 0.01, (z0 + z1) / 2).rotation.y = Math.atan2(x1 - x0, z1 - z0);
+  const [x, z] = spot(s, v, off), turn = s.axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : dir > 0 ? 0 : Math.PI;
+  part(ctx.root, arrowGlyph(moves), ctx.paint, x, 0.021, z).rotation.y = turn;
+}
+// The glyph for a set of moves, cached: triangles in a frame with +z along the lane (the way cars drive) and +x to
+// the drivers' left, so the mesh's rotation alone lays it in any lane. Painted width W; a turn branch leaves the
+// shaft at U0, curving on radius R through A.
+const glyphs = new Map(), W = 0.3, U0 = -0.5, R = 1.15, A = 0.96;
+function arrowGlyph(moves) {
+  const key = ['straight', 'left', 'right'].filter((m) => moves.includes(m)).join();
+  if (glyphs.has(key)) return glyphs.get(key);
+  const pos = [], tri = (...q) => { // q: three [along, right] points; wound to face up
+    const p = q.map(([u, c]) => [-c, u]), up = (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]) - (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]);
+    for (const [px, pz] of up > 0 ? p : [p[0], p[2], p[1]]) pos.push(px, 0, pz);
   };
-  const head = (tip, along, across, L = 1.1) => { // two strokes meeting at `tip`, pointing (along, across), a unit vector
-    for (const t of [-1, 1]) {
-      const ca = Math.cos(0.6), sa = Math.sin(0.6), [ux, uy] = [along * ca - t * across * sa, across * ca + t * along * sa];
-      stroke([tip[0] - L * ux, tip[1] - L * uy], tip);
-    }
-  };
-  const straight = moves.includes('straight'), top = straight ? 0.9 : -0.9; // a turn-only arrow's shaft stops where its arm leaves
-  stroke([v - dir * 2.1, off], [v + dir * top, off]);
-  if (straight) head([v + dir * 1.5, off], dir, 0);
-  for (const [t, w] of [['left', -1], ['right', 1]]) { // each turn: an arm branching low off the shaft, out and forward, its head clear of the straight one
-    if (!moves.includes(t)) continue;
-    const tip = [v + dir * 0.2, off + w * side * 1.05];
-    stroke([v - dir * 0.9, off], tip);
-    head(tip, dir * 0.45, w * side * 0.89, 0.7);
+  const quad = (a, b, c, d) => (tri(a, b, c), tri(a, c, d));
+  const straight = moves.includes('straight'), h = W / 2;
+  quad([-3.6, -h], [straight ? 1.3 : U0 + h, -h], [straight ? 1.3 : U0 + h, h], [-3.6, h]);
+  if (straight) tri([1.25, -0.5], [2.7, 0], [1.25, 0.5]);
+  for (const [m, w] of [['left', -1], ['right', 1]]) {
+    if (!moves.includes(m)) continue;
+    const at = (f) => { // the branch's centre line at angle f round its curve: [point, heading, across]
+      const t = [Math.cos(f), w * Math.sin(f)];
+      return [[U0 + R * Math.sin(f), w * R * (1 - Math.cos(f))], t, [-t[1], t[0]]];
+    };
+    const edge = (f, e) => { const [p, , n] = at(f); return [p[0] + e * n[0], p[1] + e * n[1]]; };
+    for (let k = 0; k < 6; k++) quad(edge((A * k) / 6, -h), edge((A * (k + 1)) / 6, -h), edge((A * (k + 1)) / 6, h), edge((A * k) / 6, h));
+    const [p, t, n] = at(A), b = [p[0] - 0.05 * t[0], p[1] - 0.05 * t[1]]; // the head's base just back over the branch's end
+    tri([b[0] - 0.42 * n[0], b[1] - 0.42 * n[1]], [b[0] + 0.9 * t[0], b[1] + 0.9 * t[1]], [b[0] + 0.42 * n[0], b[1] + 0.42 * n[1]]);
   }
+  const g = new THREE.BufferGeometry(), count = pos.length / 3;
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(Array.from({ length: count }, () => [0, 1, 0]).flat(), 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(pos.filter((_, i) => i % 3 !== 1).map((q) => q / REPEAT), 2));
+  glyphs.set(key, g);
+  return g;
 }
 
 // Kerbside on main streets and the boulevard: a shuttle stop on each side of most blocks, set at the kerb so the

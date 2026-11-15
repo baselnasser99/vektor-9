@@ -39,12 +39,15 @@ Extra views, for the subjects named:
 | 16 | Court paving, close | `2,28,-165,-32,0,-226` |
 | 17 | Roundabout north entry (a car-overlap spot) | `0,45,-80,10,0,-30` |
 | 18 | Road arrows on the boulevard heading +x into the ring road at (429, 0) | `400,4,15,424,0,4` |
+| 19 | Expressway deck, ramps and parapets, from above the outer blocks | `350,26,48,285,6,0` |
+| 20 | Road arrows at a driver's eye height (1.6 m), the boulevard heading +x into (150, 0) | `118,1.6,8.3,134,0,9.9` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 
 ## Which views for which change
 
-- Road surface, markings, arrows: 11, 15, 18, then 07 and 09.
+- Road surface, markings, arrows: 11, 15, 18, 20, then 07 and 09.
+- Expressway decks, ramps and their parapets: 19, 03, 18.
 - Traffic and junctions: 07, 17, 01.
 - Dead ends and street changes: 08, then 05 and 10.
 - HQ, court and avenue: 02, 16.

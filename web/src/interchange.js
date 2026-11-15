@@ -193,34 +193,19 @@ export const underRamps = (layout, s, l) => {
 };
 
 // The structure, into root: the expressway deck from its inner end out over the city edge (the highway beyond,
-// desert.js, carries on at its height), on single piers with caps in the boulevard's median, with barriers along
-// both edges and down the middle, each with a faint glowing strip, edge and lane lines, and two sign gantries;
-// and every other deck as a continuous band following its curve and climb, a barrier each side, on slim piers (the
-// median ramps on shared ones). Barriers are left out where they would stand on a road at its level, on the
-// expressway's deck, or on another deck where two part or meet. Then the land round the ramps.
+// desert.js, carries on at its height), on single piers with caps in the boulevard's median, with a barrier down
+// the middle with a faint glowing strip, edge and lane lines, and two sign gantries; every other deck as a
+// continuous band following its curve and climb, on slim piers (the median ramps on shared ones); parapets along
+// every deck edge, open only where it joins something a car drives onto (barriers). Then the land round the ramps.
 export function buildInterchange(kit, root, layout, snap) {
-  const { x0, z0, edge, ramps, median, decks } = plan(layout);
+  const { x0, z0, edge, median } = plan(layout);
   const deck = kit.concrete(palette.gunmetal), pier = kit.concrete(palette.slate), strip = kit.glow(palette.cream, 0.35);
   const len = edge - x0, mid = (x0 + edge) / 2;
   part(root, box(len, 1.2, WIDE, 0), deck, mid, HIGH, z0);
   for (const s of [-1, 1]) part(root, box(1.2, 1.4, 1.2, 0), pier, x0 + 0.6, TOP + 0.5, z0 + s * 5.6); // the deck's end, between a median ramp and its loop
-  // Barriers: down the middle end to end; along each edge in runs, open wherever a ramp peels off or joins.
-  const rail = (a, b, z, w) => {
-    part(root, box(b - a, 0.9, w, 0), pier, (a + b) / 2, TOP + 0.45, z);
-    part(root, box(b - a, 0.06, 0.12, 0), strip, (a + b) / 2, TOP + 0.93, z);
-  };
-  rail(x0, edge, z0, 0.7);
-  for (const s of [-1, 1]) {
-    const z = z0 + s * (WIDE / 2 - 0.25), open = (x) => ramps.some(({ pts }) => pts.some(([px, py, pz]) => py > 5 && Math.hypot(px - x, pz - z) < 6));
-    let a = null;
-    for (let x = x0; x <= edge; x += 2) {
-      if (!open(x) && x < edge) a ??= x;
-      else if (a !== null) {
-        rail(a, x, z, 0.4);
-        a = null;
-      }
-    }
-  }
+  // The barrier down the middle, end to end; the parapets along every deck edge are drawn below (barriers).
+  part(root, box(len, 0.9, 0.7, 0), pier, mid, TOP + 0.45, z0);
+  part(root, box(len, 0.06, 0.12, 0), strip, mid, TOP + 0.93, z0);
   const lanes = STREETS.boulevard.lanes;
   // The inner lanes go on down the median ramps and the outer ones round the loops, so the middle ones end in
   // hatching over the last stretch, between solid lines.
@@ -249,48 +234,109 @@ export function buildInterchange(kit, root, layout, snap) {
     part(root, box(2.4, 0.6, 9.6, 0), pier, x, y - 0.93, z0);
   });
   gantries(kit, root, layout);
-  // Every other deck: narrowing to one lane's width where it meets a road at its level, so it runs into that lane.
-  const halves = decks.map(({ pts, half = 4 }) => {
-    const along = [0];
-    for (let i = 1; i < pts.length; i++) along.push(along[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][2] - pts[i - 1][2]));
-    const low = (i) => (pts[0][1] < 1 ? along[i] : along.at(-1) - along[i]); // from its street end
-    return pts.map((p, i) => Math.min(half, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
-  });
-  const onDeck = ([x, , z]) => x > x0 && x < edge && Math.abs(z - z0) < WIDE / 2;
-  // Within a street's corridor (out to `reach` from its centre line: its kerb, or its sidewalk's back edge).
-  const inStreet = ([x, , z], reach) => layout.cross.some((l) => Math.abs(x - l.c) < reach(l) || Math.abs(z - l.c) < reach(l));
-  const onRoad = (p) => p[1] < 1.5 && inStreet(p, (l) => l.w / 2); // barriers: none on a street or its sidewalk at its level
+  // Every other deck, as drawn (decksDrawn), on slim piers.
   const surface = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // the streets' asphalt, so a ramp's low end runs into its lane
-  const onOther = (b, self) => decks.some((d, k) => d !== self && d.pts.some((p, i) => Math.abs(p[1] - b[1]) < 1.2 && Math.hypot(p[0] - b[0], p[2] - b[2]) < halves[k][i] + 0.5));
-  decks.forEach((d, k) => {
-    // Drawn only off the carriageway it comes down to (there the street's own asphalt is the road), and raised a
-    // little over the sidewalk it crosses, like a driveway, so the paving does not show through it.
-    const keep = d.pts.flatMap((p, i) => (p[1] < 0.6 && inStreet(p, kerbOf) ? [] : [i]));
-    const pts = keep.map((i) => (inStreet(d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
-    const half = (i) => halves[k][keep[i]], slip = d.ramp !== undefined;
-    if (pts.length < 2) return;
-    part(root, ribbon(pts, () => 0, half, slip ? -0.66 : -0.63, 0.6), surface); // its top a few centimetres under any deck it joins: no flicker
-    for (const side of [-1, 1]) {
-      const at = (i) => side * (half(i) - 0.2), runs = [[]];
-      pts.forEach((p, i) => {
-        const [nx, nz] = normal(pts, i), b = [p[0] + nx * at(i), p[1], p[2] + nz * at(i)];
-        if (onDeck(b) || onRoad(b) || onOther(b, d)) runs.push([]);
-        else runs.at(-1).push(i);
-      });
-      for (const run of runs.filter((r) => r.length > 1)) {
-        const sub = run.map((i) => pts[i]), off = (j) => at(run[j]);
-        part(root, ribbon(sub, off, () => 0.2, -0.03, 0.9), pier);
-        part(root, ribbon(sub, off, () => 0.06, 0.87, 0.06), strip);
-      }
-    }
-    if (median.includes(d)) return;
+  for (const { deck: d, pts, half } of decksDrawn(layout)) {
+    if (pts.length < 2) continue;
+    part(root, ribbon(pts, () => 0, half, d.ramp !== undefined ? -0.66 : -0.63, 0.6), surface); // its top a few centimetres under any deck it joins: no flicker
+    if (median.includes(d)) continue;
     pts.forEach((p, i) => {
       const [x, y, z] = p;
-      if (i % 6 === 3 && y > 2.5 && !onDeck(p)) part(root, box(1.4, y - 0.6, 1.4, 0), pier, x, (y - 0.6) / 2, z);
+      if (i % 6 === 3 && y > 2.5 && !onExpressway(layout, p)) part(root, box(1.4, y - 0.6, 1.4, 0), pier, x, (y - 0.6) / 2, z);
     });
-  });
+  }
+  // Parapets along every deck edge (barriers): cast concrete, wider at the foot, under a steel cap rail with a faint
+  // glowing strip set in it; one geometry per run and layer, merged with the rest by material.
+  const parapet = kit.concrete(palette.roseGrey), cap = kit.steel(palette.slate, 0.45);
+  for (const run of barriers(layout)) {
+    part(root, ribbon(run, () => 0, () => 0.25, -0.03, 0.98, 0.5), parapet);
+    part(root, ribbon(run, () => 0, () => 0.07, 0.95, 0.07), cap);
+    part(root, ribbon(run, () => 0, () => 0.025, 1.02, 0.01), strip);
+  }
   park(kit, root, layout, snap);
   yard(kit, root, layout);
+}
+
+// Whether p [x, y, z] is on the expressway's deck, in plan.
+const onExpressway = (layout, [x, , z]) => {
+  const { x0, z0, edge } = plan(layout);
+  return x > x0 && x < edge && Math.abs(z - z0) < WIDE / 2;
+};
+// Whether p [x, y, z] is within a street's corridor, out to reach(l) from its centre line (its kerb, or its
+// sidewalk's back edge).
+const inStreet = (layout, [x, , z], reach) => layout.cross.some((l) => Math.abs(x - l.c) < reach(l) || Math.abs(z - l.c) < reach(l));
+
+// Every deck but the expressway's, as buildInterchange draws it: [{ deck, pts, half }], half(i) its half-width at
+// point i. Each narrows to one lane's width where it meets a road at its level, so it runs into that lane; it is
+// left out over the carriageway it comes down to (the street's own asphalt is the road there) and raised a little
+// over the sidewalk it crosses, like a driveway, so the paving does not show through it.
+export function decksDrawn(layout) {
+  const P = plan(layout);
+  return (P.drawn ??= P.decks.map((d) => {
+    const along = [0];
+    for (let i = 1; i < d.pts.length; i++) along.push(along[i - 1] + Math.hypot(d.pts[i][0] - d.pts[i - 1][0], d.pts[i][2] - d.pts[i - 1][2]));
+    const low = (i) => (d.pts[0][1] < 1 ? along[i] : along.at(-1) - along[i]); // from its street end
+    const keep = d.pts.flatMap((p, i) => (p[1] < 0.6 && inStreet(layout, p, kerbOf) ? [] : [i]));
+    const pts = keep.map((i) => (inStreet(layout, d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
+    const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
+    return { deck: d, pts, half: (i) => halves[i] };
+  }));
+}
+
+// Whether p [x, y, z] lies on deck D (one of decksDrawn) at about its height, within its edge plus pad.
+export function onDeckOf(D, p, pad = 0.5) {
+  const { pts, half } = D;
+  for (let m = 1; m < pts.length; m++) {
+    const [a, b] = [pts[m - 1], pts[m]], dx = b[0] - a[0], dz = b[2] - a[2];
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[2] - a[2]) * dz) / (dx * dx + dz * dz || 1)));
+    const y = a[1] + (b[1] - a[1]) * t, h = half(m - 1) + (half(m) - half(m - 1)) * t;
+    if (Math.abs(y - p[1]) < 1.2 && Math.hypot(p[0] - a[0] - t * dx, p[2] - a[2] - t * dz) < h + pad) return true;
+  }
+  return false;
+}
+
+// The parapets: polylines [[x, y, z], ...] (y the deck top) along which buildInterchange draws them, 0.25 m in from
+// every deck edge: both sides of the expressway and across its inner end, and both sides of every other deck as
+// drawn. An edge is open only where it joins something a car drives onto: another deck at its level (a ramp peeling
+// off or joining, two decks parting or meeting), the expressway's deck, or a street at its level (a ramp's low end,
+// below 1.5 m in a street's corridor). The expressway's outer end carries on as the highway out of town
+// (desert.js). Openings are found every metre along each edge; tests/js/interchange.test.mjs checks the coverage.
+export function barriers(layout) {
+  const P = plan(layout);
+  if (P.barriers) return P.barriers;
+  const { x0, z0, edge } = P, drawn = decksDrawn(layout), IN = 0.25, runs = [];
+  const fine = (line) => line.flatMap((p, i) => { // a point every metre or less along line
+    if (!i) return [p];
+    const q = line[i - 1], n = Math.max(1, Math.ceil(Math.hypot(p[0] - q[0], p[2] - q[2])));
+    return Array.from({ length: n }, (_, k) => q.map((v, j) => v + ((p[j] - v) * (k + 1)) / n));
+  });
+  // The runs of line that are not open, each kept as a point every 3 m and its ends (a straight line's as its ends;
+  // on the tightest loop a 3 m chord is 4 cm off the curve).
+  const split = (line, open) => {
+    let run = [];
+    for (const p of [...fine(line), null]) {
+      if (p && !open(p)) run.push(p);
+      else {
+        if (run.length > 1) runs.push(line.length === 2 ? [run[0], run.at(-1)] : run.filter((_, i) => i % 3 === 0 || i === run.length - 1));
+        run = [];
+      }
+    }
+  };
+  const onOther = (p, self) => drawn.some((D) => D !== self && onDeckOf(D, p));
+  const atStreet = (p) => p[1] < 1.5 && inStreet(layout, p, (l) => l.w / 2);
+  for (const s of [-1, 1]) split([[x0, TOP, z0 + s * (WIDE / 2 - IN)], [edge, TOP, z0 + s * (WIDE / 2 - IN)]], (p) => onOther(p));
+  split([[x0 + IN, TOP, z0 - WIDE / 2 + IN], [x0 + IN, TOP, z0 + WIDE / 2 - IN]], (p) => onOther(p));
+  for (const D of drawn) {
+    if (D.pts.length < 2) continue;
+    for (const side of [-1, 1]) {
+      const line = D.pts.map((p, i) => {
+        const [nx, nz] = normal(D.pts, i), o = side * (D.half(i) - IN);
+        return [p[0] + nx * o, p[1], p[2] + nz * o];
+      });
+      split(line, (p) => onExpressway(layout, p) || atStreet(p) || onOther(p, D));
+    }
+  }
+  return (P.barriers = runs);
 }
 
 // Two sign gantries over the expressway (Blender, tools/blender/interchange_props.py), one ahead of each pair of
@@ -405,9 +451,10 @@ function normal(pts, i) {
   const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dz = b[2] - a[2], l = Math.hypot(dx, dz);
   return [dz / l, -dx / l];
 }
-// A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
-// each point; top, both sides and bottom, each face with its own vertices (crisp edges), UVs in metres.
-function ribbon(pts, off, half, dy, h) {
+// A band along polyline pts: shifted off(k) across at point k, half(k) either side of that (top times that at its
+// top), from dy to dy + h above each point; top, both sides and bottom, each face with its own vertices (crisp
+// edges), UVs in metres.
+function ribbon(pts, off, half, dy, h, top = 1) {
   const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
   let run = 0;
   for (let f = 0; f < 4; f++) {
@@ -416,7 +463,7 @@ function ribbon(pts, off, half, dy, h) {
       if (i) run += f === 0 ? Math.hypot(p[0] - pts[i - 1][0], p[2] - pts[i - 1][2]) : 0;
       const [nx, nz] = normal(pts, i), u = (f === 0 ? run : i * 4) / REPEAT;
       for (const [s, y] of [ring[f], ring[(f + 1) % 4]]) {
-        const o = off(i) + s * half(i);
+        const o = off(i) + s * half(i) * (y === h ? top : 1);
         pos.push(p[0] + nx * o, p[1] + dy + y, p[2] + nz * o);
         uv.push(u, (o + y) / REPEAT);
       }
