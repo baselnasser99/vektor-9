@@ -200,9 +200,14 @@ export const underRamps = (layout, s, l) => {
 // every deck edge, open only where it joins something a car drives onto (barriers). Then the land round the ramps.
 export function buildInterchange(kit, root, layout, snap) {
   const { x0, z0, edge, median } = plan(layout);
-  const deck = kit.concrete(palette.gunmetal), pier = kit.concrete(palette.slate), strip = kit.glow(palette.cream, 0.35);
+  const pier = kit.concrete(palette.slate), strip = kit.glow(palette.cream, 0.35);
+  const surface = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // every driving surface: the streets' asphalt (streets.js)
   const len = edge - x0, mid = (x0 + edge) / 2;
-  part(root, box(len, 1.2, WIDE, 0), deck, mid, HIGH, z0);
+  // The deck: built like every other deck (ribbon), so its asphalt lies and catches the light as theirs does where
+  // they meet (as a box its top read as a different surface beside the ramps); its inner end closed by a thin slab
+  // (the outer end runs on into the highway out of town, desert.js).
+  part(root, ribbon([[x0, TOP, z0], [edge, TOP, z0]], () => 0, () => WIDE / 2, -1.2, 1.2), surface);
+  part(root, box(0.05, 1.19, WIDE, 0), surface, x0 + 0.025, HIGH - 0.005, z0);
   for (const s of [-1, 1]) part(root, box(1.2, 1.4, 1.2, 0), pier, x0 + 0.6, TOP + 0.5, z0 + s * 5.6); // the deck's end, between a median ramp and its loop
   // The barrier down the middle, end to end; the parapets along every deck edge are drawn below (barriers).
   part(root, box(len, 0.9, 0.7, 0), pier, mid, TOP + 0.45, z0);
@@ -237,13 +242,42 @@ export function buildInterchange(kit, root, layout, snap) {
   gantries(kit, root, layout);
   // Every other deck, as drawn (decksDrawn), on slim piers. Where it lies on another deck at its level or under the
   // expressway's, its top is a few centimetres under that deck's (no flicker; a slip road under its ramp); elsewhere
-  // its top is its own height, so where two decks part or a ramp leaves the expressway's end, the surfaces meet.
-  const surface = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // the streets' asphalt, so a ramp's low end runs into its lane
-  const shapes = outlines(layout);
-  for (const { deck: d, pts, half } of decksDrawn(layout)) {
-    if (pts.length < 2) continue;
-    const under = pts.map((p) => onExpressway(layout, p) || shapes.some((S) => S.D.deck !== d && Math.abs((heightOn(S, p) ?? Infinity) - p[1]) < 0.3));
+  // its top is its own height. The place where it passes onto or off another deck is found exactly and added as a
+  // point, its top there at its own height, so the change is at the other deck's edge, not up to 4 m before it; a
+  // dark steel expansion joint lies across it there, standing a little proud of both surfaces so the step between
+  // them (a few centimetres) and the change of structure read as one deliberate strip. Another lies across each
+  // deck's low end, where it meets the street.
+  const shapes = outlines(layout), seam = kit.steel(palette.graphite, 0.45);
+  const joint = ([x, y, z], [tx, tz], wide, top) => { // across the way [tx, tz], from 3 cm under y up to 1.2 cm over top
+    const h = Math.max(y, top) + 0.012 - (Math.min(y, top) - 0.03);
+    part(root, box(0.25, h, wide, 0), seam, x, Math.max(y, top) + 0.012 - h / 2, z).rotation.y = Math.atan2(-tz, tx);
+  };
+  for (const { deck: d, pts: raw, half: rawHalf } of decksDrawn(layout)) {
+    if (raw.length < 2) continue;
+    // The top of the deck p lies on (the expressway's, or another at its level), or null.
+    const below = (p) => (onExpressway(layout, p) ? TOP : shapes.some((S) => S.D.deck !== d && Math.abs((heightOn(S, p) ?? Infinity) - p[1]) < 0.3) ? p[1] : null);
+    const on = (p) => below(p) !== null;
+    const pts = [], halves = [], under = [];
+    raw.forEach((p, i) => {
+      const a = raw[i - 1];
+      if (a && on(a) !== on(p)) {
+        let lo = 0, hi = 1;
+        for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (on(a.map((v, j) => v + (p[j] - v) * m)) === on(a)) lo = m; else hi = m; }
+        const q = a.map((v, j) => v + (p[j] - v) * hi), w = rawHalf(i - 1) + (rawHalf(i) - rawHalf(i - 1)) * hi, l = Math.hypot(p[0] - a[0], p[2] - a[2]);
+        const other = below(on(a) ? a : p);
+        if (Math.abs(other - q[1]) < 0.3) joint(q, [(p[0] - a[0]) / l, (p[2] - a[2]) / l], 2 * w, other); // not where a sweep ramp drops out from under the expressway
+        pts.push(q);
+        halves.push(w);
+        under.push(false);
+      }
+      pts.push(p);
+      halves.push(rawHalf(i));
+      under.push(on(p));
+    });
+    const half = (i) => halves[i];
     part(root, ribbon(pts, () => 0, half, (i) => (under[i] ? (d.ramp !== undefined ? -0.66 : -0.63) : -0.6), 0.6), surface);
+    const [e, f] = raw[0][1] < raw.at(-1)[1] ? [0, 1] : [raw.length - 1, raw.length - 2], l = Math.hypot(raw[f][0] - raw[e][0], raw[f][2] - raw[e][2]);
+    joint(raw[e], [(raw[f][0] - raw[e][0]) / l, (raw[f][2] - raw[e][2]) / l], 2 * rawHalf(e), raw[e][1]); // its low end, at the street
     if (median.includes(d)) continue;
     pts.forEach((p, i) => {
       const [x, y, z] = p;
@@ -333,7 +367,7 @@ const mitre = (m, n) => {
   return s < 1e-3 ? null : [((m[0] + n[0]) / s) * f, ((m[1] + n[1]) / s) * f];
 };
 
-// The parapets (parapets.js draws them): runs { pts, cross, caps } along every deck edge, on the edge itself: both
+// The parapets (parapets.js draws them): runs { pts, cross, caps, depth } along every deck edge, on the edge itself: both
 // sides of the expressway and across its inner end, and both sides of every other deck as drawn. An edge is open
 // only where it joins something a car drives onto: another deck within 1.2 m of its height, the expressway's deck
 // (under which a ramp's edges are hidden), or a street at its level (a ramp's low end, below 1.5 m in a street's
@@ -388,7 +422,7 @@ export function barriers(layout) {
       for (let m = 1; m < t.length; m++) {
         if (t[m] - t[m - 1] < 1e-9) continue;
         if (open(self, at((t[m - 1] + t[m]) / 2))) { close(); continue; }
-        run ??= { pts: [at(t[m - 1])], refs: [dir], corner: [t[m - 1] === 0] };
+        run ??= { pts: [at(t[m - 1])], refs: [dir], corner: [t[m - 1] === 0], depth: self ? 0.6 : 1.2 }; // its deck's thickness: a ramp's, the expressway's
         run.pts.push(at(t[m]));
         run.refs.push(dir);
         run.corner.push(t[m] === 1);
@@ -550,7 +584,7 @@ function normal(pts, i) {
 }
 // A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
 // each point (dy a number, or dy(k) per point); top, both sides and bottom, each face with its own vertices (crisp
-// edges), UVs in metres.
+// edges), UVs in metres (the top's in plan).
 function ribbon(pts, off, half, dy, h) {
   const lift = typeof dy === 'function' ? dy : () => dy;
   const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
@@ -563,7 +597,8 @@ function ribbon(pts, off, half, dy, h) {
       for (const [s, y] of [ring[f], ring[(f + 1) % 4]]) {
         const o = off(i) + s * half(i);
         pos.push(p[0] + nx * o, p[1] + lift(i) + y, p[2] + nz * o);
-        uv.push(u, (o + y) / REPEAT);
+        if (f === 0) uv.push((p[0] + nx * o) / REPEAT, (p[2] + nz * o) / REPEAT); // the top projected on the ground, as box and slab do: the asphalt's relief lies the same way on every deck and street
+        else uv.push(u, (o + y) / REPEAT);
       }
     });
     for (let i = 0; i < pts.length - 1; i++) {

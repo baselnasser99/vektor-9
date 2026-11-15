@@ -1,17 +1,21 @@
 // Deck parapets as geometry, from the runs interchange.js barriers finds along every deck edge. Each run is a
-// polyline on the edge itself ({ pts, cross, caps }): cross[i] points inward across the deck at point i, mitred
-// where the edge bends and where the run meets the next one, so neighbouring runs meet flush; caps says which ends
-// are openings. A safety-shape concrete barrier (a vertical outer face on the edge, a narrow top, an inner face
-// sloping out to a wide foot), cast in 3 m panels with a dark joint between them, darker toward the foot where road
+// polyline on the edge itself ({ pts, cross, caps, depth }): cross[i] points inward across the deck at point i,
+// mitred where the edge bends and where the run meets the next one, so neighbouring runs meet flush; caps says which
+// ends are openings; depth is the deck's thickness there. A safety-shape concrete barrier (a narrow top, an inner
+// face sloping out to a wide foot buried in the deck, and an outer face a centimetre outside the deck's edge that
+// carries on down as the deck's fascia to exactly its underside, so the barrier and the deck's side never share a
+// plane and no seam shows between them), cast in 3 m panels with a dark joint between them, darker toward the foot where road
 // spray and rain leave their grime (vertex colours, no texture), with small amber reflectors along its inner face;
-// a steel cap rail on short posts. At an opening the barrier tapers down over its last metre and a half to a closed
-// end and the rail stops short of it. One geometry per material, so the whole interchange's parapets draw in three
+// a steel cap rail on short posts. At an opening the barrier above the deck tapers down over its last metre and a
+// half to a closed end (the fascia keeps its depth) and the rail stops short of it. One geometry per material, so the whole interchange's parapets draw in three
 // calls.
 import * as THREE from 'three';
 import { REPEAT } from './geometry.js';
 
-// Across the barrier: [inward from the edge, up from the deck], round the section; the shade of each point.
-const PROFILE = [[0, -0.35], [0, 0.9], [0.2, 0.9], [0.27, 0.38], [0.47, 0.1], [0.56, -0.35]]; // its foot well down into the deck
+// Across the barrier, for a deck `depth` thick: [inward from the edge, up from the deck], round the section; the
+// shade of each point. The inner foot is well down into the deck (where two runs join at different heights, the
+// lower one's end is raised up to 30 cm).
+const profile = (depth) => [[-0.01, -depth], [-0.01, 0.9], [0.2, 0.9], [0.27, 0.38], [0.47, 0.1], [0.56, -0.35]];
 const SHADE = [0.5, 0.95, 1, 0.9, 0.62, 0.46];
 const FAN = 3; // the section's one reflex corner, where its end face is fanned from
 const PANEL = 3, JOINT = 0.03, TAPER = 1.5, LOW = 0.35; // m; a capped end comes down to LOW of the height
@@ -59,7 +63,8 @@ function sink(colours) {
 export function parapetGeometry(runs) {
   const C = sink(true), S = sink(false), L = sink(false);
   let caps = 0;
-  runs.forEach(({ pts, cross, caps: cap }, r) => {
+  runs.forEach(({ pts, cross, caps: cap, depth = 0.6 }, r) => {
+    const PROFILE = profile(depth);
     const s = [0];
     for (let i = 1; i < pts.length; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
     const len = s.at(-1);
@@ -79,7 +84,7 @@ export function parapetGeometry(runs) {
     for (let j = PANEL; j < len - PANEL / 3; j += PANEL) joints.push(j);
     const knots = [...new Set([...s, ...joints.flatMap((j) => [j - JOINT, j + JOINT]), ...(cap[0] ? [taper] : []), ...(cap[1] ? [len - taper] : [])])]
       .filter((u) => u >= 0 && u <= len).sort((a, b) => a - b);
-    const section = (u) => { const A = at(u), h = lift(u); return PROFILE.map(([o, y]) => point(A, o, y * h)); };
+    const section = (u) => { const A = at(u), h = lift(u); return PROFILE.map(([o, y]) => point(A, o, y > 0 ? y * h : y)); };
     let prev = section(0);
     for (let m = 1; m < knots.length; m++) {
       const [u0, u1] = [knots[m - 1], knots[m]], next = section(u1), mid = (u0 + u1) / 2;
