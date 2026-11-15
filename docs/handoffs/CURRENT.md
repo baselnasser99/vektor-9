@@ -1,11 +1,20 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-15 12:24 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). The sim is at SIM_VERSION 4, schema 6
-Branch: `main` at this handoff commit, on top of `50731de` (the #67 merge)
+Updated: 2026-11-15 17:03 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). The sim is at SIM_VERSION 4, schema 6
+Branch: `main` at this handoff commit, on top of `453fef3` (the #68 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- PR #68 (merge `453fef3`, head `a6f5ecd`, CI passed): road arrows painted from the lane graph's moves.
+  - `streets.js` `laneMoves` (moved from `life.js` `paths`) picks each lane's moves once. Cars drive them and `paintArrow` paints from them. `exits()` is gone.
+  - `buildStreets` now calls `outOfTown` itself, so `roads` from `buildCity` and the harness is already carried out of town and dead-end lanes are already dropped. `main.js` and `tests/js/harness.mjs` no longer call it. `outOfTown` runs once per graph; a second call is a no-op, guarded and tested.
+  - Fixed: the boulevard's outer lane heading +x into (150, 0) now shows straight and right; the middle lane into the ring road at (429, 0) now shows left and right. The latter is the turn fallback (a lane with no rule move takes any turn that fits), recorded in the ADR-0016 addendum (2026-11-15) as a known issue.
+  - Arrow counts: v4 seed 7 299 to 300; v3 fixtures 299 to 300 (seed 7) and 295 to 296 (seed 3). The 22 straight arrows out of town at the ring road are unchanged and held by a test.
+  - Traffic equivalence: every lane's moves and target lane, from the old `life.js` code and from `laneMoves`, were identical on both v3 fixtures (540 and 552 lanes; empty diff).
+  - Tests: `tests/js/arrows.test.mjs` (paint equals moves for every lane into a crossing, or a named bare rule); `tests/js/lane_moves.test.mjs` against the golden `tests/fixtures/lane-moves-seed7.json` (81,658 bytes). After an intended traffic change, update it with `node --import ./tests/js/three-loader.mjs tests/js/lane_moves.test.mjs --write`. The arrow test failed on the old placement (scratch copy of `d7776cc`), on exactly the two lanes.
+  - Frame time (`?bench=1000x625`, headless Chrome, Intel UHD 630, median of 3 alternating loads): view 11 37.5 to 37.0 ms, view 15 37.9 to 39.2 ms (within noise), view 18 35.4 to 35.4 ms. Screenshots stay local.
+  - Docs: `docs/visual/VIEWS.md` (15 fixed views plus extras 16-18, the `?bench` before/after method); `docs/proposals/VISUAL_BASELINE.md` (the 2026-11-15 baseline report, scratch paths marked local only).
 - PR #67 (merge `50731de`, head `5644407`, CI passed): `.gitattributes` with `* text=auto eol=lf` and `binary` for `*.jpg`, `*.bin` and `*.gz` (the only binary types tracked); `git add --renormalize .` changed no files (the index was already LF). `tests/test_line_endings.py` fails if `git ls-files --eol` shows `i/crlf` or `i/mixed` in the index. `@settings(deadline=None)` on `test_malformed_marks_are_rejected_not_crashing` only.
   - Line endings and the asset hash, correcting an earlier claim: CDK 2.277's `contentFingerprint` converts CRLF to LF before hashing, so the Lambda asset hash is identical for CRLF and LF checkouts, but a CRLF checkout would zip CRLF bytes under that same hash. Measured: the dev tick asset hash was the same from a CRLF tree and from two LF synths. Pre-D1 rule: deploy only from a checkout whose working files are LF (`git ls-files --eol` shows no `w/crlf`).
   - The flaky test: `deadline=None` was added by elimination (the only property test without it whose examples do real work, about 20 ms each); the original failure was never captured. 20 of 20 repeated runs passed on an idle machine. If a flake recurs, save the full failure output.
@@ -36,7 +45,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 ## Open
 - ADR-0016 roadmap, renderer-only, in order: (1) left turns, done in PR #66; (2) the dead-end fix; (3) the HQ-to-court crossing; (4) priority junctions; (5) speeds and calming; (6) one-way pairs; (7) shared streets; (8) dressing by type; (9) walkers on mid streets.
 - A pre-existing overlap: a straight car stuck in a junction can be driven through by the crossing street.
-- #66 left-turn arrows not yet visually checked by the owner; owner reports road arrows that point to nothing.
+- #66 left-turn arrows not yet visually checked by the owner; owner reports road arrows that point to nothing. Since #68 every arrow matches its lane's moves; the 22 straight arrows out of town at the ring road remain (true, but the road beyond is a dirt track: outskirts work).
 - Court paving contrast.
 - Make the Node harness's use of `snapshots/` opt-in, so local and CI runs match.
 - Building variety: a later renderer pass with a download size budget; the Blender skills apply there.
@@ -50,8 +59,24 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - F6; GLB with meshopt; the public cost view on `PROJECT_PLAN.md` line 8.
 - The `URBAN_*` docs still describe v1.
 
+- Owner decisions pending:
+  - Growth curve: target that day 30 looks like today's tick 4032.
+  - Landmark construction stages owned by the sim: a start and completion tick per landmark in the static plan (schema 7, needs an ADR).
+  - Launch at tick 0 versus a genesis in the past: check `ResumeRefused` and the catch-up rate. Visual checks at ticks 0, 288 and 2016.
+  - Outskirts style: wasteland versus "the megacity goes on".
+  - Old town look: only 12 of its 220 houses are below the 16-floor old-style limit (`families.js:20`).
+  - Target hardware: the baseline runs 34 to 50 ms per frame on Intel UHD 630.
+- First visit is 19 MB uncompressed; check whether sample-only models (`utility_box_01`, the three `modular_*`) load on the main page.
+- Ramp lane ids in `tests/fixtures/lane-moves-seed7.json` contain `undefined` for fields ramps don't have (unique and stable, but untidy).
+- graphify is installed for code-only use and is not part of any prompt.
+
 ## Checks
-- On `main` @ `50731de`, worktree without `snapshots/` (as in CI), working files LF (0 `w/crlf`):
+- On `main` @ `453fef3`, this worktree without `snapshots/` (as in CI):
+  - Node suite → 91 passed, 0 failed.
+  - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (163 s).
+  - `ruff check` and `ruff format --check` → pass.
+- CI on PR #68 head `a6f5ecd`: `lint-and-test` passed.
+- Earlier, on `main` @ `50731de`, worktree without `snapshots/` (as in CI), working files LF (0 `w/crlf`):
   - With the `infra` and `lambda` groups (`uv run --group infra --group lambda pytest`): 240 passed, 0 skipped (183 s). Of these, `tests/infra` → 27 passed (56 s).
   - Without the infra groups (as in CI's first pytest step), last measured on `c003433` before #67: 212 passed, 1 skipped; #67 adds one test.
   - Node suite → 83 passed (81 s); `ruff check` and `ruff format --check` → pass.
@@ -59,10 +84,12 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - CDK synth: both stages with dummy context, no credentials. Deployed: no. No AWS resources exist.
 
 ## Next
-Visual work before AWS (owner decision, 2026-11-15).
-1. Visual baseline: a read-only refresh of the city plan SVG for the current SIM_VERSION, the status of every `URBAN_MASTERPLAN` roadmap step, and fixed camera views for before/after shots.
-2. Roads and traffic: the dead-end fix, car overlap in junctions, the HQ-to-court crossing, priority junctions, road variety within the existing corridor widths, and a review of the road surface arrows.
-3. Urban design per `URBAN_MASTERPLAN`: sector roles, the frontier, the IKARO approach and court, tower island access, parks, skyline signs.
-4. Architecture: new building models and street infrastructure, renderer-only. The Blender skill pack is chosen by a side-by-side comparison, with a download size budget.
-5. Then S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, and D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
-One session at a time.
+Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
+1. Road readability: arrow glyph redesign, plus barriers on the expressway decks and ramps.
+2. Dead-end fix at x -80.5, z -150 to -80.5 (ADR-0016 roadmap 2).
+3. HQ-to-court crossing and court paving contrast.
+4. Junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule. Start from the ADR-0016 addendum (2026-11-15) and `tests/fixtures/lane-moves-seed7.json`.
+5. The remaining `URBAN_MASTERPLAN` steps.
+6. Architecture variation, with a Blender pack bake-off. Check pack origin and pin the Blender MCP server first.
+7. Growth pace and landmark construction, in their own session.
+8. S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
