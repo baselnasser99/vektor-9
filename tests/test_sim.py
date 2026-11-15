@@ -127,6 +127,7 @@ def test_mark_on_occupied_tile_is_ignored():
     assert "commissioned" not in [e["kind"] for e in events]
 
 
+@settings(deadline=None)  # each example builds a city (~20 ms); load can push it past 200 ms
 @given(junk)
 def test_malformed_marks_are_rejected_not_crashing(mark):
     if mark_error(mark) is None:
