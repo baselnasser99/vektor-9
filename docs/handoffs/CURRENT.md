@@ -1,11 +1,14 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-15 01:12 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). The sim is at SIM_VERSION 4, schema 6
-Branch: `main` at this handoff commit, equal to `origin/main`
-Working tree: clean apart from untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
+Updated: 2026-11-15 12:24 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). The sim is at SIM_VERSION 4, schema 6
+Branch: `main` at this handoff commit, on top of `50731de` (the #67 merge)
+Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- PR #67 (merge `50731de`, head `5644407`, CI passed): `.gitattributes` with `* text=auto eol=lf` and `binary` for `*.jpg`, `*.bin` and `*.gz` (the only binary types tracked); `git add --renormalize .` changed no files (the index was already LF). `tests/test_line_endings.py` fails if `git ls-files --eol` shows `i/crlf` or `i/mixed` in the index. `@settings(deadline=None)` on `test_malformed_marks_are_rejected_not_crashing` only.
+  - Line endings and the asset hash, correcting an earlier claim: CDK 2.277's `contentFingerprint` converts CRLF to LF before hashing, so the Lambda asset hash is identical for CRLF and LF checkouts, but a CRLF checkout would zip CRLF bytes under that same hash. Measured: the dev tick asset hash was the same from a CRLF tree and from two LF synths. Pre-D1 rule: deploy only from a checkout whose working files are LF (`git ls-files --eol` shows no `w/crlf`).
+  - The flaky test: `deadline=None` was added by elimination (the only property test without it whose examples do real work, about 20 ms each); the original failure was never captured. 20 of 20 repeated runs passed on an idle machine. If a flake recurs, save the full failure output.
 - PR #66 (merge `c003433`, head `ac5747e`, CI passed): left-turn hold fixed. The cause was mutual blocking of opposing permitted left-turners at `life.js` `mayGo`. Changes: oncoming lefts no longer block each other; the first waiting left-turner pulls into the junction and clears; a 7 s protected arrow at the 12 main corners; a same-approach clearance and an exit-lane reservation.
   - Results: long stops 56→6 (seed 7) and 127→16 (seed 3); throughput -0.9% and +6.4%.
 - PR #65 (merge `4ccf0df`, head `aba8a4b`, CI passed): S1, the CDK core stack. Env-agnostic `Vektor9-dev` and `Vektor9-prod`; stage values (seed, genesis, alert email, reserved concurrency) from CDK context, nothing real committed. 27 template tests in `tests/infra/`, run in CI without AWS credentials. Exact pins: `aws-cdk-lib` 2.277.0, `constructs` 10.8.1 (`infra` group); `boto3` 1.44.3 and its dependencies (`lambda` group), all pure Python and bundled into the package at synth without Docker. U1 answered locally (the staged boto3's `PutObject` accepts `IfMatch` and `IfNoneMatch`); confirmed on the deployed function at D1.
@@ -19,14 +22,16 @@ Working tree: clean apart from untracked duplicates of `docs/proposals/` at the 
 - Local snapshots: `snapshots/` is v4 (seed 7, schema 6, sim 4, 4,033 files). `snapshots-v3/`, `-v2/` and `-v1/` are kept (4,033 files each) and listed in `.git/info/exclude`. The site loads `snapshots/004032.json` with no console messages.
 
 ## Branch cleanup (done)
-- 15 remote and 19 local merged branches deleted; `delete_branch_on_merge` is on (it deleted `origin/infra-s1-core` and `origin/traffic-left-turns`).
+- 15 remote and 19 local merged branches deleted; `delete_branch_on_merge` is on (it deleted `origin/infra-s1-core`, `origin/traffic-left-turns` and `origin/chore/gitattributes-test-deadline`).
 
 ## Kept, for the owner to decide
-- Unmerged branches: `blender-plant` (local), `claude/highway-interchange-adr-0011-fa5fef`, `claude/keen-kilby-474fe2`, `claude/musing-bouman-ca762f`, `claude/train-station-fd11db`, `perf-far-lods`.
-- Merged but dirty worktrees: `tidy-perf`, `rigid-props`, `claude/pickup-92c597`.
-- Detached worktrees: `city-preview-2a14c8`, `city-preview-pickup-860447`, `pickup-cb1bc0`, and `s1-cdk-core-stack-7b38ab`.
+- Removal commands were given to the owner for the root duplicates and for the merged branches and worktrees; status is unconfirmed until the owner says so. Nothing has been deleted by a session.
+  - Root duplicates: 24 root files are byte-identical to the committed `docs/proposals/` blobs. `URBAN_DEPENDENCIES.md` and `urban-audit/make_plan.py` differ: they are older versions still using the root paths.
+  - Merged local branches: `claude/pickup-92c597`, `infra-s1-core`, `rigid-props`, `sim-v4-growth`, `street-design-adr`, `tidy-perf`, `traffic-left-turns`, `chore/gitattributes-test-deadline`, and session branches `fix/*`.
+  - Merged, clean worktrees: `city-preview-2a14c8`, `city-preview-pickup-860447`, `cleanup-weighted-growth-f1a11e`, `merge-pr-64-snapshots-v4-4f8dc7`, `s1-cdk-core-stack-7b38ab`, `street-design-adr-249ca5`, `traffic-left-turns-fix-d692a8`.
+- Undecided: unmerged branches `blender-plant` (local), `claude/highway-interchange-adr-0011-fa5fef`, `claude/keen-kilby-474fe2`, `claude/musing-bouman-ca762f`, `claude/train-station-fd11db`, `local/handoff-history`, `perf-far-lods`; the detached, unmerged worktree `pickup-cb1bc0`.
+- Undecided: merged but dirty worktrees (one uncommitted change each) `cyberpunk-pedestrian-system-93ab30` (`tidy-perf`), `musing-bouman-ca762f` (`rigid-props`), `pickup-92c597` (`claude/pickup-92c597`).
 - Empty worktree folders that Windows kept locked.
-- The local `sim-v4-growth` branch and its worktree (`cleanup-weighted-growth-f1a11e`). Also local: `local/handoff-history`, `street-design-adr`, the merged `infra-s1-core`, the merged `traffic-left-turns` (worktree `traffic-left-turns-fix-d692a8`), and session branches `fix/*`.
 
 ## Open
 - ADR-0016 roadmap, renderer-only, in order: (1) left turns, done in PR #66; (2) the dead-end fix; (3) the HQ-to-court crossing; (4) priority junctions; (5) speeds and calming; (6) one-way pairs; (7) shared streets; (8) dressing by type; (9) walkers on mid streets.
@@ -35,24 +40,27 @@ Working tree: clean apart from untracked duplicates of `docs/proposals/` at the 
 - Make the Node harness's use of `snapshots/` opt-in, so local and CI runs match.
 - Building variety: a later renderer pass with a download size budget; the Blender skills apply there.
 - Skill hygiene: about 140 user-level skills of unconfirmed origin load in every session; review and prune.
-- S2 to S4. S2 must give every CDK-created function (the `BucketDeployment` handler included) an explicit log group with retention, or the template tests fail.
-- The `.gitattributes` PR must land before D1: a CRLF checkout stages different bytes and changes the Lambda asset hash. The root duplicates of `docs/proposals/`.
+- S2 to S4. S2 must give every CDK-created function (the `BucketDeployment` handler included) an explicit log group with retention, or the template tests fail. S2 also adds a test that the staged Lambda asset has no CR bytes in its `.py` files.
+- Older checkouts keep CRLF working files until Git rewrites them; no test checks the working tree. See the pre-D1 rule under PR #67.
 - ADR-0017 still describes the synth-time metric reading: its tick-function paragraph says the alarms read a synthesized EMF line; since `e84e728` they import the constants from `lambdas/tick.py`. Fix in S2.
+- `docs/proposals/AWS_M1_BACKLOG.md` line 3 still says "nothing started". Fix in S2.
 - jsii prints a harmless temp-folder `ENOTEMPTY` error when it exits on Windows; the exit code stays 0.
 - Cold-start time of the bundled package to be measured at D4.
-- The flaky pytest candidate: `tests/test_sim.py:130` `test_malformed_marks_are_rejected_not_crashing` (default Hypothesis deadline). Proposed fix: `@settings(deadline=None)`. Not reproduced in three loaded runs.
 - F6; GLB with meshopt; the public cost view on `PROJECT_PLAN.md` line 8.
 - The `URBAN_*` docs still describe v1.
 
 ## Checks
-- On `main` @ `c003433`, worktree without `snapshots/` (as in CI): `uv run pytest -rf` → 212 passed, 1 skipped (137 s); Node suite → 83 passed (79 s); `ruff check` and `ruff format --check` → pass.
-- CI on PR #66 head `ac5747e`: `lint-and-test` passed.
+- On `main` @ `50731de`, worktree without `snapshots/` (as in CI), working files LF (0 `w/crlf`):
+  - With the `infra` and `lambda` groups (`uv run --group infra --group lambda pytest`): 240 passed, 0 skipped (183 s). Of these, `tests/infra` → 27 passed (56 s).
+  - Without the infra groups (as in CI's first pytest step), last measured on `c003433` before #67: 212 passed, 1 skipped; #67 adds one test.
+  - Node suite → 83 passed (81 s); `ruff check` and `ruff format --check` → pass.
+- CI on PR #67 head `5644407`: `lint-and-test` passed.
 - CDK synth: both stages with dummy context, no credentials. Deployed: no. No AWS resources exist.
 
 ## Next
-1. A cleanup PR: `.gitattributes` (must land before D1), the flaky-test deadline fix, and planning the root-duplicates removal (those files are untracked in the main checkout, which a hook protects; decide the method first).
-2. S2 (hosting; fix ADR-0017's text; explicit log groups for all CDK functions).
-3. Traffic step 2 (the dead-end fix).
-4. S3.
-5. S4.
+1. S2, hosting: explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files.
+2. Traffic step 2 (the dead-end fix), then the HQ-to-court crossing and priority junctions.
+3. S3.
+4. S4.
+5. D1, the dev deploy. Needs the owner's explicit approval.
 One session at a time.
