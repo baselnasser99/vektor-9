@@ -11,14 +11,15 @@ import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
 import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
-import { onRamp, plan, turnsAt, underRamps } from './interchange.js';
+import { onRamp, plan, underRamps } from './interchange.js';
+import { outOfTown } from './desert.js';
 
 export function buildStreets(kit, layout, root) {
   const { lines, cross, lo, hi } = layout, rand = rng(31);
   const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // wet, but not a mirror
   part(root, slab(hi - lo, 0.1, hi - lo, 8), asphalt, 0, -0.05, 0); // ends at the ring road's outer kerb line
   const hub = lines[lines.length >> 1];
-  const ctx = { kit, root, layout, lines, cross, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [], food: [], parked: [] }; // road paint glows faintly
+  const ctx = { kit, root, layout, lines, cross, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [], food: [], parked: [], slots: [] }; // road paint glows faintly
   blocks(ctx, hub);
   // Every corridor, once per axis: centre c, width w, sidewalk side, kind, the axis it runs along and its corridor.
   const streets = cross.flatMap((l) => ['x', 'z'].map((axis) => ({ c: l.c, w: l.w, side: l.side, kind: l.kind[axis], axis, line: l })));
@@ -43,7 +44,9 @@ export function buildStreets(kit, layout, root) {
   }
   for (const s of streets) if (s.kind === 'street' || s.kind === 'boulevard') kerbside(ctx, s); // after every lamp: shelters keep clear of them
   plaza(ctx, hub);
-  return { roads: roadNet(ctx, streets), lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches, food: ctx.food,
+  const roads = laneMoves(outOfTown(roadNet(ctx, streets), hi, layout)); // the whole graph, with the interchange's lanes
+  const arrows = ctx.slots.flatMap((A) => paintArrow(ctx, roads, A));
+  return { roads, arrows, lines: lines.map((l) => l.c), lo, hi, lamps: ctx.lampsAt, benches: ctx.benches, food: ctx.food,
     parked: ctx.parked, // life.js parkedCars: [x, z, heading] in the ring road's bays
     hub: { c: hub.c, r: ISLAND + 1.2, w: hub.w / 2, out: RING_OUT } }; // life.js traffic: the roundabout
 }
@@ -169,14 +172,10 @@ function block(ctx, s, a, b, l0, l1) {
   const wear = kit.mat('aerial_asphalt_01', palette.charcoal, 0.4), big = WIDE.has(s.kind) || s.kind === 'street' || s.kind === 'oneway';
   for (const [end, dir, l] of [[b, 1, l1], [a, -1, l0]]) { // dir: the way the cars approaching this end drive
     if (end < ctx.lo + 1 || end > ctx.hi - 1 || (s.kind === 'oneway' && dir !== s.line.flow[s.axis])) continue; // one way: arrows show which
-    lanes.forEach((off, k) => {
+    lanes.forEach((off) => {
       const o = dir * right * off, len = Math.min(14, b - a);
       lay(ctx, s, len, 0.01, 1.3, wear, end - dir * len / 2, o, 0.005);
-      if (!big || round(ctx, s, l) || b - a <= 16) return;
-      const may = (ctx.layout.expressway && turnsAt(ctx.layout, s.axis, s.c, l.c, dir, k, s.kind)) || lanesMay(s.kind, k, lanes.length);
-      const can = exits(ctx, s, l, dir, k), moves = may.filter((m) => can[m]);
-      if (!moves.length && can.merge) moves.push('straight'); // nothing else open: it merges straight on (life.js)
-      if (moves.length) arrow(ctx, s, end - dir * 7, o, dir, moves);
+      if (big && !round(ctx, s, l) && b - a > 16) ctx.slots.push({ s, l, v: end - dir * 7, o, dir }); // painted once the lanes' moves are known
     });
   }
   if (s.kind === 'ring') {
@@ -222,18 +221,59 @@ export const lanesMay = (kind, k, n) => {
 // Whether the highway out of town past this end of street s is reached by the expressway, not from the street
 // (interchange.js): the boulevard along x, heading +x.
 const viaExpressway = (layout, s, dir) => layout.expressway && WIDE.has(s.kind) && s.axis === 'x' && dir > 0;
-// Which ways a car in lane k heading dir along street s can really leave its crossing with corridor l, so arrows
-// never point at a street that is not there: straight on if s goes on beyond l with a lane k (or out of town, for a
-// main street at the ring road; merge: it goes on with fewer lanes), left or right if l carries cars that way.
-function exits(ctx, s, l, dir, k) {
-  const { layout } = ctx, across = s.axis === 'x' ? 'z' : 'x', r = dir * (s.axis === 'x' ? 1 : -1);
-  const beyond = layout.kindAt(s.line, s.axis, l.c + dir * (l.w / 2 + 1));
-  const side = (d) => {
-    const kind = layout.kindAt(l, across, s.c + d * (s.w / 2 + 1));
-    return carries(kind) && (kind !== 'oneway' || l.flow[across] === d);
-  };
-  const edge = !s.line.mid && (l === ctx.cross[0] || l === ctx.cross.at(-1)) && !viaExpressway(ctx.layout, s, dir);
-  return { straight: edge || (carries(beyond) && STREETS[beyond].lanes.length > k), merge: carries(beyond), right: side(r), left: side(-r) };
+
+// The moves each lane into a crossing really has, on the whole road graph (roadNet, carried out of town by desert.js
+// outOfTown): I.moves, [{ move, out }] per lane I. Cars drive these (life.js paths) and the arrows are painted from
+// them (paintArrow), so the two cannot disagree. Dead-end lanes are dropped first. A lane takes the moves its rules
+// allow (I.may where a crossing has its own, interchange.js turnsAt, else lanesMay) into the lane they lead to; with
+// none, the outer lane where the boulevard narrows merges straight on; with still none, it takes any turn that fits
+// (ADR-0016 addendum 2026-11-15). Returns roads.
+const heading = (L) => (L.axis === 'x' ? [L.dir, 0] : [0, L.dir]);
+const moveOf = (I, O) => {
+  const [ix, iz] = heading(I), [ox, oz] = heading(O), cross = ix * oz - iz * ox;
+  if (cross === 0) return ix === ox && iz === oz ? 'straight' : null; // never a u-turn
+  return cross > 0 ? 'right' : 'left';
+};
+// Straight on into the same lane; where a crossing has its own lane rules (I.may, interchange.js turnsAt) into the
+// lane in the same place across the road, as the number of lanes changes there.
+const fits = (I, O, m) => (m === 'straight' ? (I.may ? Math.abs(O.off - I.off) < 0.1 : O.k === I.k) : m === 'right' ? O.k === O.n - 1 : O.k === 0);
+export function laneMoves(roads) {
+  const { nodes, links } = roads;
+  // A street that stops short (at a walk, or at the headquarters' campus) is a dead end: its lanes carry no
+  // traffic either way, and neither do lanes that only lead into one.
+  for (let dead = [null]; dead.length;) {
+    dead = links.filter((L) => L.end && !L.end.outs.some((O) => L.end.type === 'free' || moveOf(L, O)));
+    const gone = new Set(dead.flatMap((L) => [L, ...links.filter((O) => O.start === L.end && O.end === L.start && O.axis === L.axis)]));
+    for (const L of gone) {
+      links.splice(links.indexOf(L), 1);
+      L.start?.outs.splice(L.start.outs.indexOf(L), 1);
+      L.end?.ins.splice(L.end.ins.indexOf(L), 1);
+    }
+  }
+  for (const N of nodes) for (const I of N.ins) {
+    if (N.type === 'free') { // the interchange: on along the road or onto a ramp, no stopping
+      I.moves = N.outs.map((O) => ({ move: O.ramp ? 'right' : 'straight', out: O }));
+      continue;
+    }
+    const options = N.outs.map((O) => ({ O, m: moveOf(I, O) })).filter(({ m }) => m && !(N.type === 'round' && m === 'left') && (!I.may || I.may.includes(m)));
+    let ok = options.filter(({ O, m }) => (I.may ?? lanesMay(I.kind, I.k, I.n)).includes(m) && fits(I, O, m));
+    if (!ok.length) ok = options.filter(({ O, m }) => m === 'straight' && O.k === Math.min(I.k, O.n - 1)); // where the boulevard narrows, its outer lane merges
+    if (!ok.length) ok = options.filter(({ O, m }) => m !== 'straight' && fits(I, O, m)); // shortcut: any turn that fits, until a later traffic PR gives an explicit rule (ADR-0016 addendum)
+    I.moves = ok.map(({ O, m }) => ({ move: m, out: O }));
+  }
+  return roads;
+}
+
+// The arrow for slot A (block: an approach lane on a main street, the boulevard or a one-way street, 7 m short of
+// its crossing), from the moves of the lane under it. None where that lane was dropped (a dead end). Returns the
+// arrow painted, as [{ key, axis, dir, at, moves }], or [] (the arrow test reads these).
+function paintArrow(ctx, roads, { s, l, v, o, dir }) {
+  const key = s.axis === 'x' ? `${Math.round(l.c)}|${Math.round(s.c)}` : `${Math.round(s.c)}|${Math.round(l.c)}`;
+  const I = roads.nodes.find((N) => N.key === key)?.ins.find((L) => L.axis === s.axis && L.dir === dir && Math.abs(L.at - (s.c + o)) < 0.05);
+  const moves = [...new Set((I?.moves ?? []).map((m) => m.move))];
+  if (!moves.length) return [];
+  arrow(ctx, s, v, o, dir, moves);
+  return [{ key, axis: s.axis, dir, at: I.at, moves }];
 }
 
 // An arrow painted in a lane at v along street s, offset off, pointing dir (+1 or -1 along s): a head straight

@@ -35,10 +35,12 @@ export function buildDesert(kit, edge, lines, onFrame, layout) {
   return mergeByMaterial(root);
 }
 
-// The main streets' lanes carried on out of town to the edge of the world (streets.js roadNet: links marked out),
-// so cars come and go in the fog rather than at the city edge: the boulevard's up the ramps and along the causeway,
+// The main streets' lanes carried on out of town to the edge of the world (streets.js roadNet: links marked out;
+// called once, by streets.js buildStreets), so cars come and go in the fog rather than at the city edge: the boulevard's up the ramps and along the causeway,
 // the rest along its dirt track, over the ground. Every link gets lift(along), its road height there.
 export function outOfTown(roads, edge, layout) {
+  if (roads.outOfTown) return roads; // once per graph: a second pass would add the interchange's lanes again
+  roads.outOfTown = true;
   const height = duneHeight(edge), deck = DECK + 0.6;
   for (const link of roads.links) {
     const road = Math.abs(link.c) < 1, base = link.y;
