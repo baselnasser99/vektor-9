@@ -1,11 +1,24 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-15 17:03 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). The sim is at SIM_VERSION 4, schema 6
-Branch: `main` at this handoff commit, on top of `453fef3` (the #68 merge)
+Updated: 2026-11-16 07:31 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). The sim is at SIM_VERSION 4, schema 6
+Branch: `main` at this handoff commit, on top of `1d9d988` (the #69 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- PR #69 (merge `1d9d988`, head `b771738`, CI passed): road readability, renderer only. Three commits after two owner review rounds. No traffic or placement change: `tests/fixtures/lane-moves-seed7.json` unchanged, still 300 arrows on v4 seed 7.
+  - Arrows (`streets.js` `arrowGlyph`): all seven move sets (straight, left, right, straight+left, straight+right, left+right, all three) as filled glyphs, one cached flat mesh each, 6.3 m long, 2 cm above the road: one 0.3 m shaft, solid heads, turn branches curving 55 degrees off the shaft at one point.
+  - The approach wear band (a darker 1.3 m by 14 m asphalt patch in every approach lane, the "dark boxes" under the arrows) is removed on every approach.
+  - Parapets (`interchange.js` `barriers`, new `parapets.js`): a safety-shape concrete barrier (`weatheredConcrete`) with a sloped inner face to a wide foot, 3 m panels with dark joints, a grime gradient by vertex colours, small `agedAmber` reflectors every 6 m, a `wornGunmetal` cap rail on short posts, tapered end caps at openings, and an outer face 1 cm outside the slab edge that runs down as the fascia to exactly the slab's underside (it used to share a plane with the slab side and flickered).
+  - Every run end is joined or capped: each deck edge is cut exactly where it crosses another deck's outline or a street corridor; meeting ends are joined flush and mitred. Seed 7: from 58 raw ends (none joined or capped) and 2 near misses to 36 joined, 30 capped, 0 raw, 0 near misses; seed 3: from 34 raw to 20 joined, 22 capped. The only height steps left are the two sweep exits (41 cm).
+  - One asphalt (`aerial_asphalt_01`, `gunmetal`, roughness 0.55) for streets, ramps and the expressway deck; the deck was concrete and is rebuilt as a ribbon like the ramps (as a box its top read as a different surface beside them), its inner end closed by a thin slab. Ribbon tops take plan UVs.
+  - Steel expansion joints (`graphite`) across each place a deck runs onto another at its level and across each ramp's low end at the street.
+  - Views 19 to 22 added to `docs/visual/VIEWS.md` (deck, driver's-eye arrows, deck-end joins, a sweep exit).
+  - Tests: `tests/js/barriers.test.mjs` (run ends meet within 2 cm in plan and height or are capped; no near misses or height steps; every opening gets a cap; every deck edge covered). It failed 8 of 8 on the first head `ad21097` and passes on `b771738`.
+  - Frame time (`?bench=1000x625`, headless Chrome, Intel UHD 630, `origin/main` against the final head, median of 3 alternating loads): 01 38.5 to 38.3 ms, 03 41.1 to 40.2, 11 37.5 to 37.2, 15 37.8 to 37.5, 18 35.5 to 37.0, 19 43.5 to 44.4, 20 38.6 to 38.4. All within 2 ms.
+  - Triangles on the v4 seed 7 snapshot (headless count): interchange 14,200 to 34,636 (+20,436, budget +25,000); street geometry 986,642 to 959,609.
+  - Not changed: the sweep-ramp descent (see Next 1); the desert causeways; the rail viaduct (0.9 m walls except along its station). Screenshots stay local.
+  - The merge deleted `origin/roads-readability` (the repo's `delete_branch_on_merge`); the local branch is kept.
 - PR #68 (merge `453fef3`, head `a6f5ecd`, CI passed): road arrows painted from the lane graph's moves.
   - `streets.js` `laneMoves` (moved from `life.js` `paths`) picks each lane's moves once. Cars drive them and `paintArrow` paints from them. `exits()` is gone.
   - `buildStreets` now calls `outOfTown` itself, so `roads` from `buildCity` and the harness is already carried out of town and dead-end lanes are already dropped. `main.js` and `tests/js/harness.mjs` no longer call it. `outOfTown` runs once per graph; a second call is a no-op, guarded and tested.
@@ -58,7 +71,6 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - Cold-start time of the bundled package to be measured at D4.
 - F6; GLB with meshopt; the public cost view on `PROJECT_PLAN.md` line 8.
 - The `URBAN_*` docs still describe v1.
-
 - Owner decisions pending:
   - Growth curve: target that day 30 looks like today's tick 4032.
   - Landmark construction stages owned by the sim: a start and completion tick per landmark in the static plan (schema 7, needs an ADR).
@@ -69,8 +81,15 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - First visit is 19 MB uncompressed; check whether sample-only models (`utility_box_01`, the three `modular_*`) load on the main page.
 - Ramp lane ids in `tests/fixtures/lane-moves-seed7.json` contain `undefined` for fields ramps don't have (unique and stable, but untidy).
 - graphify is installed for code-only use and is not part of any prompt.
+- The desert causeways (`desert.js`) are concrete and have no barriers, so the surface changes where the expressway meets the highway at the city edge (outskirts, O1).
+- ADR-0011's interchange text may still describe the old slim barriers and the concrete deck; amend it in a later docs change.
 
 ## Checks
+- On `main` @ `1d9d988` (detached, this worktree without `snapshots/`, as in CI):
+  - Node suite → 99 passed, 0 failed.
+  - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (132 s).
+  - `ruff check` and `ruff format --check` → pass.
+- CI on PR #69 head `b771738`: `lint-and-test` passed.
 - On `main` @ `453fef3`, this worktree without `snapshots/` (as in CI):
   - Node suite → 91 passed, 0 failed.
   - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (163 s).
@@ -85,8 +104,12 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 
 ## Next
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
-1. Road readability: arrow glyph redesign, plus barriers on the expressway decks and ramps.
-2. Dead-end fix at x -80.5, z -150 to -80.5 (ADR-0016 roadmap 2).
+1. Interchange follow-up:
+   - The sweep ramps leave the expressway about 2 m below its top, so cars pass through the slab for about 20 m. Needs a gentler descent; that is a traffic-path change (update the lane-moves golden only if moves change).
+   - A remaining sheen change at the loop and median ramp joins.
+   - Missing edge markings on the loop and ramp surfaces.
+   - Open slab ends at each ramp's low end, seen from the street.
+2. Dead-end fix at x -80.5, z -150 to -80.5 (view 08, ADR-0016 roadmap 2).
 3. HQ-to-court crossing and court paving contrast.
 4. Junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule. Start from the ADR-0016 addendum (2026-11-15) and `tests/fixtures/lane-moves-seed7.json`.
 5. The remaining `URBAN_MASTERPLAN` steps.
