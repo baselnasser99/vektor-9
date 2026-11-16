@@ -11,6 +11,7 @@ import { box, cyl, part, REPEAT, rng } from './geometry.js';
 import { streetLamp, tree } from './parts.js';
 import { STREETS } from './world.js';
 import { kerbOf, lanesMay, stopAt } from './streets.js';
+import { parapetGeometry } from './parapets.js';
 
 export const HIGH = 7.8; // deck centre; its top at 8.4 m, its underside at 7.2 m, over signal arms (6.6 m) and lamps (6.9 m)
 const TOP = HIGH + 0.6;
@@ -193,34 +194,24 @@ export const underRamps = (layout, s, l) => {
 };
 
 // The structure, into root: the expressway deck from its inner end out over the city edge (the highway beyond,
-// desert.js, carries on at its height), on single piers with caps in the boulevard's median, with barriers along
-// both edges and down the middle, each with a faint glowing strip, edge and lane lines, and two sign gantries;
-// and every other deck as a continuous band following its curve and climb, a barrier each side, on slim piers (the
-// median ramps on shared ones). Barriers are left out where they would stand on a road at its level, on the
-// expressway's deck, or on another deck where two part or meet. Then the land round the ramps.
+// desert.js, carries on at its height), on single piers with caps in the boulevard's median, with a barrier down
+// the middle with a faint glowing strip, edge and lane lines, and two sign gantries; every other deck as a
+// continuous band following its curve and climb, on slim piers (the median ramps on shared ones); parapets along
+// every deck edge, open only where it joins something a car drives onto (barriers). Then the land round the ramps.
 export function buildInterchange(kit, root, layout, snap) {
-  const { x0, z0, edge, ramps, median, decks } = plan(layout);
-  const deck = kit.concrete(palette.gunmetal), pier = kit.concrete(palette.slate), strip = kit.glow(palette.cream, 0.35);
+  const { x0, z0, edge, median } = plan(layout);
+  const pier = kit.concrete(palette.slate), strip = kit.glow(palette.cream, 0.35);
+  const surface = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // every driving surface: the streets' asphalt (streets.js)
   const len = edge - x0, mid = (x0 + edge) / 2;
-  part(root, box(len, 1.2, WIDE, 0), deck, mid, HIGH, z0);
+  // The deck: built like every other deck (ribbon), so its asphalt lies and catches the light as theirs does where
+  // they meet (as a box its top read as a different surface beside the ramps); its inner end closed by a thin slab
+  // (the outer end runs on into the highway out of town, desert.js).
+  part(root, ribbon([[x0, TOP, z0], [edge, TOP, z0]], () => 0, () => WIDE / 2, -1.2, 1.2), surface);
+  part(root, box(0.05, 1.19, WIDE, 0), surface, x0 + 0.025, HIGH - 0.005, z0);
   for (const s of [-1, 1]) part(root, box(1.2, 1.4, 1.2, 0), pier, x0 + 0.6, TOP + 0.5, z0 + s * 5.6); // the deck's end, between a median ramp and its loop
-  // Barriers: down the middle end to end; along each edge in runs, open wherever a ramp peels off or joins.
-  const rail = (a, b, z, w) => {
-    part(root, box(b - a, 0.9, w, 0), pier, (a + b) / 2, TOP + 0.45, z);
-    part(root, box(b - a, 0.06, 0.12, 0), strip, (a + b) / 2, TOP + 0.93, z);
-  };
-  rail(x0, edge, z0, 0.7);
-  for (const s of [-1, 1]) {
-    const z = z0 + s * (WIDE / 2 - 0.25), open = (x) => ramps.some(({ pts }) => pts.some(([px, py, pz]) => py > 5 && Math.hypot(px - x, pz - z) < 6));
-    let a = null;
-    for (let x = x0; x <= edge; x += 2) {
-      if (!open(x) && x < edge) a ??= x;
-      else if (a !== null) {
-        rail(a, x, z, 0.4);
-        a = null;
-      }
-    }
-  }
+  // The barrier down the middle, end to end; the parapets along every deck edge are drawn below (barriers).
+  part(root, box(len, 0.9, 0.7, 0), pier, mid, TOP + 0.45, z0);
+  part(root, box(len, 0.06, 0.12, 0), strip, mid, TOP + 0.93, z0);
   const lanes = STREETS.boulevard.lanes;
   // The inner lanes go on down the median ramps and the outer ones round the loops, so the middle ones end in
   // hatching over the last stretch, between solid lines.
@@ -249,48 +240,234 @@ export function buildInterchange(kit, root, layout, snap) {
     part(root, box(2.4, 0.6, 9.6, 0), pier, x, y - 0.93, z0);
   });
   gantries(kit, root, layout);
-  // Every other deck: narrowing to one lane's width where it meets a road at its level, so it runs into that lane.
-  const halves = decks.map(({ pts, half = 4 }) => {
-    const along = [0];
-    for (let i = 1; i < pts.length; i++) along.push(along[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][2] - pts[i - 1][2]));
-    const low = (i) => (pts[0][1] < 1 ? along[i] : along.at(-1) - along[i]); // from its street end
-    return pts.map((p, i) => Math.min(half, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
-  });
-  const onDeck = ([x, , z]) => x > x0 && x < edge && Math.abs(z - z0) < WIDE / 2;
-  // Within a street's corridor (out to `reach` from its centre line: its kerb, or its sidewalk's back edge).
-  const inStreet = ([x, , z], reach) => layout.cross.some((l) => Math.abs(x - l.c) < reach(l) || Math.abs(z - l.c) < reach(l));
-  const onRoad = (p) => p[1] < 1.5 && inStreet(p, (l) => l.w / 2); // barriers: none on a street or its sidewalk at its level
-  const surface = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // the streets' asphalt, so a ramp's low end runs into its lane
-  const onOther = (b, self) => decks.some((d, k) => d !== self && d.pts.some((p, i) => Math.abs(p[1] - b[1]) < 1.2 && Math.hypot(p[0] - b[0], p[2] - b[2]) < halves[k][i] + 0.5));
-  decks.forEach((d, k) => {
-    // Drawn only off the carriageway it comes down to (there the street's own asphalt is the road), and raised a
-    // little over the sidewalk it crosses, like a driveway, so the paving does not show through it.
-    const keep = d.pts.flatMap((p, i) => (p[1] < 0.6 && inStreet(p, kerbOf) ? [] : [i]));
-    const pts = keep.map((i) => (inStreet(d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
-    const half = (i) => halves[k][keep[i]], slip = d.ramp !== undefined;
-    if (pts.length < 2) return;
-    part(root, ribbon(pts, () => 0, half, slip ? -0.66 : -0.63, 0.6), surface); // its top a few centimetres under any deck it joins: no flicker
-    for (const side of [-1, 1]) {
-      const at = (i) => side * (half(i) - 0.2), runs = [[]];
-      pts.forEach((p, i) => {
-        const [nx, nz] = normal(pts, i), b = [p[0] + nx * at(i), p[1], p[2] + nz * at(i)];
-        if (onDeck(b) || onRoad(b) || onOther(b, d)) runs.push([]);
-        else runs.at(-1).push(i);
-      });
-      for (const run of runs.filter((r) => r.length > 1)) {
-        const sub = run.map((i) => pts[i]), off = (j) => at(run[j]);
-        part(root, ribbon(sub, off, () => 0.2, -0.03, 0.9), pier);
-        part(root, ribbon(sub, off, () => 0.06, 0.87, 0.06), strip);
+  // Every other deck, as drawn (decksDrawn), on slim piers. Where it lies on another deck at its level or under the
+  // expressway's, its top is a few centimetres under that deck's (no flicker; a slip road under its ramp); elsewhere
+  // its top is its own height. The place where it passes onto or off another deck is found exactly and added as a
+  // point, its top there at its own height, so the change is at the other deck's edge, not up to 4 m before it; a
+  // dark steel expansion joint lies across it there, standing a little proud of both surfaces so the step between
+  // them (a few centimetres) and the change of structure read as one deliberate strip. Another lies across each
+  // deck's low end, where it meets the street.
+  const shapes = outlines(layout), seam = kit.steel(palette.graphite, 0.45);
+  const joint = ([x, y, z], [tx, tz], wide, top) => { // across the way [tx, tz], from 3 cm under y up to 1.2 cm over top
+    const h = Math.max(y, top) + 0.012 - (Math.min(y, top) - 0.03);
+    part(root, box(0.25, h, wide, 0), seam, x, Math.max(y, top) + 0.012 - h / 2, z).rotation.y = Math.atan2(-tz, tx);
+  };
+  for (const { deck: d, pts: raw, half: rawHalf } of decksDrawn(layout)) {
+    if (raw.length < 2) continue;
+    // The top of the deck p lies on (the expressway's, or another at its level), or null.
+    const below = (p) => (onExpressway(layout, p) ? TOP : shapes.some((S) => S.D.deck !== d && Math.abs((heightOn(S, p) ?? Infinity) - p[1]) < 0.3) ? p[1] : null);
+    const on = (p) => below(p) !== null;
+    const pts = [], halves = [], under = [];
+    raw.forEach((p, i) => {
+      const a = raw[i - 1];
+      if (a && on(a) !== on(p)) {
+        let lo = 0, hi = 1;
+        for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (on(a.map((v, j) => v + (p[j] - v) * m)) === on(a)) lo = m; else hi = m; }
+        const q = a.map((v, j) => v + (p[j] - v) * hi), w = rawHalf(i - 1) + (rawHalf(i) - rawHalf(i - 1)) * hi, l = Math.hypot(p[0] - a[0], p[2] - a[2]);
+        const other = below(on(a) ? a : p);
+        if (Math.abs(other - q[1]) < 0.3) joint(q, [(p[0] - a[0]) / l, (p[2] - a[2]) / l], 2 * w, other); // not where a sweep ramp drops out from under the expressway
+        pts.push(q);
+        halves.push(w);
+        under.push(false);
       }
-    }
-    if (median.includes(d)) return;
+      pts.push(p);
+      halves.push(rawHalf(i));
+      under.push(on(p));
+    });
+    const half = (i) => halves[i];
+    part(root, ribbon(pts, () => 0, half, (i) => (under[i] ? (d.ramp !== undefined ? -0.66 : -0.63) : -0.6), 0.6), surface);
+    const [e, f] = raw[0][1] < raw.at(-1)[1] ? [0, 1] : [raw.length - 1, raw.length - 2], l = Math.hypot(raw[f][0] - raw[e][0], raw[f][2] - raw[e][2]);
+    joint(raw[e], [(raw[f][0] - raw[e][0]) / l, (raw[f][2] - raw[e][2]) / l], 2 * rawHalf(e), raw[e][1]); // its low end, at the street
+    if (median.includes(d)) continue;
     pts.forEach((p, i) => {
       const [x, y, z] = p;
-      if (i % 6 === 3 && y > 2.5 && !onDeck(p)) part(root, box(1.4, y - 0.6, 1.4, 0), pier, x, (y - 0.6) / 2, z);
+      if (i % 6 === 3 && y > 2.5 && !onExpressway(layout, p)) part(root, box(1.4, y - 0.6, 1.4, 0), pier, x, (y - 0.6) / 2, z);
     });
-  });
+  }
+  // Parapets along every deck edge (barriers, drawn by parapets.js), the concrete shaded by vertex colours.
+  const parapets = parapetGeometry(barriers(layout)), cast = kit.concrete(palette.weatheredConcrete).clone();
+  cast.vertexColors = true;
+  cast.name += ':parapet';
+  part(root, parapets.concrete, cast);
+  part(root, parapets.steel, kit.steel(palette.wornGunmetal, 0.5));
+  part(root, parapets.lamps, kit.glow(palette.agedAmber, 0.5));
   park(kit, root, layout, snap);
   yard(kit, root, layout);
+}
+
+// Whether p [x, y, z] is on the expressway's deck, in plan.
+const onExpressway = (layout, [x, , z]) => {
+  const { x0, z0, edge } = plan(layout);
+  return x > x0 && x < edge && Math.abs(z - z0) < WIDE / 2;
+};
+// Whether p [x, y, z] is within a street's corridor, out to reach(l) from its centre line (its kerb, or its
+// sidewalk's back edge).
+const inStreet = (layout, [x, , z], reach) => layout.cross.some((l) => Math.abs(x - l.c) < reach(l) || Math.abs(z - l.c) < reach(l));
+
+// Every deck but the expressway's, as buildInterchange draws it: [{ deck, pts, half }], half(i) its half-width at
+// point i. Each narrows to one lane's width where it meets a road at its level, so it runs into that lane; it is
+// left out over the carriageway it comes down to (the street's own asphalt is the road there) and raised a little
+// over the sidewalk it crosses, like a driveway, so the paving does not show through it.
+export function decksDrawn(layout) {
+  const P = plan(layout);
+  return (P.drawn ??= P.decks.map((d) => {
+    const along = [0];
+    for (let i = 1; i < d.pts.length; i++) along.push(along[i - 1] + Math.hypot(d.pts[i][0] - d.pts[i - 1][0], d.pts[i][2] - d.pts[i - 1][2]));
+    const low = (i) => (d.pts[0][1] < 1 ? along[i] : along.at(-1) - along[i]); // from its street end
+    const keep = d.pts.flatMap((p, i) => (p[1] < 0.6 && inStreet(layout, p, kerbOf) ? [] : [i]));
+    const pts = keep.map((i) => (inStreet(layout, d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
+    const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
+    return { deck: d, pts, half: (i) => halves[i] };
+  }));
+}
+
+// Each deck's outline, for barriers and the deck seams: every deck as drawn (decksDrawn) with its two edges, L and
+// R, as polylines [x, y, z] (y its top).
+function outlines(layout) {
+  const P = plan(layout);
+  return (P.outlines ??= decksDrawn(layout).filter((D) => D.pts.length > 1).map((D) => {
+    const side = (s) => D.pts.map((p, i) => { const [nx, nz] = normal(D.pts, i), o = s * D.half(i); return [p[0] + nx * o, p[1], p[2] + nz * o]; });
+    return { D, L: side(-1), R: side(1) };
+  }));
+}
+// The height of outline S's deck at q [x, y, z] if q is on it in plan, else null.
+function heightOn(S, q) {
+  const { D, L, R } = S;
+  for (let i = 1; i < L.length; i++) {
+    const poly = [L[i - 1], L[i], R[i], R[i - 1]];
+    let inside = false;
+    for (let a = 0, b = 3; a < 4; b = a++) {
+      const [xa, , za] = poly[a], [xb, , zb] = poly[b];
+      if (za > q[2] !== zb > q[2] && q[0] < ((xb - xa) * (q[2] - za)) / (zb - za) + xa) inside = !inside;
+    }
+    if (!inside) continue;
+    const [a, b] = [D.pts[i - 1], D.pts[i]], dx = b[0] - a[0], dz = b[2] - a[2];
+    const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[2] - a[2]) * dz) / (dx * dx + dz * dz || 1)));
+    return a[1] + (b[1] - a[1]) * t;
+  }
+  return null;
+}
+const flat = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+// Where segment a-b crosses segment c-d in plan, as a fraction along a-b, or null.
+function crossing(a, b, c, d) {
+  const rx = b[0] - a[0], rz = b[2] - a[2], sx = d[0] - c[0], sz = d[2] - c[2], den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c[0] - a[0]) * sz - (c[2] - a[2]) * sx) / den, u = ((c[0] - a[0]) * rz - (c[2] - a[2]) * rx) / den;
+  return t > 1e-9 && t < 1 - 1e-9 && u >= -1e-9 && u <= 1 + 1e-9 ? t : null;
+}
+// The inward normal of segment a-b: whichever of its two normals is on the side of ref, [x, z].
+function inward(a, b, ref) {
+  const dx = b[0] - a[0], dz = b[2] - a[2], l = Math.hypot(dx, dz) || 1, n = [-dz / l, dx / l];
+  return n[0] * ref[0] + n[1] * ref[1] < 0 ? [-n[0], -n[1]] : n;
+}
+// Where two inward normals meet at a corner: the vector to the corner of the two lines a metre inward, at most 2.5 m
+// long (at a sharp nose, where two decks part, the parapets merge), or null where the two turn right back.
+const mitre = (m, n) => {
+  const s = Math.hypot(m[0] + n[0], m[1] + n[1]), f = Math.min(2.5, Math.sqrt(2 / Math.max(1e-9, 1 + m[0] * n[0] + m[1] * n[1])));
+  return s < 1e-3 ? null : [((m[0] + n[0]) / s) * f, ((m[1] + n[1]) / s) * f];
+};
+
+// The parapets (parapets.js draws them): runs { pts, cross, caps, depth } along every deck edge, on the edge itself: both
+// sides of the expressway and across its inner end, and both sides of every other deck as drawn. An edge is open
+// only where it joins something a car drives onto: another deck within 1.2 m of its height, the expressway's deck
+// (under which a ramp's edges are hidden), or a street at its level (a ramp's low end, below 1.5 m in a street's
+// corridor). Each edge is cut exactly where it crosses another deck's outline or a street corridor's side, and
+// every metre between, so where an edge runs into another deck its run ends on the same point as the run of that
+// deck's edge coming out of it. Such ends are joined: at one height (the higher), their cross vectors mitred.
+// Every other end is an opening and is capped: where the expressway's outer end carries on as the highway out of
+// town (desert.js), where a ramp comes down into a street, and where the two sweep ramps come out from under the
+// expressway (they drop while still under it, so their edges and its own cross there a step apart in height).
+// cross[i] is the inward normal at point i, mitred where the run bends. Runs keep a point every 3 m or so.
+// tests/js/barriers.test.mjs checks the joins, the caps and the coverage.
+export function barriers(layout) {
+  const P = plan(layout);
+  if (P.barriers) return P.barriers;
+  const { x0, z0, edge } = P, H = WIDE / 2, shapes = outlines(layout);
+  const box = [[x0, TOP, z0 - H], [edge, TOP, z0 - H], [edge, TOP, z0 + H], [x0, TOP, z0 + H]];
+  const bounds = (S) => { // an outline's sides and ends, as segments
+    const ring = S ? [...S.L, ...[...S.R].reverse(), S.L[0]] : [...box, box[0]];
+    return ring.slice(1).map((p, i) => [ring[i], p]);
+  };
+  const walls = new Map([[null, bounds(null)], ...shapes.map((S) => [S, bounds(S)])]);
+  const sides = layout.cross.flatMap((l) => [-1, 1].flatMap((s) => [['x', l.c + (s * l.w) / 2], ['z', l.c + (s * l.w) / 2]]));
+  const atStreet = (q) => q[1] < 1.5 && inStreet(layout, q, (l) => l.w / 2);
+  const open = (self, q) => {
+    if (!self) return shapes.some((S) => Math.abs((heightOn(S, q) ?? Infinity) - TOP) < 1.2);
+    return onExpressway(layout, q) || atStreet(q) || shapes.some((S) => S !== self && Math.abs((heightOn(S, q) ?? Infinity) - q[1]) < 1.2);
+  };
+  // Every edge: its line, the way inward at each of its points, and whose edge it is (null: the expressway's).
+  const edges = [
+    { line: [box[0], box[1]], ref: () => [0, 1], self: null },
+    { line: [box[3], box[2]], ref: () => [0, -1], self: null },
+    { line: [box[0], box[3]], ref: () => [1, 0], self: null },
+    ...shapes.flatMap((S) => ['L', 'R'].map((k) => ({ line: S[k], ref: (i) => [S.D.pts[i][0] - S[k][i][0], S.D.pts[i][2] - S[k][i][2]], self: S }))),
+  ];
+  const runs = [];
+  for (const { line, ref, self } of edges) {
+    let run = null;
+    const close = () => {
+      if (run && run.pts.length > 1) runs.push(run);
+      run = null;
+    };
+    for (let k = 1; k < line.length; k++) {
+      const [a, b] = [line[k - 1], line[k]], n = Math.max(1, Math.ceil(flat(a, b))), ts = new Set([0, 1]);
+      for (let j = 1; j < n; j++) ts.add(j / n);
+      for (const [S, segs] of walls) if (S !== self) for (const [c, d] of segs) { const t = crossing(a, b, c, d); if (t !== null) ts.add(t); }
+      for (const [axis, v] of sides) { // a street corridor's sides, where the deck is low enough to meet the street
+        const [pa, pb] = axis === 'x' ? [a[0], b[0]] : [a[2], b[2]], t = (v - pa) / (pb - pa);
+        if (t > 1e-9 && t < 1 - 1e-9 && Math.min(a[1], b[1]) < 1.5) ts.add(t);
+      }
+      const t = [...ts].sort((p, q) => p - q), at = (f) => a.map((v, j) => v + (b[j] - v) * f);
+      const r0 = ref(k - 1), r1 = ref(k), dir = [r0[0] + r1[0], r0[1] + r1[1]];
+      for (let m = 1; m < t.length; m++) {
+        if (t[m] - t[m - 1] < 1e-9) continue;
+        if (open(self, at((t[m - 1] + t[m]) / 2))) { close(); continue; }
+        run ??= { pts: [at(t[m - 1])], refs: [dir], corner: [t[m - 1] === 0], depth: self ? 0.6 : 1.2 }; // its deck's thickness: a ramp's, the expressway's
+        run.pts.push(at(t[m]));
+        run.refs.push(dir);
+        run.corner.push(t[m] === 1);
+      }
+    }
+    close();
+  }
+  // A point every 3 m or so, the ends and the edge's own corners kept; then the inward normals, mitred.
+  for (const run of runs) {
+    const keep = [0];
+    let since = 0;
+    for (let i = 1; i < run.pts.length; i++) {
+      since += flat(run.pts[i], run.pts[i - 1]);
+      if (since >= 2.9 || run.corner[i] || i === run.pts.length - 1) { keep.push(i); since = 0; }
+    }
+    const pts = keep.map((i) => run.pts[i]), refs = keep.map((i) => run.refs[i]);
+    run.normals = pts.slice(1).map((p, i) => inward(pts[i], p, refs[i + 1]));
+    run.pts = pts;
+    run.cross = pts.map((_, i) => (i === 0 ? run.normals[0] : i === pts.length - 1 ? run.normals.at(-1) : mitre(run.normals[i - 1], run.normals[i]) ?? run.normals[i]));
+    run.caps = [true, true];
+    delete run.refs;
+    delete run.corner;
+  }
+  // Join the ends that meet: on the same point in plan (2 cm), within 30 cm in height (the parapet's foot reaches 35 cm into the deck).
+  const ends = runs.flatMap((run) => [0, 1].map((e) => ({ run, e, i: e ? run.pts.length - 1 : 0 })));
+  const normalAt = ({ run, e }) => (e ? run.normals.at(-1) : run.normals[0]);
+  for (const A of ends) {
+    if (!A.run.caps[A.e]) continue;
+    const p = A.run.pts[A.i];
+    const B = ends.find((B) => B.run !== A.run && B.run.caps[B.e] && flat(p, B.run.pts[B.i]) < 0.02 && Math.abs(p[1] - B.run.pts[B.i][1]) < 0.3);
+    const m = B && mitre(normalAt(A), normalAt(B));
+    if (!m) continue;
+    const q = B.run.pts[B.i], meet = [(p[0] + q[0]) / 2, Math.max(p[1], q[1]), (p[2] + q[2]) / 2];
+    for (const { run, i } of [A, B]) { // the lower one raised to the meeting height, eased in over its last 3 m
+      const raise = meet[1] - run.pts[i][1], step = i ? -1 : 1;
+      for (let j = i, d = 0; j >= 0 && j < run.pts.length && d < 3; d += flat(run.pts[j], run.pts[j + step] ?? run.pts[j]), j += step) {
+        run.pts[j] = [run.pts[j][0], run.pts[j][1] + raise * (1 - d / 3), run.pts[j][2]];
+      }
+    }
+    A.run.pts[A.i] = B.run.pts[B.i] = meet;
+    A.run.cross[A.i] = B.run.cross[B.i] = m;
+    A.run.caps[A.e] = B.run.caps[B.e] = false;
+  }
+  for (const run of runs) delete run.normals;
+  return (P.barriers = runs);
 }
 
 // Two sign gantries over the expressway (Blender, tools/blender/interchange_props.py), one ahead of each pair of
@@ -406,8 +583,10 @@ function normal(pts, i) {
   return [dz / l, -dx / l];
 }
 // A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
-// each point; top, both sides and bottom, each face with its own vertices (crisp edges), UVs in metres.
+// each point (dy a number, or dy(k) per point); top, both sides and bottom, each face with its own vertices (crisp
+// edges), UVs in metres (the top's in plan).
 function ribbon(pts, off, half, dy, h) {
+  const lift = typeof dy === 'function' ? dy : () => dy;
   const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
   let run = 0;
   for (let f = 0; f < 4; f++) {
@@ -417,8 +596,9 @@ function ribbon(pts, off, half, dy, h) {
       const [nx, nz] = normal(pts, i), u = (f === 0 ? run : i * 4) / REPEAT;
       for (const [s, y] of [ring[f], ring[(f + 1) % 4]]) {
         const o = off(i) + s * half(i);
-        pos.push(p[0] + nx * o, p[1] + dy + y, p[2] + nz * o);
-        uv.push(u, (o + y) / REPEAT);
+        pos.push(p[0] + nx * o, p[1] + lift(i) + y, p[2] + nz * o);
+        if (f === 0) uv.push((p[0] + nx * o) / REPEAT, (p[2] + nz * o) / REPEAT); // the top projected on the ground, as box and slab do: the asphalt's relief lies the same way on every deck and street
+        else uv.push(u, (o + y) / REPEAT);
       }
     });
     for (let i = 0; i < pts.length - 1; i++) {
