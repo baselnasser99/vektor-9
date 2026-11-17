@@ -24,15 +24,6 @@ const INNER = STREETS.boulevard.lanes[0]; // its inner lane, on west down the me
 const KERB = STREETS.street.lanes.at(-1); // the main street's outer lane
 const NEAR = STREETS.local.lanes[0]; // a cross street's lane (two-way or one-way alike), from its centre line
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-const TOUCH = 0.03; // m: over a carriageway a ramp is drawn down to this height over the road, where it touches it
-const EMBANK = 1.2; // m: under this deck top a ramp's low end stands on retaining walls (its slab's underside under 0.6 m)
-const CURVE = 3; // m: the vertical curves at the top and bottom of a straight grade (longer ones steepen the grade)
-// The height s m from the high end of a deck len m long, from h down to 0 on a straight grade between two vertical
-// curves of CURVE m.
-const descent = (len, h) => (s) => {
-  const g = h / (len - CURVE);
-  return s <= 0 ? h : s < CURVE ? h - (g * s * s) / (2 * CURVE) : s < len - CURVE ? h - g * (s - CURVE / 2) : (g * (len - s) ** 2) / (2 * CURVE);
-};
 
 // Whether this city has the interchange: the sim keeps its land as road terrain (schema 4).
 export const hasInterchange = (snap) => snap.tiles.some((t) => t.k === 'road');
@@ -87,14 +78,9 @@ export function plan(layout) {
     const x = path.at(-1)[0], kind = layout.kindAt(l, 'x', x), dir = -side;
     if (kind !== 'local' && !(kind === 'oneway' && l.flow.x === dir)) return []; // no lane that way there
     // Level with the ramp while it still lies across it (one deck, widening, as at a real fork), then down to the
-    // street (or, built backward, up from it) over what is left: eased off a sweep, on a straight grade off a loop
-    // (eased, a loop's slip would reach about 21%).
+    // street (or, built backward, up from it) over what is left.
     const beside = path.map((q) => nearest(ramp.pts, q)), apart = Math.max(1, beside.findIndex(([d]) => d > 4 + 2.4)), n = path.length - 1;
-    const run = [0];
-    for (let j = 1; j < path.length; j++) run.push(run[j - 1] + Math.hypot(path[j][0] - path[j - 1][0], path[j][1] - path[j - 1][1]));
-    const ys = beside[apart - 1][1], drop = descent(run[n] - run[apart - 1], ys);
-    const y = (j) => (ramp.loop ? drop(run[j] - run[apart - 1]) : ys * (1 - ease((j - apart + 1) / (n - apart + 1))));
-    const pts = path.map(([px, pz], j) => [px, j < apart ? beside[j][1] : y(j), pz]);
+    const ys = beside[apart - 1][1], pts = path.map(([px, pz], j) => [px, j < apart ? beside[j][1] : ys * (1 - ease((j - apart + 1) / (n - apart + 1))), pz]);
     return [{ pts: up ? pts.reverse() : pts, half: 2.4, ramp, at: i, up, street: l, z, dir, x }];
   });
   return (layout.ramps = { xs, z0, x0, xa, west, mid, edge: layout.hi, ramps, median, slips, decks: [...ramps, ...median, ...slips] });
@@ -261,7 +247,7 @@ export function buildInterchange(kit, root, layout, snap) {
   // dark steel expansion joint lies across it there, standing a little proud of both surfaces so the step between
   // them (a few centimetres) and the change of structure read as one deliberate strip. Another lies across each
   // deck's low end, where it meets the street.
-  const shapes = outlines(layout), seam = kit.steel(palette.graphite, 0.45), retaining = kit.concrete(palette.weatheredConcrete);
+  const shapes = outlines(layout), seam = kit.steel(palette.graphite, 0.45);
   const joint = ([x, y, z], [tx, tz], wide, top) => { // across the way [tx, tz], from 3 cm under y up to 1.2 cm over top
     const h = Math.max(y, top) + 0.012 - (Math.min(y, top) - 0.03);
     part(root, box(0.25, h, wide, 0), seam, x, Math.max(y, top) + 0.012 - h / 2, z).rotation.y = Math.atan2(-tz, tx);
@@ -292,17 +278,6 @@ export function buildInterchange(kit, root, layout, snap) {
     part(root, ribbon(pts, () => 0, half, (i) => (under[i] ? (d.ramp !== undefined ? -0.66 : -0.63) : -0.6), 0.6), surface);
     const [e, f] = raw[0][1] < raw.at(-1)[1] ? [0, 1] : [raw.length - 1, raw.length - 2], l = Math.hypot(raw[f][0] - raw[e][0], raw[f][2] - raw[e][2]);
     joint(raw[e], [(raw[f][0] - raw[e][0]) / l, (raw[f][2] - raw[e][2]) / l], 2 * rawHalf(e), raw[e][1]); // its low end, at the street
-    // Near the ground it rises out of an embankment: where less than a slab's depth (0.6 m) would show under it,
-    // retaining walls down to the ground along both edges (just outside the parapets' fascia) and across its end,
-    // under the joint, so no open slab end or sliver of a gap shows.
-    if (raw[e][1] < EMBANK) {
-      const step = e ? -1 : 1, low = [];
-      for (let i = e; i >= 0 && i < raw.length; i += step) { low.push(i); if (raw[i][1] >= EMBANK) break; }
-      const P = low.map((i) => raw[i]), W = low.map((i) => rawHalf(i));
-      for (const s of [-1, 1]) part(root, ribbon(P, (k) => s * (W[k] + 0.13), () => 0.1, (k) => -0.05 - P[k][1], (k) => P[k][1] + 0.03), retaining);
-      const [x, y, z] = raw[e], [ux, uz] = [(raw[e][0] - raw[f][0]) / l, (raw[e][2] - raw[f][2]) / l];
-      part(root, box(0.2, y + 0.03, 2 * W[0] + 0.46, 0), retaining, x + ux * 0.1, (y - 0.05) / 2 - 0.01, z + uz * 0.1).rotation.y = Math.atan2(-uz, ux);
-    }
     if (median.includes(d)) continue;
     pts.forEach((p, i) => {
       const [x, y, z] = p;
@@ -343,16 +318,9 @@ export function decksDrawn(layout) {
     const along = [0];
     for (let i = 1; i < d.pts.length; i++) along.push(along[i - 1] + Math.hypot(d.pts[i][0] - d.pts[i - 1][0], d.pts[i][2] - d.pts[i - 1][2]));
     const low = (i) => (d.pts[0][1] < 1 ? along[i] : along.at(-1) - along[i]); // from its street end
-    const width = (v) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, v / 25)), lift = (p) => (inStreet(layout, p, (l) => l.w / 2) ? [p[0], Math.max(p[1], 0.26), p[2]] : p);
-    const gone = (p) => p[1] < TOUCH && inStreet(layout, p, kerbOf);
-    const keep = d.pts.flatMap((p, i) => (gone(p) ? [] : [i]));
-    const pts = keep.map((i) => lift(d.pts[i])), halves = keep.map((i) => width(low(i)));
-    // Over the carriageway it runs down until it touches the road (TOUCH over it), ending there exactly.
-    const [k, j] = d.pts[0][1] < d.pts.at(-1)[1] ? [keep[0], keep[0] - 1] : [keep.at(-1), keep.at(-1) + 1];
-    if (j >= 0 && j < d.pts.length && gone(d.pts[j])) {
-      const [a, b] = [d.pts[k], d.pts[j]], t = (a[1] - TOUCH) / (a[1] - b[1]), q = a.map((v, m) => v + (b[m] - v) * t), w = width(low(k) + (low(j) - low(k)) * t);
-      if (j < k) { pts.unshift(lift(q)); halves.unshift(w); } else { pts.push(lift(q)); halves.push(w); }
-    }
+    const keep = d.pts.flatMap((p, i) => (p[1] < 0.6 && inStreet(layout, p, kerbOf) ? [] : [i]));
+    const pts = keep.map((i) => (inStreet(layout, d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
+    const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
     return { deck: d, pts, half: (i) => halves[i] };
   }));
 }
@@ -674,19 +642,19 @@ function normal(pts, i) {
   return [dz / l, -dx / l];
 }
 // A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
-// each point (dy and h numbers, or functions of k); top, both sides and bottom (or the top alone: faces 1), each face
+// each point (dy a number, or dy(k) per point); top, both sides and bottom (or the top alone: faces 1), each face
 // with its own vertices (crisp edges), UVs in metres (the top's in plan).
 function ribbon(pts, off, half, dy, h, faces = 4) {
-  const lift = typeof dy === 'function' ? dy : () => dy, tall = typeof h === 'function' ? h : () => h;
-  const pos = [], uv = [], index = [], ring = [[-1, 1], [1, 1], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom (as a share of h)
+  const lift = typeof dy === 'function' ? dy : () => dy;
+  const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
   let run = 0;
   for (let f = 0; f < faces; f++) {
     const base = pos.length / 3;
     pts.forEach((p, i) => {
       if (i) run += f === 0 ? Math.hypot(p[0] - pts[i - 1][0], p[2] - pts[i - 1][2]) : 0;
       const [nx, nz] = normal(pts, i), u = (f === 0 ? run : i * 4) / REPEAT;
-      for (const [s, t] of [ring[f], ring[(f + 1) % 4]]) {
-        const o = off(i) + s * half(i), y = t * tall(i);
+      for (const [s, y] of [ring[f], ring[(f + 1) % 4]]) {
+        const o = off(i) + s * half(i);
         pos.push(p[0] + nx * o, p[1] + lift(i) + y, p[2] + nz * o);
         if (f === 0) uv.push((p[0] + nx * o) / REPEAT, (p[2] + nz * o) / REPEAT); // the top projected on the ground, as box and slab do: the asphalt's relief lies the same way on every deck and street
         else uv.push(u, (o + y) / REPEAT);

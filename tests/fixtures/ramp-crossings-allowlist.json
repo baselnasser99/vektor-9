@@ -1,0 +1,637 @@
+{
+ "note": "Walker and car paths through interchange faces that were there on origin/main at 1d9d988 (tests/js/ramp_crossings.test.mjs). Follow-up: ADR-0011, amendment of 2026-11-16 (the sweep ramps and the ramp low ends).",
+ "sim-v3-seed7-t288.json.gz": [
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|233|-38|ix|254|-79 | ramp 1 | slab",
+   "at": [
+    233.9,
+    -49.1
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|233|-38|ix|254|-79 | slip of ramp 1 | slab",
+   "at": [
+    234.4,
+    -58.4
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|233|-38|ix|287|-37 | ramp 1 | slab",
+   "at": [
+    233.4,
+    -38.4
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|233|-38|ix|287|-37 | slip of ramp 1 | slab",
+   "at": [
+    235.5,
+    -47.1
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|237|50|ix|260|10 | ramp 2 | slab",
+   "at": [
+    234.9,
+    45.7
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|267|79|ix|237|50 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|237|50|ix|260|10 | ramp 2 | slab",
+   "at": [
+    236.5,
+    49.4
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|267|79|ix|237|50 | ramp 2 | slab",
+   "at": [
+    243.6,
+    62.7
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|267|79|ix|237|50 | slip of ramp 2 | slab",
+   "at": [
+    259.8,
+    77.7
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|287|37|ix|237|50 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|237|50|ix|260|10 | ramp 2 | slab",
+   "at": [
+    236.5,
+    49.4
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|287|37|ix|237|50 | ramp 2 | slab",
+   "at": [
+    284.9,
+    48.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|287|37|ix|237|50 | slip of ramp 2 | slab",
+   "at": [
+    245.3,
+    59.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|326|17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | expressway | slab",
+   "at": [
+    327.8,
+    15.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|326|17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | parapet run 2 | parapet",
+   "at": [
+    327.8,
+    15.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|326|17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | ramp 3 | slab",
+   "at": [
+    326.5,
+    16.5
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|326|17 | ramp 3 | slab",
+   "at": [
+    300.2,
+    48.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|326|17 | slip of ramp 3 | slab",
+   "at": [
+    307.3,
+    33.7
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|298|-65 | ramp 0 | slab",
+   "at": [
+    326.1,
+    -16.7
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|298|-65 | slip of ramp 0 | slab",
+   "at": [
+    313.9,
+    -25.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|342|-79 | ramp 0 | slab",
+   "at": [
+    325.5,
+    -17
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|342|-79 | slip of ramp 0 | slab",
+   "at": [
+    309.7,
+    -37.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | expressway | slab",
+   "at": [
+    330,
+    14.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | parapet run 2 | parapet",
+   "at": [
+    330,
+    14.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|342|79|ix|326|17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | expressway | slab",
+   "at": [
+    327.8,
+    15.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|342|79|ix|326|17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | parapet run 2 | parapet",
+   "at": [
+    327.8,
+    15.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|342|79|ix|326|17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|17|ix|353|10 | ramp 3 | slab",
+   "at": [
+    326.5,
+    16.5
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|342|79|ix|326|17 | ramp 3 | slab",
+   "at": [
+    309.3,
+    39.1
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|342|79|ix|326|17 | slip of ramp 3 | slab",
+   "at": [
+    330.1,
+    76.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|298|-65 | expressway | slab",
+   "at": [
+    329.6,
+    -15
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|298|-65 | parapet run 0 | parapet",
+   "at": [
+    329.6,
+    -15
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|298|-65 | ramp 0 | slab",
+   "at": [
+    329.1,
+    -15.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|342|-79 | expressway | slab",
+   "at": [
+    329.6,
+    -15
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|342|-79 | parapet run 0 | parapet",
+   "at": [
+    329.6,
+    -15
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 right undefined|1|undefined|undefined|0|boulevard|ramp|ix|326|-17|ix|342|-79 | ramp 0 | slab",
+   "at": [
+    329.1,
+    -15.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 | expressway | slab",
+   "at": [
+    348.9,
+    -10
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|326|-17 | parapet run 0 | parapet",
+   "at": [
+    332.7,
+    -13.6
+   ]
+  },
+  {
+   "key": "car x|-1|0|3.375|0|boulevard|ramp|ix|264|-3|150|0 | median 0 | slab",
+   "at": [
+    240.1,
+    -3.4
+   ]
+  },
+  {
+   "key": "car x|-1|80.5|1.625|0|local|block|ix|267|79|220|81 | slip of ramp 2 | slab",
+   "at": [
+    259.7,
+    78.9
+   ]
+  },
+  {
+   "key": "car x|-1|80.5|1.625|0|local|block|ix|342|79|293|81 | slip of ramp 3 | slab",
+   "at": [
+    329.2,
+    78.9
+   ]
+  },
+  {
+   "key": "car x|1|-80.5|1.625|0|local|block|293|-80|ix|342|-79 | slip of ramp 0 | slab",
+   "at": [
+    326.8,
+    -78.9
+   ]
+  },
+  {
+   "key": "car x|1|0|3.375|0|boulevard|ramp|150|0|ix|264|3 | median 1 | slab",
+   "at": [
+    192.6,
+    3.4
+   ]
+  },
+  {
+   "key": "car z|-1|292.5|5.125|1|street|block|293|0|ix|298|-65 | ramp 0 | slab",
+   "at": [
+    297.6,
+    -42.1
+   ]
+  },
+  {
+   "key": "car z|-1|292.5|5.125|1|street|block|ix|298|65|293|0 | ramp 3 | slab",
+   "at": [
+    297.6,
+    48.8
+   ]
+  },
+  {
+   "key": "car z|1|292.5|5.125|1|street|block|293|-80|ix|287|-37 | ramp 1 | slab",
+   "at": [
+    287.4,
+    -51.4
+   ]
+  },
+  {
+   "key": "car z|1|292.5|5.125|1|street|block|ix|287|37|293|81 | ramp 2 | slab",
+   "at": [
+    287.4,
+    49.5
+   ]
+  },
+  {
+   "key": "walker 57>69 side | ramp 1 | slab",
+   "at": [
+    283.9,
+    -56.3
+   ]
+  },
+  {
+   "key": "walker 58>70 side | parapet run 10 | parapet",
+   "at": [
+    302.3,
+    -49.7
+   ]
+  },
+  {
+   "key": "walker 58>70 side | parapet run 11 | parapet",
+   "at": [
+    301.2,
+    -37.8
+   ]
+  },
+  {
+   "key": "walker 58>70 side | ramp 0 | slab",
+   "at": [
+    301.2,
+    -49.7
+   ]
+  },
+  {
+   "key": "walker 69>57 side | ramp 1 | slab",
+   "at": [
+    283.9,
+    -47.9
+   ]
+  },
+  {
+   "key": "walker 70>58 side | parapet run 10 | parapet",
+   "at": [
+    302.3,
+    -49.7
+   ]
+  },
+  {
+   "key": "walker 70>58 side | parapet run 11 | parapet",
+   "at": [
+    301.2,
+    -35.9
+   ]
+  },
+  {
+   "key": "walker 70>58 side | ramp 0 | slab",
+   "at": [
+    301.2,
+    -35.9
+   ]
+  },
+  {
+   "key": "walker 81>93 side | ramp 2 | slab",
+   "at": [
+    283.9,
+    47.9
+   ]
+  },
+  {
+   "key": "walker 82>94 side | parapet run 18 | parapet",
+   "at": [
+    302.3,
+    49.7
+   ]
+  },
+  {
+   "key": "walker 82>94 side | parapet run 20 | parapet",
+   "at": [
+    301.2,
+    35.9
+   ]
+  },
+  {
+   "key": "walker 82>94 side | ramp 3 | slab",
+   "at": [
+    301.2,
+    35.9
+   ]
+  },
+  {
+   "key": "walker 93>81 side | ramp 2 | slab",
+   "at": [
+    283.9,
+    56.3
+   ]
+  },
+  {
+   "key": "walker 94>82 side | parapet run 18 | parapet",
+   "at": [
+    302.3,
+    49.7
+   ]
+  },
+  {
+   "key": "walker 94>82 side | parapet run 20 | parapet",
+   "at": [
+    301.2,
+    37.8
+   ]
+  },
+  {
+   "key": "walker 94>82 side | ramp 3 | slab",
+   "at": [
+    301.2,
+    49.7
+   ]
+  }
+ ],
+ "sim-v3-seed3-t288.json.gz": [
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|260|-10|ix|287|-37 | ramp 1 | slab",
+   "at": [
+    233.4,
+    -38.4
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|287|37|ix|260|10 | ramp 2 | slab",
+   "at": [
+    284.9,
+    48.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|353|10 | expressway | slab",
+   "at": [
+    327.8,
+    15.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|353|10 | parapet run 2 | parapet",
+   "at": [
+    327.8,
+    15.8
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|298|65|ix|353|10 | ramp 3 | slab",
+   "at": [
+    300.2,
+    48.2
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|298|-65 | expressway | slab",
+   "at": [
+    348.9,
+    -10
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|298|-65 | parapet run 0 | parapet",
+   "at": [
+    332.7,
+    -13.6
+   ]
+  },
+  {
+   "key": "car undefined|1|undefined|undefined|0|boulevard|ramp|ix|353|-10|ix|298|-65 | ramp 0 | slab",
+   "at": [
+    329.1,
+    -15.2
+   ]
+  },
+  {
+   "key": "car x|-1|0|3.375|0|boulevard|ramp|ix|264|-3|150|0 | median 0 | slab",
+   "at": [
+    240.1,
+    -3.4
+   ]
+  },
+  {
+   "key": "car x|1|0|3.375|0|boulevard|ramp|150|0|ix|264|3 | median 1 | slab",
+   "at": [
+    192.6,
+    3.4
+   ]
+  },
+  {
+   "key": "car z|-1|292.5|5.125|1|street|block|293|0|ix|298|-65 | ramp 0 | slab",
+   "at": [
+    297.6,
+    -42.1
+   ]
+  },
+  {
+   "key": "car z|-1|292.5|5.125|1|street|block|ix|298|65|293|0 | ramp 3 | slab",
+   "at": [
+    297.6,
+    48.8
+   ]
+  },
+  {
+   "key": "car z|1|292.5|5.125|1|street|block|293|-80|ix|287|-37 | ramp 1 | slab",
+   "at": [
+    287.4,
+    -51.4
+   ]
+  },
+  {
+   "key": "car z|1|292.5|5.125|1|street|block|ix|287|37|293|81 | ramp 2 | slab",
+   "at": [
+    287.4,
+    49.5
+   ]
+  },
+  {
+   "key": "walker 57>69 side | ramp 1 | slab",
+   "at": [
+    283.9,
+    -56.3
+   ]
+  },
+  {
+   "key": "walker 58>70 side | parapet run 10 | parapet",
+   "at": [
+    301.2,
+    -37.8
+   ]
+  },
+  {
+   "key": "walker 58>70 side | parapet run 9 | parapet",
+   "at": [
+    302.3,
+    -49.7
+   ]
+  },
+  {
+   "key": "walker 58>70 side | ramp 0 | slab",
+   "at": [
+    301.2,
+    -49.7
+   ]
+  },
+  {
+   "key": "walker 69>57 side | ramp 1 | slab",
+   "at": [
+    283.9,
+    -47.9
+   ]
+  },
+  {
+   "key": "walker 70>58 side | parapet run 10 | parapet",
+   "at": [
+    301.2,
+    -35.9
+   ]
+  },
+  {
+   "key": "walker 70>58 side | parapet run 9 | parapet",
+   "at": [
+    302.3,
+    -49.7
+   ]
+  },
+  {
+   "key": "walker 70>58 side | ramp 0 | slab",
+   "at": [
+    301.2,
+    -35.9
+   ]
+  },
+  {
+   "key": "walker 81>93 side | ramp 2 | slab",
+   "at": [
+    283.9,
+    47.9
+   ]
+  },
+  {
+   "key": "walker 82>94 side | parapet run 15 | parapet",
+   "at": [
+    302.3,
+    49.7
+   ]
+  },
+  {
+   "key": "walker 82>94 side | parapet run 16 | parapet",
+   "at": [
+    301.2,
+    35.9
+   ]
+  },
+  {
+   "key": "walker 82>94 side | ramp 3 | slab",
+   "at": [
+    301.2,
+    35.9
+   ]
+  },
+  {
+   "key": "walker 93>81 side | ramp 2 | slab",
+   "at": [
+    283.9,
+    56.3
+   ]
+  },
+  {
+   "key": "walker 94>82 side | parapet run 15 | parapet",
+   "at": [
+    302.3,
+    49.7
+   ]
+  },
+  {
+   "key": "walker 94>82 side | parapet run 16 | parapet",
+   "at": [
+    301.2,
+    37.8
+   ]
+  },
+  {
+   "key": "walker 94>82 side | ramp 3 | slab",
+   "at": [
+    301.2,
+    49.7
+   ]
+  }
+ ]
+}

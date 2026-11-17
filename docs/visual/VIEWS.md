@@ -44,7 +44,7 @@ Extra views, for the subjects named:
 | 21 | Deck joins at the expressway's inner end: the median ramps and the loops leave it, parapets meeting across the end | `238,14,12,262,8,0` |
 | 22 | Deck join where the inbound sweep ramp comes out from under the expressway (a known level step, capped parapets) | `368,15,-34,338,7,-12` |
 | 23 | Low angle at a driver's eye height on the expressway, looking west across its inner end: the median ramps and both loops leaving it (deck and ramp surfaces side by side, the expansion joints) | `272,9.9,-3.4,245,8.2,-3.4` |
-| 24 | The inbound sweep ramp's low end, coming down into the main street's kerb lane on its retaining walls | `300.1,2.2,-69.9,299.7,0.6,-51.2` |
+| 24 | The inbound sweep ramp's low end, where it meets the main street's kerb lane (an open slab end, ADR-0011) | `300.1,2.2,-69.9,299.7,0.6,-51.2` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 

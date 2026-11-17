@@ -1,13 +1,17 @@
 // Ramp grades (interchange.js plan) on the frozen v3 fixtures, measured between consecutive points: no deck is
-// steeper than on origin/main at 1d9d988, except the two loop slip roads, which come down on a straight grade and
-// are held to their new, lower maxima (eased, as before, they reached about 21 and 19 percent).
+// steeper than on origin/main at 1d9d988. The two loop slip roads ease down over what is left once they part from
+// their loop and reach about 21 and 19 percent; a straight grade brings them to about 14.3 percent but held their
+// low ends higher over the cross street's lane, so it waits for the low-end redesign (ADR-0011, amendment of
+// 2026-11-16) and is recorded here as todo.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { plan } from '../../web/src/interchange.js';
 import { city, fixture } from './harness.mjs';
 
 // Rounded up to 0.01 %. slips[k]: the slip road off or onto ramp k (one per ramp at most; 1 and 2 are the loops').
-const MAX = { sweep: 0.1455, loop: 0.0991, median: 0.1458, slips: [0.1471, 0.143, 0.1426, 0.1471] };
+const MAX = { sweep: 0.1455, loop: 0.0991, median: 0.1458, slips: [0.1471, 0.2137, 0.1888, 0.1471] };
+const LOOP_SLIP_TARGET = 0.143; // the straight grade's maximum
+const LOW_END_TODO = 'low-end redesign, follow-up';
 const steepest = ({ pts }) => Math.max(...pts.slice(1).map((p, i) => Math.abs(p[1] - pts[i][1]) / Math.hypot(p[0] - pts[i][0], p[2] - pts[i][2])));
 const pc = (g) => `${(g * 100).toFixed(2)}%`;
 
@@ -24,5 +28,10 @@ for (const name of ['sim-v3-seed7-t288.json.gz', 'sim-v3-seed3-t288.json.gz']) {
       if (steepest(s) > MAX.slips[k]) wrong.push(`slip of ramp ${k}: ${pc(steepest(s))} > ${pc(MAX.slips[k])}`);
     }
     assert.deepEqual(wrong, []);
+  });
+  test(`${name}: loop slip roads at most 14.3 percent`, { todo: LOW_END_TODO }, () => {
+    const { layout } = city(fixture(name)), P = plan(layout);
+    const steep = P.slips.filter((s) => s.ramp.loop && steepest(s) > LOOP_SLIP_TARGET).map((s) => `slip of ramp ${P.ramps.indexOf(s.ramp)}: ${pc(steepest(s))}`);
+    assert.deepEqual(steep, []);
   });
 }
