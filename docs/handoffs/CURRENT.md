@@ -1,11 +1,26 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-18 22:23 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
-Branch: `main` at this handoff commit, on top of `3183d37` (the #70 merge)
+Updated: 2026-11-18 23:56 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
+Branch: `main` at this handoff commit, on top of `4d4ee54` (the #71 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- PR #71 (merge `4d4ee54`, head `2140045`, CI passed): ramp landings for the median ramps, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged. State after it: SIM_VERSION 4, schema 6, nothing deployed.
+  - Both median ramps land at road height. One height function (`interchange.js` `landing`), shared by the car lanes and the drawn deck: level from the stop line at the crossing at `west` to a landing point 26 m east of it (found by distance along the deck from its street end), a 14 m sag curve into a straight 14 percent grade, a 14 m crest curve into the deck's level. The deck is drawn down to the landing point exactly at road height; the two open slab ends at (188.38, ±3.38) are gone.
+  - Below 2.5 m: solid fill (the asphalt top only, no slab underside), the parapets' outer face running down to the ground as the retaining wall, and a headwall under the slab's end. Parapet step-down: 0.8 m over the fill with no rail or reflectors, sloping down to the road over its last 6 m (`parapets.js` takes a per-point depth and height). Edge lines continue along the road as lane lines to 0.4 m short of the stop line. The shared median piers keep one cap under both ramps.
+  - The two 1.2 m slate cubes at the expressway's inner end (the dark block on the deck in view 23) are removed: they stood above the deck, and no pier stands under them.
+  - `tests/js/ramp_landings.test.mjs` (14 tests): for each median ramp, the wheels stay within 5 cm of the drawn surface every 0.5 m along every car path through it, no grade over 14.3 percent, and the deck ends at its landing point at road height. `ramp_crossings` known open slab ends: 6 to 4 on v3 seed 7, 4 to 2 on v3 seed 3; zero new pairs; allowlist file unchanged (two self-pair entries, each median lane against its own slab, now first met at x 239.8 and 186.3 instead of 240.1 and 192.6).
+  - Views 25 (median landing at road level) and 26 (median landing from the sidewalk) added to `docs/visual/VIEWS.md`. ADR-0011 amendment (2026-11-19) and the style guide updated.
+  - Frame time (`?bench=1000x625`, median of 3 alternating loads against origin/main): view 25 42.8 to 43.5 ms, view 26 38.6 to 39.6, a high three-quarter view of the landing 38.8 to 39.4, view 23 44.1 to 44.4, view 01 38.2 to 38.7. Interchange triangles on v4 seed 7: 36,850 to 39,210 (+2,360). Screenshots stay local.
+  - Open slab ends left: both sweeps (ramps 0 and 3) and the slips of ramps 1 and 2.
+  - Phase 1 classes from the landing study (v4 seed 7; v3 seed 3 the same where it has the end):
+    - (a), fits its own space: both median ramps (done).
+    - (b), needs the kerb lane and a sidewalk stretch: the loops (ramps 1 and 2), the slips of ramps 0 and 3.
+    - (c), needs the walking network: both sweeps.
+    - Beyond (b), needs the split point moved: the slips of ramps 1 and 2, at 18.4 and 18.9 percent.
+  - Notes: the median ramps now rise earlier and about 0.4 m higher over the mid street. The fill's side reads as a plain tall wall from road level (polish later). The brown ramp tops come from the single reflection capture at (0, 60, 0): every surface reflects it by view direction only, and a street seen looking west at a grazing angle reads the same brown.
+  - The merge deleted `origin/ramp-landings`; the local branch is kept.
 - PR #70 (merge `3183d37`, head `9b6b9f3`, CI passed): interchange paint and the ramp crossings test, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged.
   - Edge lines on every ramp, loop, median ramp and slip road, and gore hatching where each slip road parts from or joins its ramp (`interchange.js` `rampMarkings`, cream paint from the palette). Interchange triangles on v4 seed 7: 34,636 to 36,850 (+2,214).
   - Reverted in the same PR (commit `9b6b9f3` undoes the low-end part of `7402dcf`): decks drawn down to the road, retaining walls at the low ends, and a straight grade on the loop slip roads. Car and walker paths ran through the walls, cars sank into the extension, and the slip grade held the slip ends over the cross street's lane. The findings are in the ADR-0011 amendment (2026-11-16).
@@ -101,6 +116,11 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - ADR-0011's interchange text may still describe the old slim barriers and the concrete deck; amend it in a later docs change.
 
 ## Checks
+- On `ramp-landings` @ `2140045` (this worktree without `snapshots/`, as in CI):
+  - Node suite → 127 tests: 123 passed, 0 failed, 4 todo.
+  - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped.
+  - `ruff check` and `ruff format --check` → pass.
+- CI on PR #71 head `2140045`: `lint-and-test` passed.
 - On `interchange-polish` @ `9b6b9f3` (this worktree without `snapshots/`, as in CI):
   - Node suite → 113 tests: 109 passed, 0 failed, 4 todo.
   - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped.
@@ -125,15 +145,13 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 
 ## Next
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
-1. (2a) Ramp landings. Each low end gets a landing point where one height function, shared by cars and the drawn surface, reaches road height with a smooth vertical curve. Below about 2.5 m the ramp is drawn as solid fill between retaining walls inside its own lanes, with parapets stepping down to a terminal. Past the landing point it is ordinary street asphalt with continuous markings and a taper or gore.
-   - First session: measure every low end and prototype one median ramp end, uncommitted.
-   - Then roll out to the 4 carriageway ends, with `ramp_crossings` sharpened and a frozen v4 seed 7 fixture.
-   - Also identify the dark block on the deck at the ramp split in view 23, and check why ramp tops read brown against the streets.
-2. (2b) Sweep low ends with the walking network (the sweep clipping todo in `ramp_clearance` and the sidewalk crossing at the sweep foot, ADR-0011 amendment).
-3. Dead-end fix at x -80.5, z -150 to -80.5 (view 08, ADR-0016 roadmap 2).
-4. HQ-to-court crossing and court paving contrast.
-5. Junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule. Start from the ADR-0016 addendum (2026-11-15) and `tests/fixtures/lane-moves-seed7.json`.
-6. The remaining `URBAN_MASTERPLAN` steps.
-7. Architecture variation, with a Blender pack bake-off. Check pack origin and pin the Blender MCP server first.
-8. Growth pace and landmark construction, in their own session.
-9. S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
+1. (2a continued) Landings for the class (b) ends: the loops of ramps 1 and 2 and the slips of ramps 0 and 3. Walkers cross the landed ramp lane at a marked crossing at road height. Start with a measure and prototype session on the loop of ramp 1.
+2. (2b) Sweeps with the walking network (the sweep clipping todo in `ramp_clearance` and the sidewalk crossing at the sweep foot, ADR-0011 amendment).
+3. (2c) The slips of ramps 1 and 2: move the split point so they can land at 14.3 percent or less (`ramp_grades` todo).
+4. Dead-end fix at x -80.5, z -150 to -80.5 (view 08, ADR-0016 roadmap 2).
+5. HQ-to-court crossing and court paving contrast.
+6. Junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule. Start from the ADR-0016 addendum (2026-11-15) and `tests/fixtures/lane-moves-seed7.json`.
+7. The remaining `URBAN_MASTERPLAN` steps.
+8. Architecture variation, with a Blender pack bake-off. Check pack origin and pin the Blender MCP server first.
+9. Growth pace and landmark construction, in their own session.
+10. S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
