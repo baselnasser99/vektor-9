@@ -284,6 +284,10 @@ export function buildInterchange(kit, root, layout, snap) {
       if (i % 6 === 3 && y > 2.5 && !onExpressway(layout, p)) part(root, box(1.4, y - 0.6, 1.4, 0), pier, x, (y - 0.6) / 2, z);
     });
   }
+  // The ramps' paint (rampMarkings), in the streets' paint, 1.2 cm over the deck.
+  const { lines: painted, hatch } = rampMarkings(layout), up = (L) => L.map(([x, y, z]) => [x, y + 0.012, z]);
+  for (const L of painted) part(root, ribbon(up(L), () => 0, () => 0.075, 0, 0, 1), strip);
+  for (const L of hatch) part(root, ribbon(up(L), () => 0, () => 0.15, 0, 0, 1), strip);
   // Parapets along every deck edge (barriers, drawn by parapets.js), the concrete shaded by vertex colours.
   const parapets = parapetGeometry(barriers(layout)), cast = kit.concrete(palette.weatheredConcrete).clone();
   cast.vertexColors = true;
@@ -319,6 +323,61 @@ export function decksDrawn(layout) {
     const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
     return { deck: d, pts, half: (i) => halves[i] };
   }));
+}
+
+// The paint on every deck but the expressway's (which has its own): a solid edge line each side of its lane, 0.3 m
+// inside the deck's edge and at most 2 m from its centre (a ramp is one lane; where it is wider, a shoulder), and
+// hatching in the gore where a slip road parts from or joins its ramp, between the two lanes' edge lines until the
+// decks part. Lines stop where a deck lies on the expressway or on another deck's lane at its level, and at a
+// street's corridor. Each as polylines [x, y, z] on the deck's top: { lines, hatch } (hatch: two-point stripes).
+const PAINT = 0.3, LANE_HALF = 2; // m: a line's inset from the deck edge; the most a line lies from the lane's centre
+export function rampMarkings(layout) {
+  const P = plan(layout);
+  if (P.markings) return P.markings;
+  const drawn = decksDrawn(layout), lines = [], hatch = [];
+  const W = (D, i) => Math.min(D.half(i) - PAINT, LANE_HALF);
+  // A deck as drawn, resampled every metre: [{ p, w, n }] (its point, its line offset, its normal).
+  const fine = (D) => D.pts.flatMap((b, i) => {
+    if (!i) return [];
+    const a = D.pts[i - 1], m = Math.max(1, Math.ceil(flat(a, b))), [na, nb] = [normal(D.pts, i - 1), normal(D.pts, i)];
+    return Array.from({ length: m + (i === D.pts.length - 1 ? 1 : 0) }, (_, k) => {
+      const t = k / m, n = [na[0] + (nb[0] - na[0]) * t, na[1] + (nb[1] - na[1]) * t], l = Math.hypot(...n);
+      return { p: a.map((v, j) => v + (b[j] - v) * t), w: W(D, i - 1) + (W(D, i) - W(D, i - 1)) * t, h: D.half(i - 1) + (D.half(i) - D.half(i - 1)) * t, n: [n[0] / l, n[1] / l] };
+    });
+  });
+  const samples = new Map(drawn.filter((D) => D.pts.length > 1).map((D) => [D, fine(D)]));
+  // Whether q lies in another deck's lane at its level (within that deck's lines).
+  const inLane = (q, self) => [...samples].some(([D, S]) => D !== self && S.some((s) => flat(s.p, q) < s.w - 0.05 && Math.abs(s.p[1] - q[1]) < 0.3));
+  const bare = (q) => onExpressway(layout, q) || (q[1] < 1.5 && inStreet(layout, q, (l) => l.w / 2)); // a street's corridor at its level, as the parapets
+  for (const [D, S] of samples) for (const side of [-1, 1]) {
+    let run = [];
+    const end = () => { if (run.length > 1) lines.push(run); run = []; };
+    for (const { p, w, n } of S) {
+      const q = [p[0] + side * n[0] * w, p[1], p[2] + side * n[1] * w];
+      if (bare(p) || bare(q) || inLane(q, D)) end();
+      else run.push(q);
+    }
+    end();
+  }
+  // The gore: along each slip, where its lane's edge toward the ramp lies outside the ramp's lane and the two decks
+  // still touch, a stripe every 2 m from that edge to the ramp's edge line, slanted back along the slip's way.
+  for (const s of P.slips) {
+    const D = drawn.find((x) => x.deck === s), R = drawn.find((x) => x.deck === s.ramp), S = samples.get(D), RS = samples.get(R);
+    if (!S || !RS) continue;
+    let last = -Infinity;
+    S.forEach(({ p, w, h, n }, k) => {
+      const r = RS.reduce((b, x) => (flat(x.p, p) < flat(b.p, p) ? x : b)), d = flat(r.p, p);
+      if (d > r.h + h || Math.abs(r.p[1] - p[1]) > 0.3 || k - last < 2) return; // apart, or not due
+      const toward = Math.sign((r.p[0] - p[0]) * n[0] + (r.p[2] - p[2]) * n[1]) || 1;
+      const a = [p[0] + toward * n[0] * w, p[1], p[2] + toward * n[1] * w], away = -toward;
+      const b = [r.p[0] + away * r.n[0] * r.w, r.p[1], r.p[2] + away * r.n[1] * r.w];
+      if (flat(a, r.p) < r.w + 0.2 || flat(b, p) < w + 0.2) return; // the lanes still overlap: no gore yet
+      const back = S[Math.max(0, k - 2)].p, along = [(p[0] - back[0]) / 2, (p[2] - back[2]) / 2];
+      hatch.push([a, [b[0] - along[0] * 1.5, b[1], b[2] - along[1] * 1.5]]);
+      last = k;
+    });
+  }
+  return (P.markings = { lines, hatch });
 }
 
 // Each deck's outline, for barriers and the deck seams: every deck as drawn (decksDrawn) with its two edges, L and
@@ -583,13 +642,13 @@ function normal(pts, i) {
   return [dz / l, -dx / l];
 }
 // A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
-// each point (dy a number, or dy(k) per point); top, both sides and bottom, each face with its own vertices (crisp
-// edges), UVs in metres (the top's in plan).
-function ribbon(pts, off, half, dy, h) {
+// each point (dy a number, or dy(k) per point); top, both sides and bottom (or the top alone: faces 1), each face
+// with its own vertices (crisp edges), UVs in metres (the top's in plan).
+function ribbon(pts, off, half, dy, h, faces = 4) {
   const lift = typeof dy === 'function' ? dy : () => dy;
   const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
   let run = 0;
-  for (let f = 0; f < 4; f++) {
+  for (let f = 0; f < faces; f++) {
     const base = pos.length / 3;
     pts.forEach((p, i) => {
       if (i) run += f === 0 ? Math.hypot(p[0] - pts[i - 1][0], p[2] - pts[i - 1][2]) : 0;
