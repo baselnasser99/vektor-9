@@ -24,11 +24,11 @@ const LIST = join('tests', 'fixtures', 'ramp-crossings-allowlist.json');
 const ALLOWED = { 'sim-v3-seed7-t288.json.gz': 60, 'sim-v3-seed3-t288.json.gz': 30 }; // the allowlist's length per fixture
 const OPEN = { // deck end -> [x, y, z] of its end, as drawn (decksDrawn)
   'sim-v3-seed7-t288.json.gz': {
-    'ramp 0 low': [299.85, 0.73, -49.38], 'ramp 3 low': [299.85, 0.73, 49.38], 'median 0 low': [188.38, 0.79, -3.38],
-    'median 1 low': [188.38, 0.79, 3.38], 'slip of ramp 1 low': [243.64, 1.02, -75.71], 'slip of ramp 2 low': [259.6, 0.68, 77.69],
+    'ramp 0 low': [299.85, 0.73, -49.38], 'ramp 3 low': [299.85, 0.73, 49.38], 'slip of ramp 1 low': [243.64, 1.02, -75.71],
+    'slip of ramp 2 low': [259.6, 0.68, 77.69], // the median ramps land (ramp_landings.test.mjs)
   },
   'sim-v3-seed3-t288.json.gz': {
-    'ramp 0 low': [299.85, 0.73, -49.38], 'ramp 3 low': [299.85, 0.73, 49.38], 'median 0 low': [188.38, 0.79, -3.38], 'median 1 low': [188.38, 0.79, 3.38],
+    'ramp 0 low': [299.85, 0.73, -49.38], 'ramp 3 low': [299.85, 0.73, 49.38],
   },
 };
 

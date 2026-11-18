@@ -63,10 +63,18 @@ function sink(colours) {
 export function parapetGeometry(runs) {
   const C = sink(true), S = sink(false), L = sink(false);
   let caps = 0;
-  runs.forEach(({ pts, cross, caps: cap, depth = 0.6 }, r) => {
-    const PROFILE = profile(depth);
+  runs.forEach(({ pts, cross, caps: cap, depth = 0.6, lift: lifts }, r) => {
     const s = [0];
     for (let i = 1; i < pts.length; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
+    // depth, and lift (the barrier's height as a share of its full height), may be given per point.
+    const per = (v, u) => {
+      if (!Array.isArray(v)) return v;
+      let i = 1;
+      while (i < s.length - 1 && s[i] < u) i++;
+      const f = Math.max(0, Math.min(1, (u - s[i - 1]) / (s[i] - s[i - 1] || 1)));
+      return v[i - 1] + (v[i] - v[i - 1]) * f;
+    };
+    const PROFILE = profile(Array.isArray(depth) ? 0.6 : depth);
     const len = s.at(-1);
     if (len < 0.05) return;
     // The run at u metres along it: its point, the cross vector there, the way it runs.
@@ -76,7 +84,7 @@ export function parapetGeometry(runs) {
       const [a, b] = [pts[i - 1], pts[i]], f = Math.max(0, Math.min(1, (u - s[i - 1]) / (s[i] - s[i - 1] || 1))), d = flat(a, b) || 1;
       return { p: a.map((v, k) => v + (b[k] - v) * f), c: [0, 1].map((k) => cross[i - 1][k] + (cross[i][k] - cross[i - 1][k]) * f), t: [(b[0] - a[0]) / d, (b[2] - a[2]) / d] };
     };
-    const taper = Math.min(TAPER, len / 2.5), lift = (u) => Math.min(1, cap[0] ? LOW + ((1 - LOW) * u) / taper : 1, cap[1] ? LOW + ((1 - LOW) * (len - u)) / taper : 1);
+    const taper = Math.min(TAPER, len / 2.5), lift = (u) => Math.min(1, cap[0] ? LOW + ((1 - LOW) * u) / taper : 1, cap[1] ? LOW + ((1 - LOW) * (len - u)) / taper : 1, lifts ? per(lifts, u) : 1);
     const point = ({ p, c }, o, y) => [p[0] + c[0] * o, p[1] + y, p[2] + c[1] * o];
     const inside = (u, h = lift(u)) => point(at(u), 0.25, 0.4 * h);
     // Sections at every point of the run, at both ends of every joint and where a taper starts.
@@ -84,7 +92,7 @@ export function parapetGeometry(runs) {
     for (let j = PANEL; j < len - PANEL / 3; j += PANEL) joints.push(j);
     const knots = [...new Set([...s, ...joints.flatMap((j) => [j - JOINT, j + JOINT]), ...(cap[0] ? [taper] : []), ...(cap[1] ? [len - taper] : [])])]
       .filter((u) => u >= 0 && u <= len).sort((a, b) => a - b);
-    const section = (u) => { const A = at(u), h = lift(u); return PROFILE.map(([o, y]) => point(A, o, y > 0 ? y * h : y)); };
+    const section = (u) => { const A = at(u), h = lift(u), d = per(depth, u); return PROFILE.map(([o, y], k) => point(A, o, k === 0 ? -d : y > 0 ? y * h : y)); };
     let prev = section(0);
     for (let m = 1; m < knots.length; m++) {
       const [u0, u1] = [knots[m - 1], knots[m]], next = section(u1), mid = (u0 + u1) / 2;
@@ -105,7 +113,13 @@ export function parapetGeometry(runs) {
       caps++;
     }
     // The cap rail on posts, short of each taper; at a run's mitred ends it runs on into the next run's.
-    const ua = cap[0] ? taper : 0, ub = cap[1] ? len - taper : len;
+    let ua = cap[0] ? taper : 0, ub = cap[1] ? len - taper : len;
+    if (lifts) { // only where the barrier stands at its full height
+      let i = 0, j = s.length - 1;
+      while (i < s.length && lifts[i] < 0.999) i++;
+      while (j >= 0 && lifts[j] < 0.999) j--;
+      [ua, ub] = [Math.max(ua, s[i] ?? len), Math.min(ub, s[j] ?? 0)];
+    }
     if (ub - ua < 0.5) return;
     const [o0, o1, y0, y1] = RAIL, rail = (u) => { const A = at(u); return [[o0, y1], [o1, y1], [o1, y0], [o0, y0]].map(([o, y]) => point(A, o, y)); };
     const stops = [ua, ...s.filter((u) => u > ua && u < ub), ub];
