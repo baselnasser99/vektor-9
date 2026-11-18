@@ -12,6 +12,7 @@ import { streetLamp, tree } from './parts.js';
 import { STREETS } from './world.js';
 import { kerbOf, lanesMay, stopAt } from './streets.js';
 import { parapetGeometry } from './parapets.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const HIGH = 7.8; // deck centre; its top at 8.4 m, its underside at 7.2 m, over signal arms (6.6 m) and lamps (6.9 m)
 const TOP = HIGH + 0.6;
@@ -24,6 +25,20 @@ const INNER = STREETS.boulevard.lanes[0]; // its inner lane, on west down the me
 const KERB = STREETS.street.lanes.at(-1); // the main street's outer lane
 const NEAR = STREETS.local.lanes[0]; // a cross street's lane (two-way or one-way alike), from its centre line
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+// A landed ramp's height d m up from its landing point (the median ramps): a sag curve SAG m long from
+// level into a straight GRADE, then a crest curve CREST m long into the deck's level, TOP. Below FILL it is drawn as
+// solid fill between walls, with lowered parapets ending in a sloped terminal at the landing point.
+const GRADE = 0.14, SAG = 14, CREST = 14, FILL = 2.5, LAND = 26; // LAND: the landing point, m east of the crossing at `west`
+export function landing(d) {
+  const top = landing.top;
+  if (d <= 0) return 0;
+  if (d < SAG) return (GRADE * d * d) / (2 * SAG);
+  if (d < top - CREST) return GRADE * (d - SAG / 2);
+  if (d < top) return TOP - (GRADE * (top - d) ** 2) / (2 * CREST);
+  return TOP;
+}
+landing.top = TOP / GRADE + (SAG + CREST) / 2; // m from the landing point to the top
+landing.at = (y) => y / GRADE + SAG / 2; // where it is y m up, on the straight grade
 
 // Whether this city has the interchange: the sim keeps its land as road terrain (schema 4).
 export const hasInterchange = (snap) => snap.tiles.some((t) => t.k === 'road');
@@ -60,12 +75,15 @@ export function plan(layout) {
     { pts: arc(xs + KERB + SWEEP, LANE + SWEEP, SWEEP, Math.PI, 1.5 * Math.PI, 0, TOP), from: [-1, LANE + SWEEP], to: ['out', xs + KERB + SWEEP] },
   ];
   const x0 = xs - KERB - LOOP - 2; // the deck ends where the loops peel off
-  // The median ramps: from just inside the deck's end down to the ground 22 m short of the crossing at `west`,
-  // then level to its stop line, in the inner lane's line, so they run on as the boulevard's inner lanes.
-  const xa = x0 + 6, xw = west.c + stopAt(west) + 0.05, foot = west.c + 22, down = [];
-  for (let x = xa; x > xw; x -= STEP) down.push([x, TOP * ease((x - foot) / (x0 - foot)), z0 - INNER]);
-  down.push([xw, 0, z0 - INNER]);
-  const median = [{ pts: down, half: 1.75 }, { pts: down.map(([x, y, z]) => [x, y, 2 * z0 - z]).reverse(), half: 1.75 }];
+  // The median ramps, in the inner lane's line, so they run on as the boulevard's inner lanes: from the stop line at
+  // `west` level along the road to a landing point LAND m east of that crossing, then up by one height function
+  // (landing) to just inside the deck's end. land: the landing point, in m along the deck from its street end.
+  const xa = x0 + 6, xw = west.c + stopAt(west) + 0.05, len = xa - xw, at = west.c + LAND - xw, top = landing.top, ds = new Set([0, at, at + landing.at(FILL)]);
+  for (let d = len; d > at; d -= STEP) ds.add(d);
+  for (const [a, b] of [[0, SAG], [top - CREST, top]]) for (let d = a; d <= b; d += 1) ds.add(at + d); // the vertical curves, a metre at a time
+  console.assert(at + top <= len, 'interchange: the median ramps cannot land in their own lanes');
+  const up = [...ds].sort((a, b) => a - b).map((d) => [xw + d, landing(d - at), z0 + INNER]); // from the street end
+  const median = [{ pts: up.map(([x, y, z]) => [x, y, 2 * z0 - z]).reverse(), half: 1.75, land: at }, { pts: up, half: 1.75, land: at }];
   // Slip roads: [ramp, how far along it they part, turning radius]. Down: off the ramp, round to the right onto
   // the cross street's near lane heading +x. Up: off that street's near lane heading -x, round to the right onto
   // the ramp; built backward from the ramp (a left turn), then turned round.
@@ -208,7 +226,6 @@ export function buildInterchange(kit, root, layout, snap) {
   // (the outer end runs on into the highway out of town, desert.js).
   part(root, ribbon([[x0, TOP, z0], [edge, TOP, z0]], () => 0, () => WIDE / 2, -1.2, 1.2), surface);
   part(root, box(0.05, 1.19, WIDE, 0), surface, x0 + 0.025, HIGH - 0.005, z0);
-  for (const s of [-1, 1]) part(root, box(1.2, 1.4, 1.2, 0), pier, x0 + 0.6, TOP + 0.5, z0 + s * 5.6); // the deck's end, between a median ramp and its loop
   // The barrier down the middle, end to end; the parapets along every deck edge are drawn below (barriers).
   part(root, box(len, 0.9, 0.7, 0), pier, mid, TOP + 0.45, z0);
   part(root, box(len, 0.06, 0.12, 0), strip, mid, TOP + 0.93, z0);
@@ -233,12 +250,15 @@ export function buildInterchange(kit, root, layout, snap) {
     part(root, box(2.2, HIGH - 0.6, 2.2, 0), pier, x, (HIGH - 0.6) / 2, z0);
     part(root, box(3, 0.8, 16, 0), pier, x, HIGH - 1, z0);
   }
-  // The median ramps share piers: one between them, its cap under both.
-  median[0].pts.forEach(([x, y], i) => {
-    if (i % 6 !== 3 || x > x0 || y < 2.5) return;
+  // The median ramps share piers, every 24 m above the fill: one between them, its cap under both (they have one
+  // height function, so they stand at one height).
+  for (let x = plan(layout).xa - 12; x > layout.lines.at(-3).c; x -= 24) {
+    const [y, y1] = median.map((M) => nearest(M.pts, [x, M.pts[0][2]])[1]);
+    console.assert(Math.abs(y - y1) < 0.01, 'interchange: the median ramps differ in height at a shared pier');
+    if (x > x0 || y < FILL) continue;
     part(root, box(1.6, y - 1.2, 1.6, 0), pier, x, (y - 1.2) / 2, z0);
     part(root, box(2.4, 0.6, 9.6, 0), pier, x, y - 0.93, z0);
-  });
+  }
   gantries(kit, root, layout);
   // Every other deck, as drawn (decksDrawn), on slim piers. Where it lies on another deck at its level or under the
   // expressway's, its top is a few centimetres under that deck's (no flicker; a slip road under its ramp); elsewhere
@@ -274,10 +294,19 @@ export function buildInterchange(kit, root, layout, snap) {
       halves.push(rawHalf(i));
       under.push(on(p));
     });
-    const half = (i) => halves[i];
-    part(root, ribbon(pts, () => 0, half, (i) => (under[i] ? (d.ramp !== undefined ? -0.66 : -0.63) : -0.6), 0.6), surface);
+    const half = (i) => halves[i], dy = (i) => (under[i] ? (d.ramp !== undefined ? -0.66 : -0.63) : -0.6);
     const [e, f] = raw[0][1] < raw.at(-1)[1] ? [0, 1] : [raw.length - 1, raw.length - 2], l = Math.hypot(raw[f][0] - raw[e][0], raw[f][2] - raw[e][2]);
-    joint(raw[e], [(raw[f][0] - raw[e][0]) / l, (raw[f][2] - raw[e][2]) / l], 2 * rawHalf(e), raw[e][1]); // its low end, at the street
+    if (d.land === undefined) {
+      part(root, ribbon(pts, () => 0, half, dy, 0.6), surface);
+      joint(raw[e], [(raw[f][0] - raw[e][0]) / l, (raw[f][2] - raw[e][2]) / l], 2 * rawHalf(e), raw[e][1]); // its low end, at the street
+    } else { // a landed ramp (one slab, so one mesh): the deck down to FILL, then the top alone down to the landing point, closed by the walls
+      const up = pts[0][1] < pts.at(-1)[1], fill = (p) => p[1] < FILL + 1e-6, k = up ? pts.findLastIndex(fill) : pts.findIndex(fill);
+      const [a, b] = [pts.slice(0, k + 1), pts.slice(k)], deck = (P, o) => ribbon(P, () => 0, (i) => halves[o + i], (i) => dy(o + i), 0.6), top = (P, o) => ribbon(P, () => 0, (i) => halves[o + i], 0, 0, 1);
+      part(root, mergeGeometries(up ? [top(a, 0), deck(b, k)] : [deck(a, 0), top(b, k)]), surface); // its first point first
+      // A headwall under the deck's end over the fill, from the ground to its underside, flush with the slab's end.
+      const [p, q] = [pts[k], pts[up ? k + 1 : k - 1]], t = [(q[0] - p[0]) / flat(p, q), (q[2] - p[2]) / flat(p, q)], hw = p[1] - 0.6;
+      part(root, box(0.3, hw, 2 * halves[k], 0), kit.concrete(palette.weatheredConcrete), p[0] - t[0] * 0.15, hw / 2, p[2] - t[1] * 0.15).rotation.y = Math.atan2(-t[1], t[0]);
+    }
     if (median.includes(d)) continue;
     pts.forEach((p, i) => {
       const [x, y, z] = p;
@@ -285,8 +314,8 @@ export function buildInterchange(kit, root, layout, snap) {
     });
   }
   // The ramps' paint (rampMarkings), in the streets' paint, 1.2 cm over the deck.
-  const { lines: painted, hatch } = rampMarkings(layout), up = (L) => L.map(([x, y, z]) => [x, y + 0.012, z]);
-  for (const L of painted) part(root, ribbon(up(L), () => 0, () => 0.075, 0, 0, 1), strip);
+  const { lines: painted, hatch, road } = rampMarkings(layout), up = (L) => L.map(([x, y, z]) => [x, y + 0.012, z]);
+  for (const L of [...painted, ...road]) part(root, ribbon(up(L), () => 0, () => 0.075, 0, 0, 1), strip);
   for (const L of hatch) part(root, ribbon(up(L), () => 0, () => 0.15, 0, 0, 1), strip);
   // Parapets along every deck edge (barriers, drawn by parapets.js), the concrete shaded by vertex colours.
   const parapets = parapetGeometry(barriers(layout)), cast = kit.concrete(palette.weatheredConcrete).clone();
@@ -318,8 +347,9 @@ export function decksDrawn(layout) {
     const along = [0];
     for (let i = 1; i < d.pts.length; i++) along.push(along[i - 1] + Math.hypot(d.pts[i][0] - d.pts[i - 1][0], d.pts[i][2] - d.pts[i - 1][2]));
     const low = (i) => (d.pts[0][1] < 1 ? along[i] : along.at(-1) - along[i]); // from its street end
-    const keep = d.pts.flatMap((p, i) => (p[1] < 0.6 && inStreet(layout, p, kerbOf) ? [] : [i]));
-    const pts = keep.map((i) => (inStreet(layout, d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
+    // A landed ramp is drawn down to its landing point, at its own height (the road past it is the street's).
+    const keep = d.pts.flatMap((p, i) => ((d.land !== undefined ? low(i) < d.land - 1e-6 : p[1] < 0.6 && inStreet(layout, p, kerbOf)) ? [] : [i]));
+    const pts = keep.map((i) => (d.land === undefined && inStreet(layout, d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
     const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
     return { deck: d, pts, half: (i) => halves[i] };
   }));
@@ -334,7 +364,7 @@ const PAINT = 0.3, LANE_HALF = 2; // m: a line's inset from the deck edge; the m
 export function rampMarkings(layout) {
   const P = plan(layout);
   if (P.markings) return P.markings;
-  const drawn = decksDrawn(layout), lines = [], hatch = [];
+  const drawn = decksDrawn(layout), lines = [], hatch = [], road = [];
   const W = (D, i) => Math.min(D.half(i) - PAINT, LANE_HALF);
   // A deck as drawn, resampled every metre: [{ p, w, n }] (its point, its line offset, its normal).
   const fine = (D) => D.pts.flatMap((b, i) => {
@@ -352,10 +382,16 @@ export function rampMarkings(layout) {
   for (const [D, S] of samples) for (const side of [-1, 1]) {
     let run = [];
     const end = () => { if (run.length > 1) lines.push(run); run = []; };
+    const land = D.deck.land !== undefined, cut = land ? (q) => onExpressway(layout, q) : bare; // a landed ramp's lines run on down to the road
     for (const { p, w, n } of S) {
       const q = [p[0] + side * n[0] * w, p[1], p[2] + side * n[1] * w];
-      if (bare(p) || bare(q) || inLane(q, D)) end();
+      if (cut(p) || cut(q) || inLane(q, D)) end();
       else run.push(q);
+    }
+    if (land && run.length) { // and past the landing point on along its lane as lane lines on the road, to just short of the stop line
+      const first = D.deck.pts[0][1] < D.deck.pts.at(-1)[1], a = first ? D.pts[0] : D.pts.at(-1), b = first ? D.deck.pts[0] : D.deck.pts.at(-1); // its landing point, its street end
+      const l = flat(a, b) - 0.4, last = flat(run[0], a) < flat(run.at(-1), a) ? run[0] : run.at(-1);
+      road.push([last, [last[0] + ((b[0] - a[0]) / flat(a, b)) * l, 0, last[2] + ((b[2] - a[2]) / flat(a, b)) * l]]);
     }
     end();
   }
@@ -377,7 +413,7 @@ export function rampMarkings(layout) {
       last = k;
     });
   }
-  return (P.markings = { lines, hatch });
+  return (P.markings = { lines, hatch, road });
 }
 
 // Each deck's outline, for barriers and the deck seams: every deck as drawn (decksDrawn) with its two edges, L and
@@ -452,7 +488,7 @@ export function barriers(layout) {
   const atStreet = (q) => q[1] < 1.5 && inStreet(layout, q, (l) => l.w / 2);
   const open = (self, q) => {
     if (!self) return shapes.some((S) => Math.abs((heightOn(S, q) ?? Infinity) - TOP) < 1.2);
-    return onExpressway(layout, q) || atStreet(q) || shapes.some((S) => S !== self && Math.abs((heightOn(S, q) ?? Infinity) - q[1]) < 1.2);
+    return onExpressway(layout, q) || (self.D.deck.land === undefined && atStreet(q)) || shapes.some((S) => S !== self && Math.abs((heightOn(S, q) ?? Infinity) - q[1]) < 1.2);
   };
   // Every edge: its line, the way inward at each of its points, and whose edge it is (null: the expressway's).
   const edges = [
@@ -481,7 +517,7 @@ export function barriers(layout) {
       for (let m = 1; m < t.length; m++) {
         if (t[m] - t[m - 1] < 1e-9) continue;
         if (open(self, at((t[m - 1] + t[m]) / 2))) { close(); continue; }
-        run ??= { pts: [at(t[m - 1])], refs: [dir], corner: [t[m - 1] === 0], depth: self ? 0.6 : 1.2 }; // its deck's thickness: a ramp's, the expressway's
+        run ??= { pts: [at(t[m - 1])], refs: [dir], corner: [t[m - 1] === 0], depth: self ? 0.6 : 1.2, land: self?.D.deck.land !== undefined }; // its deck's thickness: a ramp's, the expressway's
         run.pts.push(at(t[m]));
         run.refs.push(dir);
         run.corner.push(t[m] === 1);
@@ -525,7 +561,20 @@ export function barriers(layout) {
     A.run.cross[A.i] = B.run.cross[B.i] = m;
     A.run.caps[A.e] = B.run.caps[B.e] = false;
   }
-  for (const run of runs) delete run.normals;
+  // Along a landed ramp: over the fill the outer face runs down to the ground as its retaining wall and the barrier
+  // is 0.8 m high (no rail); over its last TERMINAL m it slopes down to the deck at the landing point.
+  const TERMINAL = 6;
+  for (const run of runs) {
+    const land = run.land;
+    delete run.normals;
+    delete run.land;
+    if (!land) continue;
+    const s = [0];
+    for (let i = 1; i < run.pts.length; i++) s.push(s[i - 1] + flat(run.pts[i], run.pts[i - 1]));
+    const low = run.pts[0][1] < run.pts.at(-1)[1] ? (i) => s[i] : (i) => s.at(-1) - s[i]; // from its low end
+    run.depth = run.pts.map((p) => (p[1] <= FILL + 1e-3 ? p[1] + 0.02 : 0.6));
+    run.lift = run.pts.map((p, i) => (p[1] <= FILL + 1e-3 ? 0.8 / 0.9 : 1) * Math.min(1, low(i) / TERMINAL));
+  }
   return (P.barriers = runs);
 }
 
