@@ -1,6 +1,7 @@
 // No walker or car path at the interchange runs through a wall, parapet or deck slab, except the crossings that
 // were there before (tests/fixtures/ramp-crossings-allowlist.json, measured on origin/main at 1d9d988, less the six
-// on each fixture the landed loops removed (ADR-0011, amendment of 2026-11-19); the list may only shrink). On the frozen v3 fixtures:
+// on each fixture the landed loops removed (ADR-0011, amendment of 2026-11-19) and the fourteen the landed sweeps removed
+// (amendment of 2026-11-20); the list may only shrink). On the frozen v3 fixtures:
 // - every car lane and every move through a node (life.js edges) is swept as a box 1.8 m wide, from 0.6 m under to
 //   0.9 m over its path (the path runs 0.65 m over the road);
 // - every walking network edge (people.js network), node to node, at three distances in from the kerb and two wait
@@ -21,15 +22,12 @@ import { palette } from '../../web/src/palette.js';
 import { city, fixture } from './harness.mjs';
 
 const LIST = join('tests', 'fixtures', 'ramp-crossings-allowlist.json');
-const ALLOWED = { 'sim-v3-seed7-t288.json.gz': 54, 'sim-v3-seed3-t288.json.gz': 24 }; // the allowlist's length per fixture
+const ALLOWED = { 'sim-v3-seed7-t288.json.gz': 40, 'sim-v3-seed3-t288.json.gz': 10 }; // the allowlist's length per fixture
 const OPEN = { // deck end -> [x, y, z] of its end, as drawn (decksDrawn)
   'sim-v3-seed7-t288.json.gz': {
-    'ramp 0 low': [299.85, 0.73, -49.38], 'ramp 3 low': [299.85, 0.73, 49.38], 'slip of ramp 1 low': [243.64, 1.02, -75.71],
-    'slip of ramp 2 low': [259.6, 0.68, 77.69], // the median ramps land (ramp_landings.test.mjs)
+    'slip of ramp 1 low': [243.64, 1.02, -75.71], 'slip of ramp 2 low': [259.6, 0.68, 77.69], // the median ramps, loops and sweeps land (ramp_landings.test.mjs)
   },
-  'sim-v3-seed3-t288.json.gz': {
-    'ramp 0 low': [299.85, 0.73, -49.38], 'ramp 3 low': [299.85, 0.73, 49.38],
-  },
+  'sim-v3-seed3-t288.json.gz': {},
 };
 
 // A kit whose materials carry their maker's name, so the faces can be told apart.

@@ -128,7 +128,16 @@ export function network(layout) {
   // the mid street carries cars and the crossing has lights (walkLight; at crossings without lights cars give way),
   // straight over an alley, a market lane or the headquarters' campus; and over the low end of any ramp that crosses
   // the sidewalk (the interchange), once no car is on it, the cars short of it then giving way. Points as in cross below.
-  const ramps = layout.expressway ? plan(layout).decks.flatMap((deck) => sidewalkCrossings(layout, deck.pts)) : [];
+  const decks = layout.expressway ? plan(layout).decks : [];
+  const ramps = decks.filter((d) => !d.landing?.closed).flatMap((deck) => sidewalkCrossings(layout, deck.pts));
+  // Where a ramp's foot closes the sidewalk (a sweep's fill, interchange.js sweepProfile), nobody walks that
+  // sidewalk from corner to corner: walkers take the far side. shortcut: drops the whole corner-to-corner edge (both
+  // blocks either side of the mid street); split it at the mid street if walkers should keep the far block.
+  const shut = decks.filter((d) => d.landing?.closed).flatMap((deck) => sidewalkCrossings(layout, deck.pts));
+  const closed = (axis, a, c) => {
+    const [f, g] = [node(a, 2.4), node(c, 2.4)], lateral = axis === 'x' ? f[1] : f[0], [u0, u1] = axis === 'x' ? [f[0], g[0]] : [f[1], g[1]];
+    return shut.some((w) => w.axis === axis && Math.abs(lateral - w.c) <= 3 && Math.min(w.u0, w.u1) > Math.min(u0, u1) && Math.max(w.u0, w.u1) < Math.max(u0, u1));
+  };
   const side = (axis, b, M, from, to) => (p) => {
     const m = layout.mids[b], [f, g] = [node(from.id, p.lane), node(to.id, p.lane)], [u0, u1] = axis === 'x' ? [f[0], g[0]] : [f[1], g[1]];
     const d = Math.sign(u1 - u0), lateral = axis === 'x' ? f[1] : f[0], pt = (u, wait, tag) => (axis === 'x' ? [u, lateral, wait, tag] : [lateral, u, wait, tag]);
@@ -145,6 +154,7 @@ export function network(layout) {
   for (let K = 0; K < G; K++) for (let b = 0; b < S; b++) {
     const M = lines[(K >> 1) + (K & 1)];
     for (const [axis, a, c] of [['x', 2 * b + K * G, 2 * b + 1 + K * G], ['z', K + 2 * b * G, K + (2 * b + 1) * G]]) {
+      if (closed(axis, a, c)) continue;
       link(a, c, 'side', side(axis, b, M, { id: a }, { id: c }));
       link(c, a, 'side', side(axis, b, M, { id: c }, { id: a }));
     }
@@ -277,8 +287,9 @@ function places(k, snap, layout, net, info, seats, food, lamps) {
   ];
   const place = (sd, a, inset) => (sd.along === 'x' ? [a, sd.kerb + sd.in * inset] : [sd.kerb + sd.in * inset, a]);
   const outward = (sd) => (sd.along === 'x' ? (sd.in > 0 ? Math.PI : 0) : sd.in > 0 ? -Math.PI / 2 : Math.PI / 2);
+  const cuts = layout.expressway ? landCuts(layout).map((c) => c.notch) : [];
   const add = (members, acts, corp = false) => {
-    members = members.filter((m) => Math.hypot(m.x - hub, m.z - hub) > PLAZA - 2); // never on the roundabout
+    members = members.filter((m) => Math.hypot(m.x - hub, m.z - hub) > PLAZA - 2 && !cuts.some((P) => insideRing(P, m.x, m.z))); // never on the roundabout, nor in a landed ramp's cut (its lane, its fill)
     if (members.length) list.push({ members, acts, corp });
   };
   const ring = (cx, cz, count, r) => { // a small group facing its middle

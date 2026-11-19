@@ -75,6 +75,9 @@ export function plan(layout) {
     { pts: arc(xs - KERB - LOOP, LANE + LOOP, LOOP, 0, 1.5 * Math.PI, 0, TOP), from: [1, LANE + LOOP], to: ['out', xs - KERB - LOOP], loop: true },
     { pts: arc(xs + KERB + SWEEP, LANE + SWEEP, SWEEP, Math.PI, 1.5 * Math.PI, 0, TOP), from: [-1, LANE + SWEEP], to: ['out', xs + KERB + SWEEP] },
   ];
+  // The sweeps land in the main street, their feet closing its sidewalk (sweepProfile); re-heighted before their slip
+  // roads are built, so each slip lies level beside its sweep as before.
+  const main = layout.lines.at(-2), swept = [0, 3].map((k) => sweepProfile(ramps[k], main));
   const x0 = xs - KERB - LOOP - 2; // the deck ends where the loops peel off
   // The median ramps, in the inner lane's line, so they run on as the boulevard's inner lanes: from the stop line at
   // `west` level along the road to a landing point LAND m east of that crossing, then up by one height function
@@ -103,7 +106,7 @@ export function plan(layout) {
     return [{ pts: up ? pts.reverse() : pts, half: 2.4, ramp, at: i, up, street: l, z, dir, x }];
   });
   // The loops and the sweeps' slip roads land on their blocks before the street's sidewalk (landEnd).
-  const main = layout.lines.at(-2);
+  [0, 3].forEach((k, j) => landEnd(ramps[k], main, 0, slips.find((x) => x.ramp === ramps[k]), swept[j])); // the slip's fork index moves with the points put in before it
   for (const k of [1, 2]) {
     const r = ramps[k], fork = slips.find((s) => s.ramp === r);
     landEnd(r, main, 0, fork);
@@ -124,24 +127,58 @@ export function plan(layout) {
 // z); fork: a loop's slip road, whose point index moves with the points put in before it. Returns false, leaving d
 // as it was, where it cannot land within GRADE (or, for a slip, its whole length within GRADE_MAX).
 const GRADE_MAX = 0.143;
-function landEnd(d, street, across, fork) {
+// The point v m along polyline P (S its distances), and the normal of the 3 m chord centred on it (smooth, so offsets never step back).
+function along(P, S, v) {
+  const pt = (u) => {
+    u = Math.max(0, Math.min(S.at(-1), u));
+    let i = 1;
+    while (i < P.length - 1 && S[i] < u) i++;
+    const f = (u - S[i - 1]) / (S[i] - S[i - 1]);
+    return P[i - 1].map((c, k) => c + (P[i][k] - c) * f);
+  };
+  const [a, b] = [pt(v - 1.5), pt(v + 1.5)], l = flat(a, b);
+  return { p: pt(v), n: [-(b[2] - a[2]) / l, (b[0] - a[0]) / l] };
+}
+// A sweep's foot (ADR-0011, option B of the sweep study): it meets the main street's kerb lane at a slant,
+// so it lands at road height in the street itself, at the landing point where its deck (drawn 1.8 m to the side
+// there, widening from it) clears the kerb lane's cars, and its fill closes the sidewalk under it (walkers keep to
+// the far side, people.js). One height function from that point up: a sag curve, a straight grade and a crest curve
+// into the expressway's level at its top. Sets the heights of its points (so its slip road, built after, lies level
+// beside it) and returns { sL, Y } for landEnd, which adds the points over the curve and the fill.
+const SWEEP_CURVE = 10;
+// The inbound sweep's wait line at its merge into the main street, m short of the node (life.js hold). It used to come
+// from the sidewalk crossing on its lane (a metre short of it); with the sidewalk closed there is none, and traffic
+// outcomes move with this line (it exposes the junction overlap at (293, -80)). Held at that value (origin/main at
+// f52f852) until the junction overlap guard lands; then derive it from the merge alone.
+const SWEEP_HOLD = 24.26;
+function sweepProfile(d, street) {
   const first = d.pts[0][1] < d.pts.at(-1)[1], pts = first ? d.pts : [...d.pts].reverse(), n = pts.length - 1, s = [0]; // from its street end
   for (let i = 1; i <= n; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
-  const side = Math.sign(pts[n][across] - street.c), wide = (v) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, v / 25)); // as decksDrawn
-  const along = (P, S, v) => { // the point v m along polyline P (S its distances), and the normal of the 3 m chord centred on it (smooth, so offsets never step back)
-    const pt = (u) => {
-      u = Math.max(0, Math.min(S.at(-1), u));
-      let i = 1;
-      while (i < P.length - 1 && S[i] < u) i++;
-      const f = (u - S[i - 1]) / (S[i] - S[i - 1]);
-      return P[i - 1].map((c, k) => c + (P[i][k] - c) * f);
-    };
-    const [a, b] = [pt(v - 1.5), pt(v + 1.5)], l = flat(a, b);
-    return { p: pt(v), n: [-(b[2] - a[2]) / l, (b[0] - a[0]) / l] };
-  };
-  // The landing point: past it the deck and both its edges are beyond the sidewalk's back edge.
+  const side = Math.sign(pts[n][0] - street.c), clear = Math.abs(pts[0][0] - street.c) + 1; // the kerb lane's cars reach 0.95 m from its centre, its own end
   let sL = 0;
   for (let v = 0; v < s[n] / 2; v += 0.05) {
+    const { p, n: m } = along(pts, s, v);
+    if ([-1, 1].some((o) => side * (p[0] + m[0] * o * 1.8 - street.c) < clear)) sL = v + 0.05;
+  }
+  const top = s[n] - sL, g = TOP / (top - SWEEP_CURVE), c = SWEEP_CURVE;
+  const Y = (v) => {
+    const u = v - sL;
+    if (u <= 0) return 0;
+    if (u < c) return (g * u * u) / (2 * c);
+    if (u < top - c) return g * (u - c / 2);
+    return u < top ? TOP - (g * (top - u) ** 2) / (2 * c) : TOP;
+  };
+  console.assert(g <= GRADE_MAX, 'interchange: a sweep cannot land within its grade');
+  pts.forEach((p, i) => { p[1] = Y(s[i]); });
+  return { sL, Y };
+}
+function landEnd(d, street, across, fork, sweep) {
+  const first = d.pts[0][1] < d.pts.at(-1)[1], pts = first ? d.pts : [...d.pts].reverse(), n = pts.length - 1, s = [0]; // from its street end
+  for (let i = 1; i <= n; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
+  const side = Math.sign(pts[n][across] - street.c), w0 = sweep?.sL ?? 0, wide = (v) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, Math.max(0, v - w0) / 25)); // as decksDrawn
+  // The landing point: past it the deck and both its edges are beyond the sidewalk's back edge (the sweep's: its own).
+  let sL = sweep?.sL ?? 0;
+  for (let v = 0; !sweep && v < s[n] / 2; v += 0.05) {
     const { p, n: m } = along(pts, s, v);
     if ([-1, 0, 1].some((o) => side * (p[across] + (across ? m[1] : m[0]) * o * wide(v) - street.c) < street.w / 2)) sL = v + 0.05;
   }
@@ -150,16 +187,16 @@ function landEnd(d, street, across, fork) {
   const slope = (k) => (pts[k + 1][1] - pts[k - 1][1]) / (s[k + 1] - s[k - 1]), cubic = (l, y1, m1) => (t) => y1 * (3 * t * t - 2 * t ** 3) + m1 * l * (t ** 3 - t * t);
   const steepest = (l, y1, m1) => Math.max(...Array.from({ length: 101 }, (_, k) => k / 100).map((t) => Math.abs((y1 * 6 * t * (1 - t)) / l + m1 * (3 * t * t - 2 * t))));
   const above = (k) => pts.slice(k).every((p, i, A) => !i || Math.abs(p[1] - A[i - 1][1]) <= GRADE_MAX * flat(p, A[i - 1]));
-  const J = pts.findIndex((p, k) => k > 0 && k < n && s[k] > sL + 5 && s[k] <= top && steepest(s[k] - sL, p[1], slope(k)) <= GRADE && (!d.ramp || above(k)));
+  const J = sweep ? n + 1 : pts.findIndex((p, k) => k > 0 && k < n && s[k] > sL + 5 && s[k] <= top && steepest(s[k] - sL, p[1], slope(k)) <= GRADE && (!d.ramp || above(k)));
   if (J < 0) return false;
-  const sJ = s[J], f = cubic(sJ - sL, pts[J][1], slope(J)), ss = new Set([sL]);
-  const Y = (v) => { // from the cubic below the join, as it was above it (along its straight pieces)
+  const sJ = sweep ? s[n] : s[J], f = sweep ? null : cubic(sJ - sL, pts[J][1], slope(J)), ss = new Set([sL]);
+  const Y = sweep ? sweep.Y : (v) => { // from the cubic below the join, as it was above it (along its straight pieces)
     if (v <= sL) return 0;
     if (v < sJ) return f((v - sL) / (sJ - sL));
     const k = s.findIndex((x) => x >= v);
     return pts[k - 1][1] + ((pts[k][1] - pts[k - 1][1]) * (v - s[k - 1])) / (s[k] - s[k - 1]);
   };
-  const end = s[Math.min(n, pts.findIndex((p, k) => k >= J && p[1] >= FILL) + 1)]; // a point past where the fill ends
+  const end = s[Math.min(n, pts.findIndex((p, k) => (sweep || k >= J) && p[1] >= FILL) + 1)]; // a point past where the fill ends
   for (let v = Math.ceil(sL); v < end; v += 1) ss.add(v); // a metre at a time, as the medians' curves, and on over the fill (its top stays flat to the centimetre)
   for (let v = 2; v < sL; v += 2) ss.add(v); // and every 2 m on to the street, level
   const out = pts.map((p, k) => [p, k, k < J ? Y(s[k]) : p[1]]);
@@ -177,7 +214,7 @@ function landEnd(d, street, across, fork) {
   d.land = S[iL];
   const half = Math.abs(pts[0][across] - street.c), k0 = kerbOf(street) - half - 0.1; // a little inside the street lane's half-width: its edge leaves the kerb line at an angle, not along it
   const cut = (v) => (v >= S[iL] ? wide(v) + 0.05 : k0 + ((wide(S[iL]) + 0.05 - k0) * v) / S[iL]); // narrowing to the street lane's width at the street
-  d.landing = { at: (v) => along(P, S, v), cut, sL: S[iL], sJ, sF, main: street.kind.x === 'street' || street.kind.z === 'street', street, across };
+  d.landing = { at: (v) => along(P, S, v), cut, sL: S[iL], sJ, sF, main: !sweep && (street.kind.x === 'street' || street.kind.z === 'street'), closed: !!sweep, street, across };
   return true;
 }
 
@@ -419,7 +456,7 @@ export function buildInterchange(kit, root, layout, snap) {
   // way, 0.5 m wide every metre, where the sidewalk and its cut meet (landCuts).
   const main = layout.lines.at(-2), [u0, u1] = [main.c - main.w / 2, main.c - kerbOf(main)], bars = [];
   for (const { crossing, main: marked } of landCuts(layout)) {
-    if (!marked) continue; // the slips' cuts: nobody walks the mid streets
+    if (!marked) continue; // the slips' cuts (nobody walks the mid streets) and the sweeps' closed feet
     const zs = crossing.map((p) => p[1]);
     for (let z = Math.ceil(Math.min(...zs)) + 0.5; z < Math.max(...zs); z += 1) {
       const xs = []; // where the bar's centre line crosses the crossing's outline, within the sidewalk
@@ -465,7 +502,8 @@ export function decksDrawn(layout) {
     // A landed ramp is drawn down to its landing point, at its own height (the road past it is the street's).
     const keep = d.pts.flatMap((p, i) => ((d.land !== undefined ? low(i) < d.land - 1e-6 : p[1] < 0.6 && inStreet(layout, p, kerbOf)) ? [] : [i]));
     const pts = keep.map((i) => (d.land === undefined && inStreet(layout, d.pts[i], (l) => l.w / 2) ? [d.pts[i][0], Math.max(d.pts[i][1], 0.26), d.pts[i][2]] : d.pts[i]));
-    const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, low(i) / 25)));
+    const w0 = d.landing?.closed ? d.land : 0; // a sweep widens from its landing point, clear of the kerb lane (sweepProfile)
+    const halves = keep.map((i) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, Math.max(0, low(i) - w0) / 25)));
     return { deck: d, pts, half: (i) => halves[i] };
   }));
 }
@@ -687,6 +725,24 @@ export function barriers(layout) {
     const s = [0];
     for (let i = 1; i < run.pts.length; i++) s.push(s[i - 1] + flat(run.pts[i], run.pts[i - 1]));
     const low = run.pts[0][1] < run.pts.at(-1)[1] ? (i) => s[i] : (i) => s.at(-1) - s[i]; // from its low end
+    // Over the fill each point stands on the highest deck top under its section (its foot reaches 0.56 m in along
+    // cross, further at a mitred nose): where a slip road parts, its deck lies a little above the fill beside it.
+    // In place, so a joined end's partner run stays on the same point.
+    // Between points too (its cross is mitred from the outline, not the deck's own section, so on a steep curve its
+    // foot lands a little further along, higher): both ends are raised by the most it is short anywhere between.
+    const short = (p, c, y) => Math.max(0, ...[0.25, 0.5, 0.75, 1].flatMap((f) => shapes.map((S) => heightOn(S, [p[0] + c[0] * 0.56 * f, 0, p[2] + c[1] * 0.56 * f])))
+      .filter((h) => h !== null && h < y + 0.3).map((h) => h - y));
+    const raise = run.pts.map((p, i) => (p[1] > FILL + 0.3 ? 0 : short(p, run.cross[i], p[1])));
+    for (let i = 1; i < run.pts.length; i++) {
+      const [a, b] = [run.pts[i - 1], run.pts[i]];
+      if (Math.min(a[1], b[1]) > FILL + 0.3) continue;
+      for (const t of [0.25, 0.5, 0.75]) {
+        const p = a.map((v, k) => v + (b[k] - v) * t), c = [0, 1].map((k) => run.cross[i - 1][k] + (run.cross[i][k] - run.cross[i - 1][k]) * t), r = short(p, c, p[1]);
+        raise[i - 1] = Math.max(raise[i - 1], r);
+        raise[i] = Math.max(raise[i], r);
+      }
+    }
+    run.pts.forEach((p, i) => { p[1] += raise[i]; });
     run.depth = run.pts.map((p) => (p[1] <= FILL + 1e-3 ? p[1] : 0.6)); // over the fill down to the road (a loop's or slip's in its cut, landCuts)
     run.foot = run.pts.map((p) => (p[1] <= FILL + 0.3 ? 0 : 0.35)); // and its foot on the fill's top, not down into it (just past it too, so it never dips)
     run.lift = run.pts.map((p, i) => (p[1] <= FILL + 1e-3 ? 0.8 / 0.9 : 1) * Math.min(1, low(i) / TERMINAL));
@@ -915,15 +971,18 @@ export function interchangeLanes(roads, layout, reach) {
     pts: pts.map(([x, y, z]) => [x, y + 0.65, z]), walks: sidewalkCrossings(layout, pts), ...extra }); // walks: where it gives way to walkers
   for (const [r, start, endN] of ends) {
     const s = slips.find((p) => p.ramp === r), share = r === rIn ? 3 : undefined; // inbound, half go right and half round the loop
+    // A sweep whose foot closes the sidewalk (sweepProfile) has no walkers to give way to; the inbound one's wait at
+    // its merge into the main street is pinned (SWEEP_HOLD), as it stood when walkers still crossed there.
+    const shut = r.landing?.closed ? { walks: [] } : {}, foot = r === rIn && shut.walks ? { pinnedHold: SWEEP_HOLD } : {};
     if (!s) {
-      ramp(r.pts, start, endN, { share });
+      ramp(r.pts, start, endN, { share, ...shut, ...foot });
       continue;
     }
     // The ramp's pieces end at point k - 1 and start at k, and the slip starts (down) or ends (up) at `at`, one of
     // the two: every connector through the node is a point's gap long. A zero-long one, cars could never leave.
     const N = node(r.pts[s.at][0], r.pts[s.at][2]), k = s.up ? s.at + 1 : s.at;
-    ramp(r.pts.slice(0, k), start, N, { share });
-    ramp(r.pts.slice(k), N, endN, { share: s.up ? undefined : 2 }); // two in three stay on the ramp down
+    ramp(r.pts.slice(0, k), start, N, { share, ...shut });
+    ramp(r.pts.slice(k), N, endN, { share: s.up ? undefined : 2, ...shut, ...foot }); // two in three stay on the ramp down
     const L = links.find((O) => O.axis === 'x' && Math.abs(O.c - s.street.c) < 1 && O.dir === s.dir && Math.abs(O.at - s.z) < 0.5
       && Math.min(O.from, O.to) < s.x && s.x < Math.max(O.from, O.to));
     console.assert(L, `interchange: no lane on the cross street at ${s.street.c} for a slip road`);

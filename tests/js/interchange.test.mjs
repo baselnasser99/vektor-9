@@ -66,7 +66,7 @@ for (const seed of SEEDS) {
 
     test('every ramp crossing walkers use has cars that give way on it', () => {
       const { layout, roads } = C;
-      const keys = new Set(plan(layout).decks.flatMap((d) => sidewalkCrossings(layout, d.pts)).map((w) => w.key));
+      const keys = new Set(plan(layout).decks.filter((d) => !d.landing?.closed).flatMap((d) => sidewalkCrossings(layout, d.pts)).map((w) => w.key));
       const lanes = new Set(roads.links.flatMap((L) => (L.walks ?? []).map((w) => w.key)));
       for (const k of keys) assert.ok(lanes.has(k), `${k}: walkers wait there but no car lane knows it`);
     });

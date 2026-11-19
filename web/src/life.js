@@ -218,7 +218,7 @@ function paths(roads, warp, hub) {
       let nose = E.len; // where its nose may stand
       while (nose > CAR && others.some((O) => near(O, ...on(E, nose)) < CLEAR)) nose -= 0.5;
       for (const w of I.walks ?? []) if (nose > w.a - 0.5 && nose - CAR < w.b + 0.5) nose = w.a - 1;
-      I.hold = Math.max(0, E.len - nose - 0.3);
+      I.hold = I.pinnedHold ?? Math.max(0, E.len - nose - 0.3); // pinnedHold: interchange.js SWEEP_HOLD
     }
     // Ways joining, crossing, or one lane in splitting apart (where two lanes in widen into more lanes out).
     clearsAmong(N.ins.flatMap((I) => I.moves.map((m) => m.edge)));

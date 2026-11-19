@@ -9,9 +9,9 @@ import { plan } from '../../web/src/interchange.js';
 import { city, fixture } from './harness.mjs';
 
 // Rounded up to 0.01 %. slips[k]: the slip road off or onto ramp k (one per ramp at most; 1 and 2 are the loops').
-const MAX = { sweep: 0.1455, loop: 0.0991, median: 0.1458, slips: [0.1471, 0.2137, 0.1888, 0.1471] };
+const MAX = { sweep: 0.1455, loop: 0.0991, median: 0.1458, slips: [0.146, 0.2137, 0.1888, 0.146] }; // the sweeps' slips: 14.70 % before the sweeps landed, 14.60 % beside them since
 const LOOP_SLIP_TARGET = 0.143; // the straight grade's maximum
-const LANDED = 0.143; // every landed end (the loops and the median ramps), as ramp_landings
+const LANDED = 0.143; // every landed end (the loops, the sweeps and the median ramps), as ramp_landings
 const LOW_END_TODO = 'low-end redesign, follow-up';
 const steepest = ({ pts }) => Math.max(...pts.slice(1).map((p, i) => Math.abs(p[1] - pts[i][1]) / Math.hypot(p[0] - pts[i][0], p[2] - pts[i][2])));
 const pc = (g) => `${(g * 100).toFixed(2)}%`;
