@@ -10,7 +10,7 @@ import { LOOK_STEP, lightingIdentity } from './facade.js';
 import { buildStreets } from './streets.js';
 import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, verge, works } from './terrain.js';
-import { buildInterchange, hasInterchange } from './interchange.js';
+import { buildInterchange, hasInterchange, landCuts } from './interchange.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite, planSite } from './headquarters.js';
 import { masterplan } from './masterplan.js';
@@ -207,6 +207,7 @@ export function buildCity(kit, snap) {
     heavy.delete(i);
   }
   if (hqTiles.has(flag)) flag = -1;
+  const cuts = layout.expressway ? landCuts(layout).map((c) => c.verge) : []; // the verge left out where a landed ramp's lane runs, and a metre either side
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
     if (hqTiles.has(i)) return; // drawn as the headquarters, below
@@ -219,7 +220,7 @@ export function buildCity(kit, snap) {
     const family = t.k === 'house' && familyOf(t, near[i], !concrete);
     const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row, signature.has(i)), build: () => construction(kit, t.f, rand, t.on, fw),
       market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit), lot: () => plaza(kit, rand, t.on),
-      rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit),
+      rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit, cuts.map((c) => c.map(([x, z]) => [x - pos(col), z - pos(row)]))),
       site: () => court(kit, rand, t.on, (col + 1) % HALF === 0) }[t.k](); // the HQ's own site tiles are skipped above
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
     // and each quarter-block keeps a courtyard behind; inner lots sit anywhere on theirs.

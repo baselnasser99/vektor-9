@@ -296,27 +296,6 @@
    ]
   },
   {
-   "key": "car z|1|292.5|5.125|1|street|block|293|-80|ix|287|-37 | ramp 1 | slab",
-   "at": [
-    287.4,
-    -51.4
-   ]
-  },
-  {
-   "key": "car z|1|292.5|5.125|1|street|block|ix|287|37|293|81 | ramp 2 | slab",
-   "at": [
-    287.4,
-    49.5
-   ]
-  },
-  {
-   "key": "walker 57>69 side | ramp 1 | slab",
-   "at": [
-    283.9,
-    -56.3
-   ]
-  },
-  {
    "key": "walker 58>70 side | parapet run 10 | parapet",
    "at": [
     302.3,
@@ -335,13 +314,6 @@
    "at": [
     301.2,
     -49.7
-   ]
-  },
-  {
-   "key": "walker 69>57 side | ramp 1 | slab",
-   "at": [
-    283.9,
-    -47.9
    ]
   },
   {
@@ -366,13 +338,6 @@
    ]
   },
   {
-   "key": "walker 81>93 side | ramp 2 | slab",
-   "at": [
-    283.9,
-    47.9
-   ]
-  },
-  {
    "key": "walker 82>94 side | parapet run 18 | parapet",
    "at": [
     302.3,
@@ -391,13 +356,6 @@
    "at": [
     301.2,
     35.9
-   ]
-  },
-  {
-   "key": "walker 93>81 side | ramp 2 | slab",
-   "at": [
-    283.9,
-    56.3
    ]
   },
   {
@@ -508,27 +466,6 @@
    ]
   },
   {
-   "key": "car z|1|292.5|5.125|1|street|block|293|-80|ix|287|-37 | ramp 1 | slab",
-   "at": [
-    287.4,
-    -51.4
-   ]
-  },
-  {
-   "key": "car z|1|292.5|5.125|1|street|block|ix|287|37|293|81 | ramp 2 | slab",
-   "at": [
-    287.4,
-    49.5
-   ]
-  },
-  {
-   "key": "walker 57>69 side | ramp 1 | slab",
-   "at": [
-    283.9,
-    -56.3
-   ]
-  },
-  {
    "key": "walker 58>70 side | parapet run 10 | parapet",
    "at": [
     301.2,
@@ -547,13 +484,6 @@
    "at": [
     301.2,
     -49.7
-   ]
-  },
-  {
-   "key": "walker 69>57 side | ramp 1 | slab",
-   "at": [
-    283.9,
-    -47.9
    ]
   },
   {
@@ -578,13 +508,6 @@
    ]
   },
   {
-   "key": "walker 81>93 side | ramp 2 | slab",
-   "at": [
-    283.9,
-    47.9
-   ]
-  },
-  {
    "key": "walker 82>94 side | parapet run 15 | parapet",
    "at": [
     302.3,
@@ -603,13 +526,6 @@
    "at": [
     301.2,
     35.9
-   ]
-  },
-  {
-   "key": "walker 93>81 side | ramp 2 | slab",
-   "at": [
-    283.9,
-    56.3
    ]
   },
   {

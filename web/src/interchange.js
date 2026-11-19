@@ -39,6 +39,7 @@ export function landing(d) {
 }
 landing.top = TOP / GRADE + (SAG + CREST) / 2; // m from the landing point to the top
 landing.at = (y) => y / GRADE + SAG / 2; // where it is y m up, on the straight grade
+landing.fill = LAND + landing.at(FILL); // where a median ramp's fill ends, m east of the crossing at `west`
 
 // Whether this city has the interchange: the sim keeps its land as road terrain (schema 4).
 export const hasInterchange = (snap) => snap.tiles.some((t) => t.k === 'road');
@@ -101,7 +102,103 @@ export function plan(layout) {
     const ys = beside[apart - 1][1], pts = path.map(([px, pz], j) => [px, j < apart ? beside[j][1] : ys * (1 - ease((j - apart + 1) / (n - apart + 1))), pz]);
     return [{ pts: up ? pts.reverse() : pts, half: 2.4, ramp, at: i, up, street: l, z, dir, x }];
   });
+  // The loops and the sweeps' slip roads land on their blocks before the street's sidewalk (landEnd).
+  const main = layout.lines.at(-2);
+  for (const k of [1, 2]) {
+    const r = ramps[k], fork = slips.find((s) => s.ramp === r);
+    landEnd(r, main, 0, fork);
+  }
+  for (const k of [0, 3]) {
+    const s = slips.find((x) => x.ramp === ramps[k]);
+    if (s) landEnd(s, s.street, 2);
+  }
   return (layout.ramps = { xs, z0, x0, xa, west, mid, edge: layout.hi, ramps, median, slips, decks: [...ramps, ...median, ...slips] });
+}
+
+// A loop's or slip road's low end landed on its block (ADR-0011, amendment of 2026-11-19): level with the road from
+// the landing point (where its drawn width has left the street's sidewalk) to the street, then up on one cubic into
+// its own profile, joined in height and grade at one of its points where that stays within GRADE; from there up (so
+// at a loop's slip-road fork, and where a slip lies beside its ramp) it is as before. Its points stay where they were
+// (its lane is as long as before, to the millimetre: traffic depends on it), new ones on the straight pieces between
+// them. Its lane crosses the block at road height (landCuts). across: the coordinate across that street (0: x, 2:
+// z); fork: a loop's slip road, whose point index moves with the points put in before it. Returns false, leaving d
+// as it was, where it cannot land within GRADE (or, for a slip, its whole length within GRADE_MAX).
+const GRADE_MAX = 0.143;
+function landEnd(d, street, across, fork) {
+  const first = d.pts[0][1] < d.pts.at(-1)[1], pts = first ? d.pts : [...d.pts].reverse(), n = pts.length - 1, s = [0]; // from its street end
+  for (let i = 1; i <= n; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
+  const side = Math.sign(pts[n][across] - street.c), wide = (v) => Math.min(d.half ?? 4, 1.8 + 2.2 * Math.min(1, v / 25)); // as decksDrawn
+  const along = (P, S, v) => { // the point v m along polyline P (S its distances), and the normal of the 3 m chord centred on it (smooth, so offsets never step back)
+    const pt = (u) => {
+      u = Math.max(0, Math.min(S.at(-1), u));
+      let i = 1;
+      while (i < P.length - 1 && S[i] < u) i++;
+      const f = (u - S[i - 1]) / (S[i] - S[i - 1]);
+      return P[i - 1].map((c, k) => c + (P[i][k] - c) * f);
+    };
+    const [a, b] = [pt(v - 1.5), pt(v + 1.5)], l = flat(a, b);
+    return { p: pt(v), n: [-(b[2] - a[2]) / l, (b[0] - a[0]) / l] };
+  };
+  // The landing point: past it the deck and both its edges are beyond the sidewalk's back edge.
+  let sL = 0;
+  for (let v = 0; v < s[n] / 2; v += 0.05) {
+    const { p, n: m } = along(pts, s, v);
+    if ([-1, 0, 1].some((o) => side * (p[across] + (across ? m[1] : m[0]) * o * wide(v) - street.c) < street.w / 2)) sL = v + 0.05;
+  }
+  // A fork's points stay as they are (and those beside a slip road's ramp, which it lies level with).
+  const top = fork ? s[first ? fork.at : n - fork.at] - 8 : d.ramp ? s[n - pts.slice().reverse().findIndex((p) => nearest(d.ramp.pts, [p[0], p[2]])[0] > 6.4)] : s[n] - 20;
+  const slope = (k) => (pts[k + 1][1] - pts[k - 1][1]) / (s[k + 1] - s[k - 1]), cubic = (l, y1, m1) => (t) => y1 * (3 * t * t - 2 * t ** 3) + m1 * l * (t ** 3 - t * t);
+  const steepest = (l, y1, m1) => Math.max(...Array.from({ length: 101 }, (_, k) => k / 100).map((t) => Math.abs((y1 * 6 * t * (1 - t)) / l + m1 * (3 * t * t - 2 * t))));
+  const above = (k) => pts.slice(k).every((p, i, A) => !i || Math.abs(p[1] - A[i - 1][1]) <= GRADE_MAX * flat(p, A[i - 1]));
+  const J = pts.findIndex((p, k) => k > 0 && k < n && s[k] > sL + 5 && s[k] <= top && steepest(s[k] - sL, p[1], slope(k)) <= GRADE && (!d.ramp || above(k)));
+  if (J < 0) return false;
+  const sJ = s[J], f = cubic(sJ - sL, pts[J][1], slope(J)), ss = new Set([sL]);
+  const Y = (v) => { // from the cubic below the join, as it was above it (along its straight pieces)
+    if (v <= sL) return 0;
+    if (v < sJ) return f((v - sL) / (sJ - sL));
+    const k = s.findIndex((x) => x >= v);
+    return pts[k - 1][1] + ((pts[k][1] - pts[k - 1][1]) * (v - s[k - 1])) / (s[k] - s[k - 1]);
+  };
+  const end = s[Math.min(n, pts.findIndex((p, k) => k >= J && p[1] >= FILL) + 1)]; // a point past where the fill ends
+  for (let v = Math.ceil(sL); v < end; v += 1) ss.add(v); // a metre at a time, as the medians' curves, and on over the fill (its top stays flat to the centimetre)
+  for (let v = 2; v < sL; v += 2) ss.add(v); // and every 2 m on to the street, level
+  const out = pts.map((p, k) => [p, k, k < J ? Y(s[k]) : p[1]]);
+  for (const v of ss) {
+    if (v !== sL && s.some((x) => Math.abs(x - v) < 1)) continue; // none close to a point it had: the deck's inner edge would fold back there
+    const k = s.findIndex((x) => x > v + 1e-6), g = (v - s[k - 1]) / (s[k] - s[k - 1]);
+    if (g > 1e-6) out.push([pts[k - 1].map((c, j) => c + (pts[k][j] - c) * g), k - 1 + g, Y(v)]);
+  }
+  const P = out.sort((a, b) => a[1] - b[1]).map(([p, , y]) => [p[0], y, p[2]]), S = [0];
+  for (let i = 1; i < P.length; i++) S.push(S[i - 1] + flat(P[i], P[i - 1]));
+  if (d.ramp && P.some((p, i) => i && Math.abs(p[1] - P[i - 1][1]) > GRADE_MAX * flat(p, P[i - 1]))) return false;
+  const iL = P.findIndex((p, i) => i && p[1] > 0) - 1, jF = P.findIndex((p) => p[1] >= FILL), sF = jF < 0 ? S.at(-1) : S[jF];
+  if (fork && first) fork.at += P.length - pts.length; // the new points all lie before it
+  d.pts = first ? P : [...P].reverse();
+  d.land = S[iL];
+  const half = Math.abs(pts[0][across] - street.c), k0 = kerbOf(street) - half - 0.1; // a little inside the street lane's half-width: its edge leaves the kerb line at an angle, not along it
+  const cut = (v) => (v >= S[iL] ? wide(v) + 0.05 : k0 + ((wide(S[iL]) + 0.05 - k0) * v) / S[iL]); // narrowing to the street lane's width at the street
+  d.landing = { at: (v) => along(P, S, v), cut, sL: S[iL], sJ, sF, main: street.kind.x === 'street' || street.kind.z === 'street', street, across };
+  return true;
+}
+
+// Where a landed loop's or slip road's lane crosses the street's raised block at road height, as plan polygons [x, z]:
+// notch, the cut through the block's paving (streets.js blocks), from the street up the whole fill, its width the
+// deck's and 5 cm (so the fill's walls stand on the road), narrowing to the street lane's at the street; verge, the
+// same a metre wider, where the verge is left out (terrain.js verge), so beside the parapets only the paving (0.18 m)
+// stands; crossing, the part from the street to its landing point, at road height (people.js ground: walkers on the
+// loops' marked crossings). main: on the main street (marked; walkers cross it).
+export function landCuts(layout) {
+  const P = plan(layout);
+  return (P.cuts ??= P.decks.filter((d) => d.landing).map(({ landing: { at, cut, sL, sF, main } }) => {
+    const band = (s1, more = 0) => {
+      const ss = [];
+      for (let v = 0; v < s1; v += 0.5) ss.push(v);
+      ss.push(s1);
+      const side = (o) => ss.map((v) => { const { p, n } = at(v), w = o * (cut(v) + more); return [p[0] + n[0] * w, p[2] + n[1] * w]; });
+      return [...side(1), ...side(-1).reverse()];
+    };
+    return { notch: band(sF), verge: band(sF, 1.05), crossing: band(sL), main };
+  }));
 }
 
 // The distance from q [x, z] to polyline pts ([x, y, z] points) and its height there: [d, y].
@@ -301,7 +398,8 @@ export function buildInterchange(kit, root, layout, snap) {
       joint(raw[e], [(raw[f][0] - raw[e][0]) / l, (raw[f][2] - raw[e][2]) / l], 2 * rawHalf(e), raw[e][1]); // its low end, at the street
     } else { // a landed ramp (one slab, so one mesh): the deck down to FILL, then the top alone down to the landing point, closed by the walls
       const up = pts[0][1] < pts.at(-1)[1], fill = (p) => p[1] < FILL + 1e-6, k = up ? pts.findLastIndex(fill) : pts.findIndex(fill);
-      const [a, b] = [pts.slice(0, k + 1), pts.slice(k)], deck = (P, o) => ribbon(P, () => 0, (i) => halves[o + i], (i) => dy(o + i), 0.6), top = (P, o) => ribbon(P, () => 0, (i) => halves[o + i], 0, 0, 1);
+      const [a, b] = [pts.slice(0, k + 1), pts.slice(k)], top = (P, o, y = () => 0) => mergeGeometries([-5, -3, -1, 1, 3, 5].map((k) => ribbon(P, (i) => (k * halves[o + i]) / 6, (i) => halves[o + i] / 6, y, 0, 1))); // its top in six strips across: on a curve one strip's quads bow up to 5 cm off flat
+      const deck = (P, o) => mergeGeometries([top(P, o, (i) => dy(o + i) + 0.6), ribbon(P, () => 0, (i) => halves[o + i], (i) => dy(o + i), 0.6, 4, 1)]); // and the slab's sides and underside
       part(root, mergeGeometries(up ? [top(a, 0), deck(b, k)] : [deck(a, 0), top(b, k)]), surface); // its first point first
       // A headwall under the deck's end over the fill, from the ground to its underside, flush with the slab's end.
       const [p, q] = [pts[k], pts[up ? k + 1 : k - 1]], t = [(q[0] - p[0]) / flat(p, q), (q[2] - p[2]) / flat(p, q)], hw = p[1] - 0.6;
@@ -317,6 +415,23 @@ export function buildInterchange(kit, root, layout, snap) {
   const { lines: painted, hatch, road } = rampMarkings(layout), up = (L) => L.map(([x, y, z]) => [x, y + 0.012, z]);
   for (const L of [...painted, ...road]) part(root, ribbon(up(L), () => 0, () => 0.075, 0, 0, 1), strip);
   for (const L of hatch) part(root, ribbon(up(L), () => 0, () => 0.15, 0, 0, 1), strip);
+  // A marked crossing where a landed loop crosses the main street's sidewalk at road height: bars across the walkers'
+  // way, 0.5 m wide every metre, where the sidewalk and its cut meet (landCuts).
+  const main = layout.lines.at(-2), [u0, u1] = [main.c - main.w / 2, main.c - kerbOf(main)], bars = [];
+  for (const { crossing, main: marked } of landCuts(layout)) {
+    if (!marked) continue; // the slips' cuts: nobody walks the mid streets
+    const zs = crossing.map((p) => p[1]);
+    for (let z = Math.ceil(Math.min(...zs)) + 0.5; z < Math.max(...zs); z += 1) {
+      const xs = []; // where the bar's centre line crosses the crossing's outline, within the sidewalk
+      crossing.forEach((p, i) => { const q = crossing[(i + 1) % crossing.length]; if ((p[1] <= z) !== (q[1] <= z)) xs.push(p[0] + ((z - p[1]) * (q[0] - p[0])) / (q[1] - p[1])); });
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const [a, b] = [Math.max(u0 + 0.3, xs[k] + 0.3), Math.min(u1 - 0.3, xs[k + 1] - 0.3)];
+        if (b - a > 0.3) bars.push(box(b - a, 0.02, 0.5, 0).clone().translate((a + b) / 2, 0.01, z));
+      }
+    }
+  }
+  if (bars.length) part(root, mergeGeometries(bars), strip);
   // Parapets along every deck edge (barriers, drawn by parapets.js), the concrete shaded by vertex colours.
   const parapets = parapetGeometry(barriers(layout)), cast = kit.concrete(palette.weatheredConcrete).clone();
   cast.vertexColors = true;
@@ -388,7 +503,7 @@ export function rampMarkings(layout) {
       if (cut(p) || cut(q) || inLane(q, D)) end();
       else run.push(q);
     }
-    if (land && run.length) { // and past the landing point on along its lane as lane lines on the road, to just short of the stop line
+    if (land && P.median.includes(D.deck) && run.length) { // a median ramp's go on past the landing point along its lane as lane lines on the road, to just short of the stop line
       const first = D.deck.pts[0][1] < D.deck.pts.at(-1)[1], a = first ? D.pts[0] : D.pts.at(-1), b = first ? D.deck.pts[0] : D.deck.pts.at(-1); // its landing point, its street end
       const l = flat(a, b) - 0.4, last = flat(run[0], a) < flat(run.at(-1), a) ? run[0] : run.at(-1);
       road.push([last, [last[0] + ((b[0] - a[0]) / flat(a, b)) * l, 0, last[2] + ((b[2] - a[2]) / flat(a, b)) * l]]);
@@ -531,7 +646,7 @@ export function barriers(layout) {
     let since = 0;
     for (let i = 1; i < run.pts.length; i++) {
       since += flat(run.pts[i], run.pts[i - 1]);
-      if (since >= 2.9 || run.corner[i] || i === run.pts.length - 1) { keep.push(i); since = 0; }
+      if (since >= (run.land && run.pts[i][1] < FILL + 0.5 ? 0.9 : 2.9) || run.corner[i] || i === run.pts.length - 1) { keep.push(i); since = 0; } // over a fill, every metre: it follows the landing curve
     }
     const pts = keep.map((i) => run.pts[i]), refs = keep.map((i) => run.refs[i]);
     run.normals = pts.slice(1).map((p, i) => inward(pts[i], p, refs[i + 1]));
@@ -572,7 +687,8 @@ export function barriers(layout) {
     const s = [0];
     for (let i = 1; i < run.pts.length; i++) s.push(s[i - 1] + flat(run.pts[i], run.pts[i - 1]));
     const low = run.pts[0][1] < run.pts.at(-1)[1] ? (i) => s[i] : (i) => s.at(-1) - s[i]; // from its low end
-    run.depth = run.pts.map((p) => (p[1] <= FILL + 1e-3 ? p[1] + 0.02 : 0.6));
+    run.depth = run.pts.map((p) => (p[1] <= FILL + 1e-3 ? p[1] : 0.6)); // over the fill down to the road (a loop's or slip's in its cut, landCuts)
+    run.foot = run.pts.map((p) => (p[1] <= FILL + 0.3 ? 0 : 0.35)); // and its foot on the fill's top, not down into it (just past it too, so it never dips)
     run.lift = run.pts.map((p, i) => (p[1] <= FILL + 1e-3 ? 0.8 / 0.9 : 1) * Math.min(1, low(i) / TERMINAL));
   }
   return (P.barriers = runs);
@@ -693,11 +809,11 @@ function normal(pts, i) {
 // A band along polyline pts: shifted off(k) across at point k, half(k) either side of that, from dy to dy + h above
 // each point (dy a number, or dy(k) per point); top, both sides and bottom (or the top alone: faces 1), each face
 // with its own vertices (crisp edges), UVs in metres (the top's in plan).
-function ribbon(pts, off, half, dy, h, faces = 4) {
+function ribbon(pts, off, half, dy, h, faces = 4, from = 0) {
   const lift = typeof dy === 'function' ? dy : () => dy;
   const pos = [], uv = [], index = [], ring = [[-1, h], [1, h], [1, 0], [-1, 0]]; // left top, right top, right bottom, left bottom
   let run = 0;
-  for (let f = 0; f < faces; f++) {
+  for (let f = from; f < faces; f++) {
     const base = pos.length / 3;
     pts.forEach((p, i) => {
       if (i) run += f === 0 ? Math.hypot(p[0] - pts[i - 1][0], p[2] - pts[i - 1][2]) : 0;

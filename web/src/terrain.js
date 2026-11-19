@@ -2,7 +2,7 @@
 // One builder per terrain tile, plus the railway viaduct, drawn once along the line the rail tiles follow.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part } from './geometry.js';
+import { box, cutRing, cyl, part, REPEAT } from './geometry.js';
 import { streetLamp, tree, warningLamp } from './parts.js';
 import { TILE } from './world.js';
 import { duneHeight } from './desert.js';
@@ -19,9 +19,18 @@ export function railGround(kit) {
 }
 
 // The interchange's land (interchange.js builds the ramps over it): rough dark verge, kerbed by the block round it.
-export function verge(kit) {
-  const g = new THREE.Group();
-  part(g, box(TILE, 0.24, TILE, 1), kit.concrete(palette.oliveGrey), 0, 0.12, 0);
+// cuts: plan polygons [x, z] about the tile's centre where a landed ramp's lane runs through it at road height
+// (interchange.js landCuts); the verge is left out inside them.
+export function verge(kit, cuts = []) {
+  const g = new THREE.Group(), h = TILE / 2, square = [[-h, -h], [h, -h], [h, h], [-h, h]];
+  const rings = cuts.reduce((rs, c) => rs.flatMap((r) => cutRing(r, c)), [square]);
+  if (rings.length === 1 && rings[0] === square) part(g, box(TILE, 0.24, TILE, 1), kit.concrete(palette.oliveGrey), 0, 0.12, 0);
+  else for (const r of rings) {
+    const geo = new THREE.ExtrudeGeometry(new THREE.Shape(r.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 0.24, bevelEnabled: false, curveSegments: 1 }).rotateX(-Math.PI / 2);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / REPEAT, uv.getY(i) / REPEAT); // metres, as everywhere
+    part(g, geo, kit.concrete(palette.oliveGrey));
+  }
   return g;
 }
 
