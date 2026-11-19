@@ -15,6 +15,14 @@ const BEFORE = {
   'sim-v3-seed3-t288.json.gz': { long: 127, leftLong: 86, throughput: 129.0 },
 };
 
+// Measured the same way on origin/main at f52f852, before the sweeps landed. Landing them must leave traffic exactly
+// as it was: the inbound sweep's merge wait line is pinned to its old value (interchange.js SWEEP_HOLD) until the
+// junction overlap guard lands, since moving it shows the known overlap at (293, -80).
+const ORIGIN = {
+  'sim-v3-seed7-t288.json.gz': { long: 6, leftLong: 6, over150: 0, longest: 141.2, stuck: [], throughput: 136.7, overlaps: 0 },
+  'sim-v3-seed3-t288.json.gz': { long: 16, leftLong: 8, over150: 0, longest: 124.7, stuck: [], throughput: 137.2, overlaps: 0 },
+};
+
 for (const [name, base] of Object.entries(BEFORE)) {
   describe(name, () => {
     let C, failed, m, leads;
@@ -74,6 +82,11 @@ for (const [name, base] of Object.entries(BEFORE)) {
     });
 
     test('no junction locks up in 10 minutes', () => assert.deepEqual(m.stuck, []));
+
+    test('the numbers equal those on origin/main at f52f852 (the sweeps landed, their wait line pinned)', () => {
+      const now = { ...m, longest: +m.longest.toFixed(1), throughput: +m.throughput.toFixed(1), overlaps: overlaps.length };
+      assert.deepEqual(now, ORIGIN[name]);
+    });
 
     test('long stops behind left turns down at least 75%, all long stops at least halved, throughput within 5%', () => {
       console.log(`${name}: ${JSON.stringify({ ...m, longest: +m.longest.toFixed(1), throughput: +m.throughput.toFixed(1) })}`);

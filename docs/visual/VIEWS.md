@@ -44,18 +44,20 @@ Extra views, for the subjects named:
 | 21 | Deck joins at the expressway's inner end: the median ramps and the loops leave it, parapets meeting across the end | `238,14,12,262,8,0` |
 | 22 | Deck join where the inbound sweep ramp comes out from under the expressway (a known level step, capped parapets) | `368,15,-34,338,7,-12` |
 | 23 | Low angle at a driver's eye height on the expressway, looking west across its inner end: the median ramps and both loops leaving it (deck and ramp surfaces side by side, the expansion joints) | `272,9.9,-3.4,245,8.2,-3.4` |
-| 24 | The inbound sweep ramp's low end, where it meets the main street's kerb lane (an open slab end, ADR-0011) | `300.1,2.2,-69.9,299.7,0.6,-51.2` |
+| 24 | The inbound sweep ramp's low end, where it meets the main street's kerb lane (an open slab end until 2026-11-20, ADR-0011) | `300.1,2.2,-69.9,299.7,0.6,-51.2` |
 | 25 | The inbound median ramp's landing at road level, from the avenue's inner lane heading west: fill, retaining wall, the parapet's terminal | `200,1.4,-7.6,168,0.6,-3.4` |
 | 26 | The inbound median ramp's landing from the avenue's south sidewalk | `168,1.9,-15,180,0.6,-3.4` |
 | 27 | The inbound loop's landing at road level, from the main street's kerb lane heading +z: the marked crossing, the cut through the block, fill and the parapet's terminal | `288.6,1.3,-74,284,0.6,-48` |
 | 28 | The inbound loop's crossing from the main street's west sidewalk: the zebra at road height, the kerbs along the cut | `284,1.8,-66,283.5,0.6,-46` |
+| 29 | The inbound sweep's landing at road level, from the main street's kerb lane heading +z: the lane coming down to the street, fill, the parapets' terminals | `297.6,1.3,-72,303,0.8,-40` |
+| 30 | The closed sidewalk at the inbound sweep's foot, from the main street's east sidewalk: the cut, its kerbs, the fill's wall | `301.6,1.8,-74,302,0.6,-50` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 
 ## Which views for which change
 
 - Road surface, markings, arrows: 11, 15, 18, 20, then 07 and 09.
-- Expressway decks, ramps and their parapets: 19, 21, 22, then 03 and 18; deck and ramp surfaces at a join: 23; ramp low ends: 24; the median ramps' landings: 25, 26; the loops' landings and crossings: 27, 28.
+- Expressway decks, ramps and their parapets: 19, 21, 22, then 03 and 18; deck and ramp surfaces at a join: 23; ramp low ends: 24; the median ramps' landings: 25, 26; the loops' landings and crossings: 27, 28; the sweeps' landings and closed sidewalks: 29, 30.
 - Traffic and junctions: 07, 17, 01.
 - Dead ends and street changes: 08, then 05 and 10.
 - HQ, court and avenue: 02, 16.

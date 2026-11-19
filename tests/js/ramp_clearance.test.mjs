@@ -3,9 +3,10 @@
 // between its underside and its top. The expressway's slab is 1.2 m deep, every other deck's 0.6 m (interchange.js).
 // On the frozen v3 fixtures.
 // Known defect, recorded as todo: the two sweep ramps start down while still under the expressway, so their cars pass
-// through its slab near the expressway's edge. Holding a sweep at deck level until clear of the slab lifts it over
-// the main street's east sidewalk where walkers now cross it (sidewalkCrossings), so the fix waits for a follow-up PR
-// that settles that crossing (ADR-0011, amendment of 2026-11-16). Every other deck is checked for real.
+// through its slab near the expressway's edge. Holding a sweep at deck level until its lane is clear of the slab
+// leaves 62.5 m to the street end for a 7.75 m drop, where 14 % with its vertical curves needs about 69 m: no landing
+// fixes it without moving where the sweep leaves the expressway (ADR-0011, amendment of 2026-11-20). Every other
+// deck is checked for real.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decksDrawn, HIGH, plan } from '../../web/src/interchange.js';
@@ -23,7 +24,7 @@ const topOf = ({ pts, half }, p) => {
   return null;
 };
 
-const SWEEP_TODO = 'sweep ramps clip the expressway slab: the fix conflicts with the sidewalk crossing at the sweep foot; follow-up PR (ADR-0011 amendment)';
+const SWEEP_TODO = 'sweep ramps clip the expressway slab: too short to clear it and land within 14.3 %; needs the sweep moved (ADR-0011 amendment of 2026-11-20)';
 // Every sample inside another deck's slab, each with the deck its lane runs on.
 function clipping(name) {
   const { layout, roads } = city(fixture(name)), P = plan(layout), drawn = decksDrawn(layout);

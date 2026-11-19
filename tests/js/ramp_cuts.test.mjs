@@ -1,5 +1,5 @@
 // Where a landed ramp crosses a block at road height (interchange.js landCuts: the loops' marked crossings and the
-// slips' cuts), on the frozen v3 fixtures (ADR-0011, amendment of 2026-11-19):
+// sweeps' closed feet), on the frozen v3 fixtures (ADR-0011, amendments of 2026-11-19 and 2026-11-20):
 // - no kerb, block paving or verge triangle lies over the cut (and so over the crossing or the road inside it),
 //   with 1 cm tolerance at its edges;
 // - where its parapets step down over the fill and end at the landing point, no parapet vertex is more than 1 cm below
