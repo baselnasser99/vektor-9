@@ -3,7 +3,8 @@
 // mitred where the edge bends and where the run meets the next one, so neighbouring runs meet flush; caps says which
 // ends are openings; depth is the deck's thickness there. A safety-shape concrete barrier (a narrow top, an inner
 // face sloping out to a wide foot buried in the deck, and an outer face a centimetre outside the deck's edge that
-// carries on down as the deck's fascia to exactly its underside, so the barrier and the deck's side never share a
+// carries on down as the deck's fascia to exactly its underside (foot and depth may be given per point: over a
+// landed ramp's fill the foot rests on its top and the face runs down to the road), so the barrier and the deck's side never share a
 // plane and no seam shows between them), cast in 3 m panels with a dark joint between them, darker toward the foot where road
 // spray and rain leave their grime (vertex colours, no texture), with small amber reflectors along its inner face;
 // a steel cap rail on short posts. At an opening the barrier above the deck tapers down over its last metre and a
@@ -63,7 +64,7 @@ function sink(colours) {
 export function parapetGeometry(runs) {
   const C = sink(true), S = sink(false), L = sink(false);
   let caps = 0;
-  runs.forEach(({ pts, cross, caps: cap, depth = 0.6, lift: lifts }, r) => {
+  runs.forEach(({ pts, cross, caps: cap, depth = 0.6, foot = 0.35, lift: lifts }, r) => {
     const s = [0];
     for (let i = 1; i < pts.length; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
     // depth, and lift (the barrier's height as a share of its full height), may be given per point.
@@ -92,7 +93,7 @@ export function parapetGeometry(runs) {
     for (let j = PANEL; j < len - PANEL / 3; j += PANEL) joints.push(j);
     const knots = [...new Set([...s, ...joints.flatMap((j) => [j - JOINT, j + JOINT]), ...(cap[0] ? [taper] : []), ...(cap[1] ? [len - taper] : [])])]
       .filter((u) => u >= 0 && u <= len).sort((a, b) => a - b);
-    const section = (u) => { const A = at(u), h = lift(u), d = per(depth, u); return PROFILE.map(([o, y], k) => point(A, o, k === 0 ? -d : y > 0 ? y * h : y)); };
+    const section = (u) => { const A = at(u), h = lift(u), d = per(depth, u); return PROFILE.map(([o, y], k) => point(A, o, k === 0 ? -d : k === PROFILE.length - 1 ? -per(foot, u) : y > 0 ? y * h : y)); };
     let prev = section(0);
     for (let m = 1; m < knots.length; m++) {
       const [u0, u1] = [knots[m - 1], knots[m]], next = section(u1), mid = (u0 + u1) / 2;

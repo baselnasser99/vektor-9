@@ -1,6 +1,6 @@
-// The landed ramps (interchange.js landing: the two median ramps) on the frozen v3 fixtures (ADR-0011, amendment of
-// 2026-11-19). For each: along every car path through it (its lane and every move through the nodes at its two
-// ends), sampled every 0.5 m, the wheels (the path runs 0.65 m over the road) are within 5 cm of the surface drawn
+// The landed ramps (interchange.js landing and landEnd: the two median ramps and both loops) on the frozen v3 fixtures
+// (ADR-0011, amendment of 2026-11-19). For each: along every car path through it (its lanes and every move through
+// the nodes at their ends), sampled every 0.5 m, the wheels (the path runs 0.65 m over the road) are within 5 cm of the surface drawn
 // under them, found by casting down onto the streets and the interchange as built; no grade along those paths is
 // over 14.3 %; the deck as drawn ends at its landing point exactly at road height, so it has no open slab end.
 import { test } from 'node:test';
@@ -26,13 +26,14 @@ for (const name of ['sim-v3-seed7-t288.json.gz', 'sim-v3-seed3-t288.json.gz']) {
   root.traverse((m) => { if (m.isMesh) meshes.push(m); });
   const landed = P.decks.filter((d) => d.land !== undefined);
 
-  test(`${name}: both median ramps land`, () => assert.deepEqual(landed, P.median));
+  test(`${name}: both loops and both median ramps land`, () => assert.deepEqual(landed, [P.ramps[1], P.ramps[2], ...P.median])); // the sweeps' slips cannot (their grade beside the sweep)
 
   for (const d of landed) {
-    const label = `median ${P.median.indexOf(d)}`, D = decksDrawn(layout).find((x) => x.deck === d);
-    const lane = roads.links.find((L) => L.pts && L.edge && L.pts.length === d.pts.length && L.pts.every((q, i) => flat(q, d.pts[i]) < 1e-6 && Math.abs(q[1] - LIFT - d.pts[i][1]) < 1e-6));
-    const paths = [[`${label} lane`, lane.edge.pts]];
-    for (const N of [lane.start, lane.end]) for (const I of N.ins) for (const mv of I.moves ?? []) if (mv.edge && (I === lane || mv.out === lane)) paths.push([`${label} ${mv.move} at ${N.key}`, mv.edge.pts]);
+    const label = P.median.includes(d) ? `median ${P.median.indexOf(d)}` : `ramp ${P.ramps.indexOf(d)}`, D = decksDrawn(layout).find((x) => x.deck === d);
+    const on = (q) => d.pts.some((p) => flat(q, p) < 1e-6 && Math.abs(q[1] - LIFT - p[1]) < 1e-6);
+    const lanes = roads.links.filter((L) => L.pts && L.edge && L.pts.every(on)); // its lane, in pieces where a slip road parts
+    const paths = lanes.map((L, k) => [`${label} lane ${k}`, L.edge.pts]);
+    for (const N of new Set(lanes.flatMap((L) => [L.start, L.end]))) for (const I of N.ins) for (const mv of I.moves ?? []) if (mv.edge && (lanes.includes(I) || lanes.includes(mv.out))) paths.push([`${label} ${mv.move} at ${N.key}`, mv.edge.pts]);
     const near = meshes.filter((m) => { // only what lies within 20 m of the deck in plan
       m.geometry.computeBoundingBox();
       const b = new THREE.Box3().copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
@@ -55,7 +56,7 @@ for (const name of ['sim-v3-seed7-t288.json.gz', 'sim-v3-seed3-t288.json.gz']) {
           if (Math.abs(w - hit.point.y) > GAP) wrong.push(`${path} at ${q.map((v) => v.toFixed(2))}: ${(w - hit.point.y).toFixed(3)} m`);
         }
       }
-      assert.ok(n > 300, `sampled ${n} points`);
+      assert.ok(n > (P.median.includes(d) ? 300 : 250), `sampled ${n} points`); // the loop's paths are shorter
       assert.deepEqual(wrong.slice(0, 10), []);
     });
 
@@ -69,11 +70,13 @@ for (const name of ['sim-v3-seed7-t288.json.gz', 'sim-v3-seed3-t288.json.gz']) {
     });
 
     test(`${name}: ${label}: drawn down to its landing point, exactly at road height (no open slab end)`, () => {
-      const first = d.pts[0][1] < d.pts.at(-1)[1], end = first ? D.pts[0] : D.pts.at(-1), street = first ? d.pts[0] : d.pts.at(-1);
+      const first = d.pts[0][1] < d.pts.at(-1)[1], pts = first ? d.pts : [...d.pts].reverse(), end = first ? D.pts[0] : D.pts.at(-1), along = [0]; // from the street end
+      for (let i = 1; i < pts.length; i++) along.push(along[i - 1] + flat(pts[i], pts[i - 1]));
+      const k = pts.findIndex((p) => flat(p, end) < 1e-9);
       assert.equal(landing(0), 0);
       assert.equal(end[1], 0, 'the drawn end is at road height');
-      assert.ok(Math.abs(flat(end, street) - d.land) < 1e-6, 'the drawn end is the landing point');
-      assert.ok(d.pts.every((p) => (flat(p, street) <= d.land + 1e-6 ? p[1] === 0 : p[1] > 0)), 'level from the street end to the landing point, above it after');
+      assert.ok(Math.abs(along[k] - d.land) < 1e-6, 'the drawn end is the landing point');
+      assert.ok(pts.every((p, i) => (along[i] <= d.land + 1e-6 ? p[1] === 0 : p[1] > 0)), 'level from the street end to the landing point, above it after');
     });
   }
 }

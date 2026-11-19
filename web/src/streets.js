@@ -6,12 +6,12 @@
 // the city's warp bends them.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part, REPEAT, ring, rng, slab } from './geometry.js';
+import { box, cutRing, cyl, insideRing, part, REPEAT, ring, rng, slab, toRing } from './geometry.js';
 import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
 import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
-import { onRamp, plan, underRamps } from './interchange.js';
+import { landCuts, landing, onRamp, plan, underRamps } from './interchange.js';
 import { outOfTown } from './desert.js';
 
 export function buildStreets(kit, layout, root) {
@@ -368,7 +368,7 @@ function medianStrip(ctx, s, inner, l0, l1) {
       part(root, cyl(r - 0.35, r - 0.35, 0.04, 16), bed, ...lift(spot(s, c, 0), 0.26));
     }
   };
-  const a = l0.c + end(l0), b = l1.c - end(l1), lifted = ix ? l0.c + 40 : a; // where the median ramps clear the strip's kerb
+  const a = l0.c + end(l0), b = l1.c - end(l1), lifted = ix ? l0.c + Math.ceil(landing.fill) : a; // where the median ramps' fill ends (its walls never stand in the wide strip)
   if (ix) strip(a, lifted + 0.3, medianHalf(ctx, s, s.kind, l0), true, false); // into the wide strip's nose
   strip(lifted, b, inner, !shut(l0), !shut(l1));
   const bare = (v) => layout.expressway && Math.abs(s.c - plan(layout).z0) < 1 && v > plan(layout).west.c && v < plan(layout).x0; // under the median ramps
@@ -628,7 +628,9 @@ function blocks(ctx, hub) {
       const notch = viaX ? [[cx, kz, 0], [kx, kz, 0], [kx, cz, 0]] : [[kx, cz, 0], [kx, kz, 0], [cx, kz, 0]];
       pts = [...pts.slice(0, at), ...notch, ...pts.slice(at + 1)];
     }
-    slabOutline(kit, root, outline(pts), paving, curb);
+    // Cut where a landed loop's lane crosses the sidewalk at road height (interchange.js landCuts).
+    const cuts = ctx.layout.expressway ? landCuts(ctx.layout) : [];
+    for (const ring of cuts.reduce((rings, c) => rings.flatMap((r) => cutRing(r, c.notch)), [outline(pts)])) slabOutline(kit, root, ring, paving, curb, cuts.map((c) => c.notch));
   }
 }
 
@@ -662,7 +664,9 @@ const norm = (x, z) => {
 };
 
 // Paving inside an outline (0.18 m, textured in metres) and a kerb along it (0.35 m wide, standing 0.04 m proud).
-function slabOutline(kit, root, pts, paving, curb) {
+// cuts: plan polygons [x, z] the kerb must stay out of (interchange.js landCuts): a kerb piece reaching into one is
+// cut back to its outline (its plan shape less the cut, extruded).
+function slabOutline(kit, root, pts, paving, curb, cuts = []) {
   const shape = (ring) => ring.map(([x, z]) => new THREE.Vector2(x, -z)); // shape y is -z: rotateX(-90 deg) lays it flat
   const geo = (s, depth) => {
     const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 1 });
@@ -676,6 +680,16 @@ function slabOutline(kit, root, pts, paving, curb) {
     const [x0, z0] = pts[i], [x1, z1] = pts[(i + 1) % pts.length], len = Math.hypot(x1 - x0, z1 - z0);
     if (len < 0.01) continue;
     const [nx, nz] = norm(-(z1 - z0), x1 - x0); // inward for a counter-clockwise ring (x right, z down the page)
+    const [tx, tz] = norm(x1 - x0, z1 - z0), q = [[-0.02, 0], [len + 0.02, 0], [len + 0.02, 0.35], [-0.02, 0.35]].map(([u, w]) => [x0 + tx * u + nx * w, z0 + tz * u + nz * w]);
+    if (cuts.some((c) => toRing(c, x0, z0) < 1e-6 && toRing(c, x1, z1) < 1e-6)) { // along a cut's own edge: no overlap at its ends, just off the edge
+      part(root, box(len, 0.22, 0.345, 0), curb, (x0 + x1) / 2 + nx * 0.1775, 0.11, (z0 + z1) / 2 + nz * 0.1775).rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+      continue;
+    }
+    const into = cuts.filter((c) => q.some(([x, z]) => insideRing(c, x, z)) || cutRing(q, c)[0] !== q);
+    if (into.length) { // across a cut's edge: cut back to it
+      for (const r of into.reduce((rs, c) => rs.flatMap((k) => cutRing(k, c)), [q])) if (!into.some((c) => insideRing(c, ...r.reduce((m, p) => [m[0] + p[0] / r.length, m[1] + p[1] / r.length], [0, 0])))) part(root, geo(new THREE.Shape(shape(r)), 0.22), curb, 0, 0, 0);
+      continue;
+    }
     const kerb = part(root, box(len + 0.04, 0.22, 0.35, 0), curb, (x0 + x1) / 2 + nx * 0.175, 0.11, (z0 + z1) / 2 + nz * 0.175);
     kerb.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
   }

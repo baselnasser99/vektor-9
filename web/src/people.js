@@ -22,10 +22,10 @@
 // detail by distance, culled to the view, fading in and out by size beyond the crowd's distance.
 import * as THREE from 'three';
 import { css, ui } from './palette.js';
-import { rng } from './geometry.js';
+import { insideRing, rng } from './geometry.js';
 import { crossing } from './city.js';
 import { rampClear, walkLight, zebraUse } from './life.js';
-import { plan, sidewalkCrossings } from './interchange.js';
+import { landCuts, plan, sidewalkCrossings } from './interchange.js';
 import { BLOCK, CARS, STREETS, TILE, WIDE } from './world.js';
 import { ZEBRA_W, hasZebra, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
@@ -218,12 +218,13 @@ export function network(layout) {
   // Self-check: every corner left can reach every other (a gap would strand walkers on one side).
   const nodes = [...Array(N).keys()].filter((id) => !removed.has(id));
   console.assert(nodes.every((a) => nodes.every((b) => dist[a * N + b] < Infinity)), 'people: the walking network is not connected');
-  // Ground under a point: raised paving (sidewalks, plaza, walks) 0.18 m, roadway 0, a boulevard median 0.28 m.
+  // Ground under a point: raised paving (sidewalks, plaza, walks) 0.18 m, roadway 0 (and a landed loop's crossing), a boulevard median 0.28 m.
   const roadway = (v) => layout.cross.find((l) => Math.abs(v - l.c) < kerbOf(l)); // every corridor: streets, mid streets, alleys
+  const cuts = layout.expressway ? landCuts(layout).map((c) => c.crossing) : []; // a landed loop's lane across the sidewalk, at road height
   const ground = (x, z) => {
     if (Math.hypot(x - hub, z - hub) < PLAZA - 3) return 0; // the ring road
     const lx = roadway(x), lz = roadway(z);
-    if (!lx && !lz) return 0.18;
+    if (!lx && !lz) return cuts.some((P) => insideRing(P, x, z)) ? 0 : 0.18;
     if (lx && lz) return 0;
     const [kind, off, along] = lx ? [layout.kindAt(lx, 'z', z), x - lx.c, z] : [layout.kindAt(lz, 'x', x), z - lz.c, x];
     if (kind === 'walk' || kind === 'none') return 0.18; // paved: a walk, a market lane, the headquarters' campus

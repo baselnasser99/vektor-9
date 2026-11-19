@@ -35,6 +35,8 @@ export function box(w, h, d, seg = 3) {
   boxes.set(key, projectUV(g));
   return boxes.get(key);
 }
+// Every box and slab made so far, by key (tests/js/box_cache.test.mjs checks none was changed in place: they are shared).
+export const cachedBoxes = () => boxes;
 // Plain box cut into pieces about `step` metres long, so the city's warp can bend it: long flat street parts.
 export function slab(w, h, d, step = 6) {
   const key = `slab:${w}:${h}:${d}:${step}`;
@@ -112,3 +114,65 @@ export const ring = (parent, r, tube, mat, x, y, z, tubular = 40, radial = 8) =>
   m.rotation.x = Math.PI / 2;
   return m;
 };
+
+// Whether [x, z] lies inside polygon P ([x, z] corners).
+export function insideRing(P, x, z) {
+  let inside = false;
+  for (let a = 0, b = P.length - 1; a < P.length; b = a++) {
+    const [xa, za] = P[a], [xb, zb] = P[b];
+    if (za > z !== zb > z && x < ((xb - xa) * (z - za)) / (zb - za) + xa) inside = !inside;
+  }
+  return inside;
+}
+// The distance from [x, z] to polygon P's outline.
+export function toRing(P, x, z) {
+  let d = Infinity;
+  P.forEach((a, i) => {
+    const b = P[(i + 1) % P.length], dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1)));
+    d = Math.min(d, Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz));
+  });
+  return d;
+}
+// Ring A less polygon B ([x, z] corners, any winding): the rings left, each wound as A (where their edges cross: A's
+// edges outside B, then B's inside A, backward). A itself where they do not cross (B wholly inside A is not cut).
+export function cutRing(A, B) {
+  const area = (P) => P.reduce((s, p, i) => s + p[0] * P[(i + 1) % P.length][1] - P[(i + 1) % P.length][0] * p[1], 0);
+  if (Math.sign(area(A)) !== Math.sign(area(B))) B = [...B].reverse();
+  const hits = []; // { a: [edge, t], b: [edge, t], p }
+  A.forEach((p, i) => {
+    const q = A[(i + 1) % A.length];
+    B.forEach((r, j) => {
+      const s = B[(j + 1) % B.length], dx = q[0] - p[0], dz = q[1] - p[1], ex = s[0] - r[0], ez = s[1] - r[1], den = dx * ez - dz * ex;
+      if (Math.abs(den) < 1e-12) return;
+      const t = ((r[0] - p[0]) * ez - (r[1] - p[1]) * ex) / den, u = ((r[0] - p[0]) * dz - (r[1] - p[1]) * dx) / den;
+      if (t >= 0 && t < 1 && u >= 0 && u < 1) hits.push({ a: i + t, b: j + u, p: [p[0] + dx * t, p[1] + dz * t] });
+    });
+  });
+  if (hits.length < 2) return [A];
+  // Each ring as a cycle of its corners and the crossings, in order along it.
+  const walk = (P, key) => [...P.map((p, i) => ({ at: i, p })), ...hits.map((h) => ({ at: h[key], p: h.p, h }))].sort((m, n) => m.at - n.at);
+  const ca = walk(A, 'a'), cb = walk(B, 'b');
+  ca.forEach((n, i) => { if (n.h) n.h.ia = i; });
+  cb.forEach((n, i) => { if (n.h) n.h.ib = i; });
+  for (const h of hits) { // leaving B along A from here?
+    const n = ca[(h.ia + 1) % ca.length], m = [(h.p[0] + n.p[0]) / 2, (h.p[1] + n.p[1]) / 2];
+    h.out = !insideRing(B, m[0], m[1]);
+  }
+  const out = [];
+  for (const start of hits) {
+    if (!start.out || start.done) continue;
+    const ring = [];
+    let h = start;
+    do {
+      h.done = true;
+      let i = h.ia; // along A, outside B, to the next crossing
+      do { ring.push(ca[i].p); i = (i + 1) % ca.length; } while (!ca[i].h);
+      const k = ca[i].h;
+      let j = k.ib; // then back along B, inside A, to the next crossing
+      do { ring.push(cb[j].p); j = (j - 1 + cb.length) % cb.length; } while (!cb[j].h);
+      h = cb[j].h;
+    } while (h !== start && !h.done);
+    out.push(ring);
+  }
+  return out;
+}
