@@ -585,12 +585,12 @@ function signals(kit, roads, warp, onFrame, clock) {
     return m;
   };
   const housing = mesh(box(0.4, 1.15, 0.34, 1), steel, n);
-  const lenses = mesh(mergeGeometries([0.35, 0, -0.35].map((y) => box(0.26, 0.26, 0.04, 0).translate(0, y, 0.18))), dark, n);
+  const lenses = mesh(mergeGeometries([0.35, 0, -0.35].map((y) => box(0.26, 0.26, 0.04, 0).clone().translate(0, y, 0.18))), dark, n);
   const lamps = [[palette.crimson, 6], [palette.amber, 3], [palette.signalGreen, 3]].map(([c, k]) => mesh(box(0.27, 0.27, 0.2, 0), kit.glow(c, k), n)); // deep enough that its top shows from above
   const arrow = new THREE.Shape([[-0.12, 0], [-0.02, 0.09], [-0.02, 0.035], [0.12, 0.035], [0.12, -0.035], [-0.02, -0.035], [-0.02, -0.09]].map(([x, y]) => new THREE.Vector2(x, y)));
   lamps.push(mesh(new THREE.ExtrudeGeometry(arrow, { depth: 0.2, bevelEnabled: false }).translate(0, 0, -0.1), kit.glow(palette.signalGreen, 3), n)); // pointing to the drivers' left
   const walkBox = mesh(box(0.34, 0.66, 0.24, 1), steel, w);
-  const walkLens = mesh(mergeGeometries([0.15, -0.15].map((y) => box(0.24, 0.24, 0.04, 0).translate(0, y, 0.13))), dark, w);
+  const walkLens = mesh(mergeGeometries([0.15, -0.15].map((y) => box(0.24, 0.24, 0.04, 0).clone().translate(0, y, 0.13))), dark, w);
   const walkLamps = [[palette.crimson, 5], [palette.coldWhite, 2]].map(([c, k]) => mesh(box(0.25, 0.25, 0.08, 0), kit.glow(c, k), w));
   const post = mesh(cyl(0.09, 0.12, 1, 8), steel, posts.length), arm = mesh(box(1, 0.16, 0.16, 0), steel, arms.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
