@@ -25,7 +25,9 @@ export function verge(kit, cuts = []) {
   const g = new THREE.Group(), h = TILE / 2, square = [[-h, -h], [h, -h], [h, h], [-h, h]];
   const rings = cuts.reduce((rs, c) => rs.flatMap((r) => cutRing(r, c)), [square]);
   if (rings.length === 1 && rings[0] === square) part(g, box(TILE, 0.24, TILE, 1), kit.concrete(palette.oliveGrey), 0, 0.12, 0);
-  else for (const r of rings) {
+  else for (const ring of rings) {
+    // cutRing can repeat a point (a crossing at a corner): extruded, that is a wall of zero width with zero normals
+    const r = ring.filter(([x, z], i) => Math.hypot(x - ring[(i + 1) % ring.length][0], z - ring[(i + 1) % ring.length][1]) > 1e-4);
     const geo = new THREE.ExtrudeGeometry(new THREE.Shape(r.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 0.24, bevelEnabled: false, curveSegments: 1 }).rotateX(-Math.PI / 2);
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / REPEAT, uv.getY(i) / REPEAT); // metres, as everywhere
