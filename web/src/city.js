@@ -10,7 +10,7 @@ import { LOOK_STEP, lightingIdentity } from './facade.js';
 import { buildStreets } from './streets.js';
 import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, verge, works } from './terrain.js';
-import { buildInterchange, hasInterchange, landCuts } from './interchange.js';
+import { blockCuts, buildInterchange, hasInterchange } from './interchange.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite, planSite } from './headquarters.js';
 import { masterplan } from './masterplan.js';
@@ -207,7 +207,7 @@ export function buildCity(kit, snap) {
     heavy.delete(i);
   }
   if (hqTiles.has(flag)) flag = -1;
-  const cuts = layout.expressway ? landCuts(layout).map((c) => c.verge) : []; // the verge left out where a landed ramp's lane runs, and a metre either side
+  const cuts = layout.expressway ? blockCuts(layout).verge : []; // the verge left out where a landed ramp's lane runs (a sweep's closed sidewalk, a slip road low over it), and a metre either side
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
     if (hqTiles.has(i)) return; // drawn as the headquarters, below
