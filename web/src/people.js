@@ -25,7 +25,7 @@ import { css, ui } from './palette.js';
 import { insideRing, rng } from './geometry.js';
 import { crossing } from './city.js';
 import { rampClear, walkLight, zebraUse } from './life.js';
-import { landCuts, plan, sidewalkCrossings } from './interchange.js';
+import { blockCuts, landCuts, plan, sidewalkCrossings } from './interchange.js';
 import { BLOCK, CARS, STREETS, TILE, WIDE } from './world.js';
 import { ZEBRA_W, hasZebra, kerbOf, zebraAt } from './streets.js';
 import { NAMES, TEXELS, colour, figures } from './figures.js';
@@ -287,9 +287,9 @@ function places(k, snap, layout, net, info, seats, food, lamps) {
   ];
   const place = (sd, a, inset) => (sd.along === 'x' ? [a, sd.kerb + sd.in * inset] : [sd.kerb + sd.in * inset, a]);
   const outward = (sd) => (sd.along === 'x' ? (sd.in > 0 ? Math.PI : 0) : sd.in > 0 ? -Math.PI / 2 : Math.PI / 2);
-  const cuts = layout.expressway ? landCuts(layout).map((c) => c.notch) : [];
+  const cuts = layout.expressway ? blockCuts(layout).paving : [];
   const add = (members, acts, corp = false) => {
-    members = members.filter((m) => Math.hypot(m.x - hub, m.z - hub) > PLAZA - 2 && !cuts.some((P) => insideRing(P, m.x, m.z))); // never on the roundabout, nor in a landed ramp's cut (its lane, its fill)
+    members = members.filter((m) => Math.hypot(m.x - hub, m.z - hub) > PLAZA - 2 && !cuts.some((P) => insideRing(P, m.x, m.z))); // never on the roundabout, nor in a landed ramp's cut (its lane, its fill) or a sweep's closed sidewalk
     if (members.length) list.push({ members, acts, corp });
   };
   const ring = (cx, cz, count, r) => { // a small group facing its middle

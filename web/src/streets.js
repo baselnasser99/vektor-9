@@ -11,13 +11,13 @@ import { telecomTower } from './landmarks.js';
 import { streetLamp, tree } from './parts.js';
 import { radialTexture } from './textures.js';
 import { CAFES, CARS, FOOD, HUB, STREETS, TILE, WARM, WIDE, pick } from './world.js';
-import { landCuts, landing, onRamp, plan, underRamps } from './interchange.js';
+import { blockCuts, groundHoles, landing, onRamp, plan, rampMarkings, underRamps } from './interchange.js';
 import { outOfTown } from './desert.js';
 
 export function buildStreets(kit, layout, root) {
   const { lines, cross, lo, hi } = layout, rand = rng(31);
   const asphalt = kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55); // wet, but not a mirror
-  part(root, slab(hi - lo, 0.1, hi - lo, 8), asphalt, 0, -0.05, 0); // ends at the ring road's outer kerb line
+  ground(root, layout, asphalt);
   const hub = lines[lines.length >> 1];
   const ctx = { kit, root, layout, lines, cross, lo, hi, rand, hub: hub.c, paint: kit.glow(palette.cream, 0.35), lampsAt: [], benches: [], food: [], parked: [], slots: [] }; // road paint glows faintly
   blocks(ctx, hub);
@@ -59,6 +59,42 @@ function lay(ctx, s, len, h, wide, mat, v, off, y, seg = 0) {
 }
 const spot = (s, v, off) => (s.axis === 'x' ? [v, s.c + off] : [s.c + off, v]);
 const lift = ([x, z], y) => [x, y, z];
+
+// The city's ground: one asphalt slab out to the ring road's outer kerb line, 0.1 m thick, its top at road height,
+// in 8 m cells. Under a landed deck's first centimetres (interchange.js groundHoles) the slab's top is left out, the
+// cells round each hole filled again flat around it, so the deck's top is the only surface there.
+function ground(root, layout, asphalt) {
+  const { lo, hi } = layout, base = slab(hi - lo, 0.1, hi - lo, 8), holes = layout.expressway ? groundHoles(layout) : [];
+  if (!holes.length) return part(root, base, asphalt, 0, -0.05, 0);
+  const h = (hi - lo) / 2, cs = (hi - lo) / Math.ceil((hi - lo) / 8), snap = (v, f) => -h + f((v + h) / cs) * cs;
+  let rects = holes.map((P) => ({ r: [snap(Math.min(...P.map((p) => p[0])), Math.floor), snap(Math.max(...P.map((p) => p[0])), Math.ceil), snap(Math.min(...P.map((p) => p[1])), Math.floor), snap(Math.max(...P.map((p) => p[1])), Math.ceil)], holes: [P] }));
+  for (let merged = true; merged;) { // holes whose cells overlap share one patch
+    merged = false;
+    for (let i = 0; i < rects.length && !merged; i++) for (let j = i + 1; j < rects.length && !merged; j++) {
+      const [a, b] = [rects[i].r, rects[j].r];
+      if (a[0] < b[1] && b[0] < a[1] && a[2] < b[3] && b[2] < a[3]) {
+        rects[i] = { r: [Math.min(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.max(a[3], b[3])], holes: [...rects[i].holes, ...rects[j].holes] };
+        rects = rects.filter((_, k) => k !== j);
+        merged = true;
+      }
+    }
+  }
+  const g = base.clone(), p = g.attributes.position, idx = g.index.array, keep = []; // a copy: slab() geometry is shared
+  for (let t = 0; t < idx.length; t += 3) {
+    const v = [idx[t], idx[t + 1], idx[t + 2]], x = v.reduce((s, k) => s + p.getX(k), 0) / 3, z = v.reduce((s, k) => s + p.getZ(k), 0) / 3;
+    if (!(v.every((k) => p.getY(k) > 0.049) && rects.some(({ r }) => x > r[0] && x < r[1] && z > r[2] && z < r[3]))) keep.push(...v);
+  }
+  g.setIndex(keep);
+  g.clearGroups();
+  part(root, g, asphalt, 0, -0.05, 0);
+  for (const { r, holes: H } of rects) {
+    const shape = new THREE.Shape([[r[0], r[2]], [r[1], r[2]], [r[1], r[3]], [r[0], r[3]]].map(([x, z]) => new THREE.Vector2(x, -z)));
+    shape.holes = H.map((P) => new THREE.Path(P.map(([x, z]) => new THREE.Vector2(x, -z))));
+    const patch = new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2), q = patch.attributes.position, uv = patch.attributes.uv;
+    for (let i = 0; i < q.count; i++) uv.setXY(i, q.getX(i) / REPEAT, q.getZ(i) / REPEAT); // as the slab's top
+    part(root, patch, asphalt, 0, 0, 0);
+  }
+}
 
 // Stretches of a boundary street between the main streets crossing it, as [from, to] along it (the perimeter).
 const stretches = ({ lines }, pad = () => 0) =>
@@ -123,8 +159,11 @@ function road(ctx, s, g) {
   const a = g.a + ends(ctx, s, g.l0), b = g.b - ends(ctx, s, g.l1);
   if (b <= a) return;
   const len = b - a, mid = (a + b) / 2, near = Math.min(SOLID, len / 2);
+  // Where a landed ramp's lane crosses an edge line it is left out (interchange.js rampMarkings: a taper joins it there).
+  const gaps = ctx.layout.expressway ? rampMarkings(ctx.layout).gaps.filter((g) => g.axis === s.axis && Math.abs(g.c - s.c) < 1) : [];
   for (const side of [-1, 1]) {
-    lay(ctx, s, len, 0.02, 0.15, paint, mid, side * (edge === R ? R - 0.45 : edge), 0.01); // edge lines
+    const off = side * (edge === R ? R - 0.45 : edge), pieces = gaps.filter((g) => Math.abs(g.off - off) < 0.01).reduce((P, g) => P.flatMap(([u, v]) => [[u, Math.min(v, g.a)], [Math.max(u, g.b), v]].filter(([x, y]) => y - x > 0.01)), [[a, b]]);
+    for (const [u, v] of pieces) lay(ctx, s, v - u, 0.02, 0.15, paint, (u + v) / 2, off, 0.01); // edge lines
     if (inner) lay(ctx, s, len, 0.02, 0.15, paint, mid, side * (inner + 0.35), 0.01);
   }
   for (const off of dividers) {
@@ -628,9 +667,9 @@ function blocks(ctx, hub) {
       const notch = viaX ? [[cx, kz, 0], [kx, kz, 0], [kx, cz, 0]] : [[kx, cz, 0], [kx, kz, 0], [cx, kz, 0]];
       pts = [...pts.slice(0, at), ...notch, ...pts.slice(at + 1)];
     }
-    // Cut where a landed loop's lane crosses the sidewalk at road height (interchange.js landCuts).
-    const cuts = ctx.layout.expressway ? landCuts(ctx.layout) : [];
-    for (const ring of cuts.reduce((rings, c) => rings.flatMap((r) => cutRing(r, c.notch)), [outline(pts)])) slabOutline(kit, root, ring, paving, curb, cuts.map((c) => c.notch));
+    // Cut where a landed ramp's lane crosses the sidewalk at road height, a sweep's closed sidewalk, and under a slip road low over the block (interchange.js blockCuts).
+    const cuts = ctx.layout.expressway ? blockCuts(ctx.layout).paving : [];
+    for (const ring of cuts.reduce((rings, c) => rings.flatMap((r) => cutRing(r, c)), [outline(pts)])) slabOutline(kit, root, ring, paving, curb, cuts);
   }
 }
 
@@ -664,7 +703,7 @@ const norm = (x, z) => {
 };
 
 // Paving inside an outline (0.18 m, textured in metres) and a kerb along it (0.35 m wide, standing 0.04 m proud).
-// cuts: plan polygons [x, z] the kerb must stay out of (interchange.js landCuts): a kerb piece reaching into one is
+// cuts: plan polygons [x, z] the kerb must stay out of (interchange.js blockCuts): a kerb piece reaching into one is
 // cut back to its outline (its plan shape less the cut, extruded).
 function slabOutline(kit, root, pts, paving, curb, cuts = []) {
   const shape = (ring) => ring.map(([x, z]) => new THREE.Vector2(x, -z)); // shape y is -z: rotateX(-90 deg) lays it flat
@@ -681,11 +720,13 @@ function slabOutline(kit, root, pts, paving, curb, cuts = []) {
     if (len < 0.01) continue;
     const [nx, nz] = norm(-(z1 - z0), x1 - x0); // inward for a counter-clockwise ring (x right, z down the page)
     const [tx, tz] = norm(x1 - x0, z1 - z0), q = [[-0.02, 0], [len + 0.02, 0], [len + 0.02, 0.35], [-0.02, 0.35]].map(([u, w]) => [x0 + tx * u + nx * w, z0 + tz * u + nz * w]);
-    if (cuts.some((c) => toRing(c, x0, z0) < 1e-6 && toRing(c, x1, z1) < 1e-6)) { // along a cut's own edge: no overlap at its ends, just off the edge
+    const own = cuts.filter((c) => toRing(c, x0, z0) < 1e-6 && toRing(c, x1, z1) < 1e-6);
+    const reach = (r) => cuts.filter((c) => !own.includes(c) && (r.some(([x, z]) => insideRing(c, x, z)) || cutRing(r, c)[0] !== r));
+    if (own.length && !reach([[0, 0.005], [len, 0.005], [len, 0.35], [0, 0.35]].map(([u, w]) => [x0 + tx * u + nx * w, z0 + tz * u + nz * w])).length) { // along a cut's own edge: no overlap at its ends, just off the edge
       part(root, box(len, 0.22, 0.345, 0), curb, (x0 + x1) / 2 + nx * 0.1775, 0.11, (z0 + z1) / 2 + nz * 0.1775).rotation.y = -Math.atan2(z1 - z0, x1 - x0);
       continue;
     }
-    const into = cuts.filter((c) => q.some(([x, z]) => insideRing(c, x, z)) || cutRing(q, c)[0] !== q);
+    const into = own.length ? reach(q) : cuts.filter((c) => q.some(([x, z]) => insideRing(c, x, z)) || cutRing(q, c)[0] !== q); // along a cut's edge and into another one (two cuts overlapping): cut back to that one
     if (into.length) { // across a cut's edge: cut back to it
       for (const r of into.reduce((rs, c) => rs.flatMap((k) => cutRing(k, c)), [q])) if (!into.some((c) => insideRing(c, ...r.reduce((m, p) => [m[0] + p[0] / r.length, m[1] + p[1] / r.length], [0, 0])))) part(root, geo(new THREE.Shape(shape(r)), 0.22), curb, 0, 0, 0);
       continue;

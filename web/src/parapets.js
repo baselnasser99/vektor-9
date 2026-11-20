@@ -59,6 +59,24 @@ function sink(colours) {
   return { face, geometry };
 }
 
+// Where run's cap rail runs, [from, to] in metres along it: short of the taper at each capped end and, where its height
+// is given per point (lift, a landed ramp's), only where the barrier stands at its full or its stepped-down height (0.8
+// of 0.9 m over the fill), so the rail stops where the sloped terminal begins.
+const STEPPED = 0.8 / 0.9;
+export function railSpan({ pts, caps, lift }) {
+  const s = [0];
+  for (let i = 1; i < pts.length; i++) s.push(s[i - 1] + flat(pts[i], pts[i - 1]));
+  const len = s.at(-1), taper = Math.min(TAPER, len / 2.5);
+  let ua = caps[0] ? taper : 0, ub = caps[1] ? len - taper : len;
+  if (lift) {
+    let i = 0, j = s.length - 1;
+    while (i < s.length && lift[i] < STEPPED - 1e-3) i++;
+    while (j >= 0 && lift[j] < STEPPED - 1e-3) j--;
+    [ua, ub] = [Math.max(ua, s[i] ?? len), Math.min(ub, s[j] ?? 0)];
+  }
+  return [ua, ub];
+}
+
 // The parapets for runs (interchange.js barriers): { concrete (with vertex colours), steel, lamps, caps (how many
 // end caps were built) }.
 export function parapetGeometry(runs) {
@@ -113,16 +131,12 @@ export function parapetGeometry(runs) {
       C.face(ring, inside(e ? len - 0.2 : 0.2), ring.map((_, k) => SHADE[(k + FAN) % SHADE.length] * 0.8));
       caps++;
     }
-    // The cap rail on posts, short of each taper; at a run's mitred ends it runs on into the next run's.
-    let ua = cap[0] ? taper : 0, ub = cap[1] ? len - taper : len;
-    if (lifts) { // only where the barrier stands at its full height
-      let i = 0, j = s.length - 1;
-      while (i < s.length && lifts[i] < 0.999) i++;
-      while (j >= 0 && lifts[j] < 0.999) j--;
-      [ua, ub] = [Math.max(ua, s[i] ?? len), Math.min(ub, s[j] ?? 0)];
-    }
+    // The cap rail on posts, short of each taper; at a run's mitred ends it runs on into the next run's. On a stepped-down
+    // barrier it rides as far above its top as on a full one.
+    const [ua, ub] = railSpan({ pts, caps: cap, lift: lifts });
     if (ub - ua < 0.5) return;
-    const [o0, o1, y0, y1] = RAIL, rail = (u) => { const A = at(u); return [[o0, y1], [o1, y1], [o1, y0], [o0, y0]].map(([o, y]) => point(A, o, y)); };
+    const up = (u) => 0.9 * ((lifts ? per(lifts, u) : 1) - 1); // the barrier's top, from its full height
+    const [o0, o1, y0, y1] = RAIL, rail = (u) => { const A = at(u); return [[o0, y1], [o1, y1], [o1, y0], [o0, y0]].map(([o, y]) => point(A, o, y + up(u))); };
     const stops = [ua, ...s.filter((u) => u > ua && u < ub), ub];
     for (let m = 1; m < stops.length; m++) {
       const a = rail(stops[m - 1]), b = rail(stops[m]), mid = (stops[m - 1] + stops[m]) / 2, ins = point(at(mid), (o0 + o1) / 2, (y0 + y1) / 2);
@@ -135,7 +149,7 @@ export function parapetGeometry(runs) {
       const ring = [corner(p0, -w), corner(p1, -w), corner(p1, w), corner(p0, w)], ins = [A.p[0] + A.c[0] * (p0 + p1) / 2, A.p[1] + (q0 + q1) / 2, A.p[2] + A.c[1] * (p0 + p1) / 2];
       for (let k = 0; k < 4; k++) {
         const [a, b] = [ring[k], ring[(k + 1) % 4]];
-        S.face([[a[0], A.p[1] + q0, a[1]], [b[0], A.p[1] + q0, b[1]], [b[0], A.p[1] + q1, b[1]], [a[0], A.p[1] + q1, a[1]]], ins);
+        S.face([[a[0], A.p[1] + q0 + up(u), a[1]], [b[0], A.p[1] + q0 + up(u), b[1]], [b[0], A.p[1] + q1 + up(u), b[1]], [a[0], A.p[1] + q1 + up(u), a[1]]], ins);
       }
     }
     // Reflectors: a small amber plate on the inner face's upper slope, at the middle of every other panel.
