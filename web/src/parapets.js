@@ -26,16 +26,29 @@ const POST = [0.08, 0.14, 0.9, 1.1, 0.04]; // inward from, to; up from, to; half
 const flat = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 const hash = (a, b) => ((Math.sin(a * 127.1 + b * 311.7) * 43758.5453) % 1 + 1) % 1;
 
+// Twice triangle abc's area; below AREA (m²) a triangle or face has none and is left out.
+const AREA = 1e-7;
+const twice = (a, b, c) => {
+  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  return Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
+};
+
 // Triangles into one indexed geometry: quads and fans, wound to face away from a point inside the solid.
 function sink(colours) {
   const pos = [], nor = [], uv = [], col = [], index = [];
   // vs: [x, y, z][] round a polygon that vs[0] sees all of (fanned from it); shade: one grey, or one per vertex.
   const face = (vs, inside, shade = 1, uvs) => {
-    const [a, b, c] = vs, u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    // Newell's normal, over the whole polygon: where a section collapses onto the road (a landed end's lift and depth both
+    // 0) its points repeat, the first three alone gave a zero normal, NaN in the shader, and bloom spread it to a black frame.
+    let n = [0, 0, 0];
+    vs.forEach((p, k) => {
+      const q = vs[(k + 1) % vs.length];
+      n = [n[0] + (p[1] - q[1]) * (p[2] + q[2]), n[1] + (p[2] - q[2]) * (p[0] + q[0]), n[2] + (p[0] - q[0]) * (p[1] + q[1])];
+    });
+    const l = Math.hypot(...n);
+    if (l < AREA) return; // no area: nothing to draw
     const mid = vs.reduce((m, p) => m.map((x, k) => x + p[k] / vs.length), [0, 0, 0]);
     const flip = n[0] * (mid[0] - inside[0]) + n[1] * (mid[1] - inside[1]) + n[2] * (mid[2] - inside[2]) < 0;
-    const l = Math.hypot(...n) || 1;
     n = n.map((x) => (flip ? -x : x) / l);
     const base = pos.length / 3;
     vs.forEach((p, k) => {
@@ -45,7 +58,7 @@ function sink(colours) {
       const v = Array.isArray(shade) ? shade[k] : shade;
       if (colours) col.push(v, v, v);
     });
-    for (let k = 1; k < vs.length - 1; k++) index.push(...(flip ? [base, base + k + 1, base + k] : [base, base + k, base + k + 1]));
+    for (let k = 1; k < vs.length - 1; k++) if (twice(vs[0], vs[k], vs[k + 1]) >= AREA) index.push(...(flip ? [base, base + k + 1, base + k] : [base, base + k, base + k + 1]));
   };
   const geometry = () => {
     const g = new THREE.BufferGeometry();
