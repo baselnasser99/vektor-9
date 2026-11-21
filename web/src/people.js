@@ -126,7 +126,7 @@ export function network(layout) {
   // A sidewalk along `axis` from sector corner to sector corner, on the side of main street M, crosses its
   // sector's mid street (layout.mids) on the zebra in line with it: waiting at the kerb for the walkers' light where
   // the mid street carries cars and the crossing has lights (walkLight; at crossings without lights cars give way),
-  // straight over an alley, a market lane or the headquarters' campus; and over the low end of any ramp that crosses
+  // straight over an alley, a market lane, a stub (city.js layout.stub) or the headquarters' campus; and over the low end of any ramp that crosses
   // the sidewalk (the interchange), once no car is on it, the cars short of it then giving way. Points as in cross below.
   const decks = layout.expressway ? plan(layout).decks : [];
   const ramps = decks.filter((d) => !d.landing?.closed).flatMap((deck) => sidewalkCrossings(layout, deck.pts));
@@ -141,7 +141,7 @@ export function network(layout) {
   const side = (axis, b, M, from, to) => (p) => {
     const m = layout.mids[b], [f, g] = [node(from.id, p.lane), node(to.id, p.lane)], [u0, u1] = axis === 'x' ? [f[0], g[0]] : [f[1], g[1]];
     const d = Math.sign(u1 - u0), lateral = axis === 'x' ? f[1] : f[0], pt = (u, wait, tag) => (axis === 'x' ? [u, lateral, wait, tag] : [lateral, u, wait, tag]);
-    const cars = CARS.has(layout.kindAt(m, axis === 'x' ? 'z' : 'x', M.c)), near = m.c - d * (kerbOf(m) + 0.45), far = m.c + d * (kerbOf(m) + 0.45);
+    const cars = CARS.has(layout.kindAt(m, axis === 'x' ? 'z' : 'x', M.c)) && !layout.stub(m, axis === 'x' ? 'z' : 'x', M.c), near = m.c - d * (kerbOf(m) + 0.45), far = m.c + d * (kerbOf(m) + 0.45);
     const light = cars && (axis === 'x' ? { x: m.c, z: M.c, axis: 'z' } : { x: M.c, z: m.c, axis: 'x' });
     const pts = [pt(near, light && { light, need: Math.abs(far - near) / p.speed + 1.5 }), pt(far, null, light && zebraKey(light))];
     for (const w of ramps) {
@@ -237,7 +237,7 @@ export function network(layout) {
     if (!lx && !lz) return cuts.some((P) => insideRing(P, x, z)) ? 0 : 0.18;
     if (lx && lz) return 0;
     const [kind, off, along] = lx ? [layout.kindAt(lx, 'z', z), x - lx.c, z] : [layout.kindAt(lz, 'x', x), z - lz.c, x];
-    if (kind === 'walk' || kind === 'none') return 0.18; // paved: a walk, a market lane, the headquarters' campus
+    if (kind === 'walk' || kind === 'none' || layout.stub(lx ?? lz, lx ? 'z' : 'x', along)) return 0.18; // paved: a walk, a market lane, the headquarters' campus, a stub
     const nearCrossing = layout.cross.some((m) => Math.abs(along - m.c) < zebraAt(m) + ZEBRA_W / 2 + 0.3); // the median stops short of each zebra
     return WIDE.has(kind) && Math.abs(off) < STREETS[kind].median / 2 && !nearCrossing ? 0.28 : 0;
   };

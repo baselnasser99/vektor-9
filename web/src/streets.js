@@ -37,6 +37,7 @@ export function buildStreets(kit, layout, root) {
         lay(ctx, s, b - a, 0.18, 2 * kerbOf(s), kit.concrete(palette.slate), (a + b) / 2, 0, 0.09);
         if (!layout.cut(s.line, s.axis, (a + b) / 2)) for (const f of [0.3, 0.7]) tree(kit, root, ...spot(s, a + f * (b - a), 0), 5.5); // a built-over stretch (T-junctions): a pocket square
       }
+      else if (stub(ctx, s, g)) closure(ctx, s, g);
       else road(ctx, g.kind === s.kind ? s : { ...s, kind: g.kind }, g); // the boulevard's avenue stretches
     }
     crossings(ctx, s, segs);
@@ -125,6 +126,9 @@ function segments(ctx, s) {
   }).filter((g) => g.kind));
 }
 const carries = (kind) => CARS.has(kind);
+// Whether segment g of street s is a stub (city.js layout.stub): drawn car-free (closure), though its lanes are built
+// (laneMoves drops them, as every dead end's).
+const stub = (ctx, s, g) => carries(g.kind) && ctx.layout.stub(s.line, s.axis, (g.a + g.b) / 2);
 
 // Where things sit along a street, measured from the centre line of the street l it crosses: l's kerb, the zebra
 // (in line with l's sidewalk, so walkers keep straight on across), the stop line just behind it, and where the
@@ -181,7 +185,7 @@ function road(ctx, s, g) {
 function crossings(ctx, s, segs) {
   const { paint, lo, hi } = ctx, R = kerbOf(s), right = s.axis === 'x' ? 1 : -1;
   for (const g of segs) {
-    if (!carries(g.kind)) continue;
+    if (!carries(g.kind) || stub(ctx, s, g)) continue; // a stub: no stop line, no zebra
     const { edge } = STREETS[g.kind];
     for (const [l, dir] of [[g.l1, 1], [g.l0, -1]]) { // dir: the way the cars approaching l on this segment drive
       const stop = l.c - dir * (round(ctx, s, l) ? RING_OUT + 0.3 : stopAt(l)), flow = s.line.flow?.[s.axis], inner = medianHalf(ctx, s, g.kind, l);
@@ -434,11 +438,11 @@ function medianHalf(ctx, s, kind, l) {
 // Pedestrian street on segment g: the roadway paved over between crossings, with trees, planters and benches down
 // the middle, and on most long stretches a food street (food below) in place of them for a while. On a main line
 // (a walk) people sit and buy there (people.js); the old town's market lanes are scenery for now.
-function walk(ctx, s, g) {
+function walk(ctx, s, g, pave) {
   const { kit, rand } = ctx, roadway = 2 * kerbOf(s), own = !s.line.mid;
   const paving = kit.concrete(palette.roseGrey), planter = kit.concrete(palette.gunmetal), bench = kit.steel(palette.charcoal, 0.8);
-  const a = g.a + g.l0.w / 2, b = g.b - g.l1.w / 2;
-  lay(ctx, s, b - a, 0.18, roadway, paving, (a + b) / 2, 0, 0.09);
+  const a = g.a + g.l0.w / 2, b = g.b - g.l1.w / 2, [p0, p1] = pave ?? [a, b]; // pave: the paving's own extent (a stub's, closure)
+  lay(ctx, s, p1 - p0, 0.18, roadway, paving, (p0 + p1) / 2, 0, 0.09);
   const [f0, f1] = food(ctx, s, a, b, own);
   for (let v = a + 6; v < b - 4; v += 12) {
     // Every choice is drawn even where the food street is, so the rest of the planting stays as it was.
@@ -450,6 +454,27 @@ function walk(ctx, s, g) {
       lay(ctx, s, 1.8, 0.45, 0.5, bench, v + 3, -side * 2.2, 0.4, 1);
       if (own) ctx.benches.push([...spot(s, v + 3, -side * 2.2), s.axis, -side]); // people.js seats people here, facing away from the trees
     }
+  }
+}
+
+// A stub (city.js layout.stub) on segment g of street s: a car-free continuation of the walk it meets, paved and
+// planted as a walk (its own draws, so the rest of the city's stay as they were), the paving running on across the
+// crossing with the walk (and on to a walk's paving beyond it) and back to the car street's kerb line. There a kerb
+// runs straight across its mouth between the blocks' square corners (blocks), with bollards just behind it, so from
+// the car street it reads as a pedestrian entrance. No road paint, stop line or zebra (crossings).
+function closure(ctx, s, g) {
+  const { kit, root, layout } = ctx, R = kerbOf(s), across = s.axis === 'x' ? 'z' : 'x';
+  const [lw, lc, d] = carries(g.l0.kind[across]) ? [g.l1, g.l0, 1] : [g.l0, g.l1, -1]; // the walk's end, the car end; d: toward the walk
+  const vw = lw.c - d * kerbOf(lw), vc = lc.c + d * kerbOf(lc), paving = kit.concrete(palette.roseGrey); // the walk's near kerb line; the car street's
+  walk({ ...ctx, rand: rng((Math.round(s.c * 3 + g.a * 7) >>> 0) + (s.axis === 'x' ? 1 : 2)) }, s, g, [Math.min(vw, vc), Math.max(vw, vc)]);
+  lay(ctx, s, 2 * kerbOf(lw), 0.18, s.w, paving, lw.c, 0, 0.09); // the crossing with the walk, out to the walk's own paving either side
+  const far = lw.c + d * kerbOf(lw), beyond = layout.kindAt(s.line, s.axis, lw.c + d * (lw.w / 2 + 1)) === 'walk' ? lw.c + d * (lw.w / 2) : far;
+  if (beyond !== far) lay(ctx, s, lw.w / 2 - kerbOf(lw), 0.18, 2 * R, paving, (far + beyond) / 2, 0, 0.09); // on to a walk beyond (a market lane's paving)
+  const steel = kit.steel(palette.charcoal, 0.6);
+  lay(ctx, s, 0.35, 0.22, 2 * R, paving, vc + d * 0.175, 0, 0.11); // the kerb across the mouth, in line with the blocks'
+  for (let off = -R + 0.65; off < R - 0.3; off += 1.3) {
+    part(root, cyl(0.1, 0.1, 0.9, 8), steel, ...lift(spot(s, vc + d * 1.1, off), 0.63));
+    part(root, cyl(0.105, 0.105, 0.08, 8), ctx.paint, ...lift(spot(s, vc + d * 1.1, off), 1)); // a reflective band
   }
 }
 
@@ -657,7 +682,12 @@ function blocks(ctx, hub) {
     const [X0, X1, Z0, Z1] = [cross[j], cross[j + 1], cross[k], cross[k + 1]];
     const [x0, x1, z0, z1] = [X0.c + kerbOf(X0), X1.c - kerbOf(X1), Z0.c + kerbOf(Z0), Z1.c - kerbOf(Z1)];
     // Corners counter-clockwise seen from above (x right, z down the page), each with its radius.
-    let pts = [[x0, z0, radius(X0, Z0)], [x1, z0, radius(X1, Z0)], [x1, z1, radius(X1, Z1)], [x0, z1, radius(X0, Z1)]];
+    // A corner beside a stub (city.js layout.stub), or where one meets its walk, is square: the stub is paved as part
+    // of the walk, and the kerb runs straight across its mouth at the car end (closure).
+    const { stub: st } = ctx.layout, xm = (X0.c + X1.c) / 2, zm = (Z0.c + Z1.c) / 2;
+    const meets = (l, axis, m) => !CARS.has(m.kind[axis === 'x' ? 'z' : 'x']) && [-1, 1].some((d) => st(l, axis, m.c + d * (m.w / 2 + 1)));
+    const corner = (X, Z) => (st(X, 'z', zm) || st(Z, 'x', xm) || meets(X, 'z', Z) || meets(Z, 'x', X) ? 0 : radius(X, Z));
+    let pts = [[x0, z0, corner(X0, Z0)], [x1, z0, corner(X1, Z0)], [x1, z1, corner(X1, Z1)], [x0, z1, corner(X0, Z1)]];
     const sx = Math.sign((x0 + x1) / 2 - hub.c), sz = Math.sign((z0 + z1) / 2 - hub.c);
     if ([X0, X1].includes(hub) && [Z0, Z1].includes(hub)) { // a plaza block: its corner at the crossing is the plaza's
       const [kx, kz] = [hub.c + sx * reach, hub.c + sz * reach], at = pts.findIndex(([x, z]) => Math.abs(x - hub.c) < hub.w && Math.abs(z - hub.c) < hub.w);
