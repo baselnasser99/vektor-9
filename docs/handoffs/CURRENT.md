@@ -1,11 +1,20 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-20 23:44 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
-Branch: `main` at this handoff commit, on top of `4e5a8cc` (the #75 merge)
+Updated: 2026-11-21 22:14 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
+Branch: `main` at this handoff commit, on top of `7bbb2c6` (the #77 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- PR #77 (merge `7bbb2c6`, head `b8360bf`, CI passed): geometry checks for every built mesh, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged. State after it: SIM_VERSION 4, schema 6, nothing deployed.
+  - `tests/js/interchange_geometry.test.mjs` renamed to `tests/js/mesh_geometry.test.mjs`: finite positions, unit normals (within 1e-3), no triangle under 1e-8 m², on both v3 fixtures, one test per builder: interchange, streets, verge, the whole city as `buildCity` merges it (tiles, props, railway, HQ, LOD groups; Blender models are empty groups in the mock kit), desert, traffic with its signals, trains (instanced: geometry as built).
+  - Not covered (browser only, or not meshes): people and figures, the HQ eye, aircars, the Blender models' own geometry, the sky (`atmosphere.js`), steam.
+  - Failures on origin/main: one builder, the verge (the city test failed on the same faces). Per fixture 24 vertices with zero normals and 8 zero-area triangles near (254, -60), (256.141, -68.622) and (257.389, -58.499): `cutRing` returned rings with a point repeated, extruded as a zero-width wall. Fix (`terrain.js` `verge`): points within 1e-4 m of the next are dropped before extruding. `cutRing` unchanged (the streets use it; their meshes pass). The test failed 4 of 14 on origin/main and passes 14 of 14.
+  - Black share (every channel <= 4, 1200x800 headless frames) before and after: views 08, 16, 25 0 %; view 01 0.08 % on both.
+  - Frame time (`?bench=1000x625`, alternating loads against origin/main, median of 3): view 01 38.1 to 39.0 ms, 25 44.4 to 45.3 (one slow load on each side). Triangles on v4 seed 7: verge 2,304 to 2,296; streets and interchange unchanged. Screenshots stay local.
+- PR #76 (merge `c581597`, head `fd57ad9`, CI passed): stacked signal lenses fixed, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged, the left-turn test passes.
+  - `life.js` signal lenses and walk-signal lenses clone the cached `box()` before translating, so each lens sits at its own offset (they had stacked at the last offset, out of the housing). `box_cache` has no known list: any cached box or slab changed in place fails it.
+  - Frame time (`?bench=1000x625`, median of 3 alternating loads): view 01 37.9 to 38.0 ms, 25 43.1 to 43.5. Triangles: traffic and signals on v4 seed 7 637,280 on both. Close-ups of the signals at the main corner (294, -292) and view 01; screenshots stay local. `OrbitControls` `minDistance` is 15, so a close-up's `?view` target goes past the subject.
 - PR #75 (merge `4e5a8cc`, head `0726a0a`, CI passed): black screen from the merged parapet concrete mesh fixed, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` and the ramp crossings allowlist unchanged. State after it: SIM_VERSION 4, schema 6, nothing deployed.
   - Cause, found by `setDrawRange` bisection on the merged mesh at view 31: one triangle at the inbound median ramp's landing point, (176, 0, 1.615), (176.375, 0.051, 1.615), (176.375, 0, 1.615), with all three normals (0, 0, 0). At a landed end's landing point `barriers` gives lift 0 and depth 0, so the section's points 0 and 1 coincide; `parapets.js` `sink().face` took the normal from the face's first three points only, got zero, and the `|| 1` guard kept it. On both v3 fixtures: 8 faces (32 vertices) with zero normals and 20 zero-area triangles, all in the parapet concrete.
   - Fix (`parapets.js` `face`): the normal is Newell's over the whole face outline; faces and triangles with twice-area under 1e-7 m² are dropped.
@@ -168,6 +177,11 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - ADR-0011's interchange text may still describe the old slim barriers and the concrete deck; amend it in a later docs change.
 
 ## Checks
+- On `main` @ `7bbb2c6` (detached, this worktree without `snapshots/`, as in CI):
+  - Node suite → 274 tests: 268 passed, 0 failed, 6 todo.
+  - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (measured on both PR branches).
+  - `ruff check` and `ruff format --check` → pass (both PR branches). No changed file has CR bytes.
+- CI on PR #76 head `fd57ad9` and PR #77 head `b8360bf`: `lint-and-test` passed.
 - On `parapet-black` @ `0726a0a` (this worktree with `snapshots/` copied in for the shot servers, servers stopped during tests):
   - Node suite → 262 tests: 256 passed, 0 failed, 6 todo.
   - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped.
@@ -217,11 +231,9 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 
 ## Next
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
-1. Fix the stacked signal lenses at `life.js:588` and `life.js:593` (clone the cached box before translating) and remove both sizes from the `box_cache` known list.
-2. Extend the `interchange_geometry` checks (finite positions, unit normals, no zero-area triangles) to every merged mesh Node can build.
-3. Dead-end fix at x -80.5, z -150 to -80.5 (view 08, ADR-0016 roadmap 2).
-4. HQ-to-court crossing and court paving contrast (view 16).
-5. The remaining `URBAN_MASTERPLAN` steps, the masterplan table and frontier dressing first (542 empty lots drawn as parking).
-6. Junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin.
-7. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
-8. Then: architecture variation, with a Blender pack bake-off (check pack origin and pin the Blender MCP server first); outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
+1. Dead-end fix at x -80.5, z -150 to -80.5 (view 08, ADR-0016 roadmap 2).
+2. HQ-to-court crossing and court paving contrast (view 16).
+3. The remaining `URBAN_MASTERPLAN` steps, the masterplan table and frontier dressing first (542 empty lots drawn as parking).
+4. Junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin.
+5. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
+6. Then: architecture variation, with a Blender pack bake-off (check pack origin and pin the Blender MCP server first); outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
