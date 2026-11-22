@@ -14,7 +14,7 @@ import { blockCuts, buildInterchange, hasInterchange } from './interchange.js';
 import { warningLamp } from './parts.js';
 import { buildHQ, hqSite, planSite } from './headquarters.js';
 import { masterplan } from './masterplan.js';
-import { BLOCK, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
+import { BLOCK, CARS, F, HALF, HUB, STREETS, TALL, TERRAIN, TILE, WARM, WORDS, BRANDS, CORPS, MESSAGES, pick } from './world.js';
 
 // Tile centres in metres, before the district warp (cityWarp), and the street corridors between them. Across the
 // city, corridors and runs of HALF tiles alternate: a main street between every two sectors (lines, k = 0 and the
@@ -95,6 +95,15 @@ export function cityLayout(snap) {
     const t = tileAt(v), side = l.k * BLOCK + HALF; // a tile beside l, in l's sector
     if (axis === 'z' ? inTown(side, t) : inTown(t, side)) return 'walk'; // the old town's mid streets: market lanes, no cars
     return layout.cut(l, axis, v) || closed(l, axis, t) ? 'none' : k;
+  };
+  // A stub (ADR-0016's measured dead ends): a mid street's half that carries cars, whose outer end meets a line
+  // carrying none (a walk) with no car street beyond it. Cars never use it (streets.js laneMoves drops its lanes);
+  // streets.js dresses it as a car-free continuation of the walk, closed at its car end by a kerb and bollards.
+  layout.stub = (l, axis, v) => {
+    if (!l.mid || !CARS.has(layout.kindAt(l, axis, v))) return false;
+    const t = tileAt(v), h = Math.floor(t / HALF) % 2, line = lines[Math.floor(t / BLOCK) + h];
+    if (CARS.has(line.kind[axis === 'x' ? 'z' : 'x'])) return false;
+    return !CARS.has(layout.kindAt(l, axis, line.c + (h ? 1 : -1) * (line.w / 2 + 1)));
   };
   return layout;
 }
