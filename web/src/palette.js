@@ -62,6 +62,7 @@ export const palette = {
   charcoal: 0x1e2333,
   gunmetal: 0x2f3648,
   slate: 0x4b5569,
+  courtStone: 0x857c70, // the HQ's court (tiles.js court): warm stone slabs, so it never reads as the slate sidewalks
   weatheredConcrete: 0x7e8992, // the telecom tower's old frame
   crownWhite: 0xc9ced3, // cool-grey highlights on the edges of its dark Reactor Crown
   drumGunmetal: 0x293642, // its observation and control drum under the crown

@@ -113,11 +113,22 @@ function kiosk(kit, g, rand, lit, x, z) {
 }
 
 // The headquarters' court (ADR-0015): a tile of the forecourt the simulation reserves across the avenue from the
-// campus. Paving edge to edge, so the tiles read as one square; steel bollards along its kerb where it meets the
-// avenue (kerb: the tile's +x side does); a lit kiosk on some tiles.
+// campus. Its own paving edge to edge, so the tiles read as one square and not as sidewalk: warm stone slabs, 3.5 m
+// along x (toward the avenue and the HQ) by 1.75 m, in running bond over dark joints, the pattern carried on across
+// tile edges; steel bollards along its kerb where it meets the avenue (kerb: the tile's +x side does); a lit kiosk on
+// some tiles.
+const SLAB = [3.5, 1.75], JOINT = 0.08;
 export function court(kit, rand, lit, kerb) {
-  const g = new THREE.Group();
-  part(g, box(TILE, 0.2, TILE, 1), kit.concrete(palette.slate), 0, 0.1, 0);
+  const g = new THREE.Group(), stone = kit.concrete(palette.courtStone), h = TILE / 2;
+  part(g, box(TILE, 0.18, TILE, 1), kit.concrete(palette.gunmetal), 0, 0.09, 0); // the bed, seen in the joints
+  for (let r = 0; r < TILE / SLAB[1]; r++) {
+    const z = -h + (r + 0.5) * SLAB[1], off = r % 2 ? SLAB[0] / 2 : 0;
+    const cuts = [-h, ...Array.from({ length: Math.ceil(TILE / SLAB[0]) + 1 }, (_, k) => -h + off + k * SLAB[0]).filter((x) => x > -h && x < h), h];
+    for (let k = 1; k < cuts.length; k++) { // a half slab at an offset row's tile edge meets its neighbour's with no joint
+      const a = cuts[k - 1] + (k > 1 || !off ? JOINT / 2 : 0), b = cuts[k] - (k < cuts.length - 1 || !off ? JOINT / 2 : 0);
+      part(g, box(b - a, 0.02, SLAB[1] - JOINT, 0), stone, (a + b) / 2, 0.19, z);
+    }
+  }
   if (kerb) for (let z = -TILE / 2 + 1.5; z < TILE / 2; z += 2.5) part(g, cyl(0.1, 0.1, 0.9, 8), kit.steel(palette.charcoal, 0.6), TILE / 2 - 0.6, 0.65, z);
   if (rand() < 0.35) kiosk(kit, g, rand, lit, -3, -3);
   return g;
