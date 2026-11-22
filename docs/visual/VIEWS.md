@@ -52,6 +52,8 @@ Extra views, for the subjects named:
 | 29 | The inbound sweep's landing at road level, from the main street's kerb lane heading +z: the lane coming down to the street, fill, the parapets' terminals | `297.6,1.3,-72,303,0.8,-40` |
 | 30 | The closed sidewalk at the inbound sweep's foot, from the main street's east sidewalk: the cut, its kerbs, the fill's wall | `301.6,1.8,-74,302,0.6,-50` |
 | 31 | Both median ramps' landings from above the avenue, looking west: the parapets' terminals at the landing points (a black screen until 2026-11-20, from a parapet face with zero normals there) | `194,22,-2,172,0,-3.4` |
+| 32 | The closed stub at x -80.5 from the cross street at road level (1.7 m): the kerb across its mouth, the bollards, the walk's paving beyond | `-80.5,1.7,-70,-80.5,0.6,-110` |
+| 33 | The closed stub at x -80.5 from above its mouth: the square corners, the kerb across it, the cross street's stop lines | `-80.5,40,-62,-80.5,0,-100` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 
@@ -60,7 +62,7 @@ View 18 stays low: the expressway deck runs above the boulevard there, and a cam
 - Road surface, markings, arrows: 11, 15, 18, 20, then 07 and 09.
 - Expressway decks, ramps and their parapets: 19, 21, 22, then 03 and 18; deck and ramp surfaces at a join: 23; ramp low ends: 24; the median ramps' landings: 25, 26, 31; the loops' landings and crossings: 27, 28; the sweeps' landings and closed sidewalks: 29, 30.
 - Traffic and junctions: 07, 17, 01.
-- Dead ends and street changes: 08, then 05 and 10.
+- Dead ends and street changes: 08, then 05 and 10; the closed stub at x -80.5: 32, 33.
 - HQ, court and avenue: 02, 16.
 - Outskirts and the city edge: 12, 13, 14.
 - Buildings and frame time across the city: 03, 09, 14.
