@@ -1,3 +1,6 @@
+# Retired: the city's power plants are now built in code by web/src/plant.js (ADR-0018). The site no
+# longer loads web/assets/models/power_plant, so CITY = True below writes files nothing reads. Kept
+# for reference only.
 """Build the city's fusion plant, SECTOR 07, in Blender (an original design), for a 14 m tile.
 
 In Blender: REPO = r"<repo root>"; exec(open(REPO + "/tools/blender/power_plant.py").read())

@@ -3,17 +3,17 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { createStage } from './stage.js';
 import { loadKit } from './materials.js';
-import { box, part } from './geometry.js';
+import { box, part, rng } from './geometry.js';
 import { streetLamp } from './parts.js';
 import { powerPlant } from './plant.js';
 import { midRise } from './showcase.js';
 
 const { renderer, scene, start, captureReflections, bench } = createStage({ span: 35, fog: 0.008, camera: [46, 34, 58], target: [0, 13, 0] });
 
-const kit = await loadKit(renderer, ['modular_airduct_circular_01', 'modular_fire_escape', 'power_plant']);
+const kit = await loadKit(renderer, ['modular_airduct_circular_01', 'modular_fire_escape']);
 // Wet street, but not a mirror: warm lights smear into soft streaks.
 part(scene, box(60, 0.2, 60), kit.mat('aerial_asphalt_01', palette.gunmetal, 0.55), 0, -0.1, 0);
-const plant = powerPlant(kit);
+const plant = powerPlant(kit, rng(7), true);
 plant.position.x = -9;
 scene.add(plant);
 const tower = midRise(kit, 12);

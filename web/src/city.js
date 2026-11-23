@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, outward, part, rng } from './geometry.js';
-import { powerPlant } from './plant.js';
+import { plantOn } from './plant.js';
 import { construction, court, market, plaza, storefront } from './tiles.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
@@ -228,7 +228,7 @@ export function buildCity(kit, snap) {
     const concrete = ((sector * 7 + snap.seed) % 2 === 0) !== (rand() < 0.25);
     const family = t.k === 'house' && familyOf(t, near[i], !concrete);
     const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row, signature.has(i)), build: () => construction(kit, t.f, rand, t.on, fw),
-      market: () => market(kit, rand, t.on, fw), plant: () => powerPlant(kit), lot: () => plaza(kit, rand, t.on),
+      market: () => market(kit, rand, t.on, fw), plant: () => plantOn(kit, t), lot: () => plaza(kit, rand, t.on),
       rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit, cuts.map((c) => c.map(([x, z]) => [x - pos(col), z - pos(row)]))),
       site: () => court(kit, rand, t.on, (col + 1) % HALF === 0) }[t.k](); // the HQ's own site tiles are skipped above
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
