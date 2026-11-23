@@ -184,7 +184,7 @@ function conduitMaterial() {
 
 const phaseOf = (key) => ([...key].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 9973, 7) % 997) * 0.37;
 
-// models: the glTF models (web/assets/models) this page uses; the city's are its own (telecom_tower, power_plant,
+// models: the glTF models (web/assets/models) this page uses; the city's are its own (telecom_tower,
 // market_hall, ADR-0005), the rest CC0 kit pieces for close-ups.
 export async function loadKit(renderer, models = [], base = './assets') {
   const tl = new THREE.TextureLoader();

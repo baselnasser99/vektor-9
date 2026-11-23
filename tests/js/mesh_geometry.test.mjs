@@ -4,8 +4,9 @@
 // with zero normals and blacked out the screen from (194, 22, -2) (docs/visual/VIEWS.md, view 31).
 // Covered, each on its own so a failure names its builder: the interchange, the streets, the verge, the whole city
 // as merged (city.js buildCity: those three again with every tile, prop, the railway and the HQ, through a kit whose
-// Blender models are empty groups), the desert, and the traffic with its signals and the trains (instanced, their
-// geometry as built). Not covered, browser only or not meshes: the Blender models' own geometry, people and
+// Blender models are empty groups), the desert, the traffic with its signals and the trains (instanced, their
+// geometry as built), and the power plant in each of its layouts, mirrored and not, lit and dark. Not covered,
+// browser only or not meshes: the Blender models' own geometry, people and
 // figures, the HQ's eye, the aircars, the sky (atmosphere.js) and steam.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,8 +14,10 @@ import * as THREE from 'three';
 import { buildCity, cityPlan } from '../../web/src/city.js';
 import { buildDesert } from '../../web/src/desert.js';
 import { blockCuts, buildInterchange } from '../../web/src/interchange.js';
+import { rng } from '../../web/src/geometry.js';
 import { traffic, trains } from '../../web/src/life.js';
 import { mergeByMaterial } from '../../web/src/merge.js';
+import { powerPlant } from '../../web/src/plant.js';
 import { buildStreets } from '../../web/src/streets.js';
 import { verge } from '../../web/src/terrain.js';
 import { fixture } from './harness.mjs';
@@ -99,3 +102,16 @@ for (const name of ['sim-v3-seed7-t288.json.gz', 'sim-v3-seed3-t288.json.gz']) {
     });
   }
 }
+
+test('power plants, every layout and mirror, lit and dark: finite positions, unit normals and no zero-area triangle', () => {
+  const seen = new Set();
+  for (let s = 0; seen.size < 6; s++) {
+    const { layout, mirrored } = powerPlant(kit, rng(s), true).userData;
+    if (seen.has(`${layout} ${mirrored}`)) continue;
+    seen.add(`${layout} ${mirrored}`);
+    for (const lit of [true, false]) {
+      const wrong = problems(powerPlant(kit, rng(s), lit));
+      assert.deepEqual(wrong.slice(0, 20), [], `${layout}, mirrored ${mirrored}, lit ${lit}: ${wrong.length} problems`);
+    }
+  }
+});

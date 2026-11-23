@@ -30,6 +30,8 @@ export const TERRAIN = ['rail', 'park', 'works', 'road', 'site']; // laid out by
 // Market tiles are cybernetics shops: each gets a name (roof sign) and a short mark (corner sign), all invented.
 export const SHOPS = [['KUROTECH', 'KURO'], ['ZENKO TECH', 'ZENKO'], ['NEXA PARTS', 'NEXA'], ['TOKU WORKS', 'TOKU'],
   ['SEIRA CYBER', 'SEIRA'], ['VX9 REPAIR', 'VX9']];
+// Power plant operators (plant.js), on the sign over each plant's gate, all invented.
+export const OPERATORS = ['KALDRA GRID', 'TORVEK POWER', 'NOVRIN ENERGY', 'ULMARA GRID'];
 export const WORDS = ['ODEN 24', 'NOVA', 'VX9', 'KORU', 'SEIRA', 'ZENKO', 'NEXA', 'TOKU']; // invented sign text
 // Street food on the pedestrian walks (streets.js food): stall names and cafe names, all invented.
 export const FOOD = { noodle: ['NEO RAMEN', 'ODEN 24', 'KORU DUMPLING', 'NOODLE 9'], cart: ['HOT BUNS', 'ODEN 24', 'NOODLE 9'],

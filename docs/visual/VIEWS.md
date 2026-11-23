@@ -54,6 +54,7 @@ Extra views, for the subjects named:
 | 31 | Both median ramps' landings from above the avenue, looking west: the parapets' terminals at the landing points (a black screen until 2026-11-20, from a parapet face with zero normals there) | `194,22,-2,172,0,-3.4` |
 | 32 | The closed stub at x -80.5 from the cross street at road level (1.7 m): the kerb across its mouth, the bollards, the walk's paving beyond | `-80.5,1.7,-70,-80.5,0.6,-110` |
 | 33 | The closed stub at x -80.5 from above its mouth: the square corners, the kerb across it, the cross street's stop lines | `-80.5,40,-62,-80.5,0,-100` |
+| 34 | A power plant from above, the reactor layout at (277, -108): the drum, both stacks, the hall's gable roof, the transformer yard | `294,70,-92,277,0,-108` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 
@@ -64,5 +65,6 @@ View 18 stays low: the expressway deck runs above the boulevard there, and a cam
 - Traffic and junctions: 07, 17, 01.
 - Dead ends and street changes: 08, then 05 and 10; the closed stub at x -80.5: 32, 33.
 - HQ, court and avenue: 02, 16.
+- Power plants: 34, then 01.
 - Outskirts and the city edge: 12, 13, 14.
 - Buildings and frame time across the city: 03, 09, 14.
