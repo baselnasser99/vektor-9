@@ -108,6 +108,20 @@ export function part(parent, geo, mat, x = 0, y = 0, z = 0) {
   parent.add(m);
   return m;
 }
+// A sign w wide, h high and d deep at (x, y, z), its face to +z turned by `turn` about the vertical: a backing box in
+// `back` and the sign's texture on a plane over its face (both faces if `both`). Never the sign on the box itself:
+// box UVs are in metres (projectUV), so a box shows a stretched slice of the word (tests/js/signs.test.mjs).
+const faces = new Map();
+export function signBoard(parent, w, h, d, back, sign, x, y, z, turn = 0, both = false) {
+  const s = new THREE.Group(), key = `${w}:${h}`;
+  s.position.set(x, y, z);
+  s.rotation.y = turn;
+  parent.add(s);
+  part(s, box(w, h, d, 0), back);
+  if (!faces.has(key)) faces.set(key, new THREE.PlaneGeometry(w - 0.1, h - 0.1));
+  for (const k of both ? [1, -1] : [1]) part(s, faces.get(key), sign, 0, 0, k * (d / 2 + 0.01)).rotation.y = k < 0 ? Math.PI : 0;
+  return s;
+}
 // Flat torus; tubular segments go around the ring, radial ones around the tube.
 export const ring = (parent, r, tube, mat, x, y, z, tubular = 40, radial = 8) => {
   const m = part(parent, new THREE.TorusGeometry(r, tube, radial, tubular), mat, x, y, z);

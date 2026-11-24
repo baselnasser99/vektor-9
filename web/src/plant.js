@@ -2,7 +2,7 @@
 // glTF modelled in Blender).
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, metric, part, rng } from './geometry.js';
+import { box, cyl, metric, part, rng, signBoard } from './geometry.js';
 import { pipe, warningLamp } from './parts.js';
 import { OPERATORS, pick } from './world.js';
 
@@ -80,7 +80,7 @@ export function powerPlant(kit, rand, lit) {
     const door = gx + sx * 2.7;
     part(g, box(1, 2.2, 0.08, 0), m.mech, X(door), 1.35, front + 0.03);
     part(g, box(0.15, 0.15, 0.08, 0), m.ice, X(door) + 0.7, 1.6, front + 0.05);
-    part(g, box(Math.min(5, w - 1.5), 0.9, 0.2, 1), m.sign, X(x), Math.min(h - 1.6, 5.6), front + 0.12);
+    signBoard(g, Math.min(5, w - 1.5), 0.9, 0.2, m.dark, m.sign, X(x), Math.min(h - 1.6, 5.6), front + 0.12);
     pipe(kit, d, [[X(x - w / 2 - 0.4), 0.4, z - dd / 4], [X(x - w / 2 - 0.4), h + 0.6, z - dd / 4]], 0.22, m.steel, 8);
   };
   // Transformers under a gantry, with fins, insulators and a cold-white indicator each.

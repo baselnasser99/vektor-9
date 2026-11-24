@@ -1,3 +1,6 @@
+# Retired: the city's market halls are now built in code by web/src/market.js (ADR-0019). The site
+# no longer loads web/assets/models/market_hall, so CITY = True below writes files nothing reads.
+# Kept for reference only.
 """Build the city's market tile as KUROTECH, a cybernetic hardware shop, in Blender (an original
 design).
 
