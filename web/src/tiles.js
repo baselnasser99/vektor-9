@@ -4,7 +4,7 @@
 // The style seed drives every choice; a blacked-out tile has dark rooms and no neon.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, outward, part } from './geometry.js';
+import { box, cyl, outward, part, signBoard } from './geometry.js';
 import { ADS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
@@ -14,7 +14,7 @@ export function podium(kit, g, rand, lit, warm, fw) {
   part(g, box(fw - 1, 2.6, 0.1, 1), lit ? kit.glow(palette.sodium, 0.8) : kit.glass(palette.charcoal), 0, 1.6, front + 0.01);
   part(g, box(fw + 0.4, 0.25, 1.8, 1), kit.mat('box_profile_metal_sheet', warm), 0, 3.2, front + 0.9).rotation.x = 0.12;
   if (!lit) return;
-  if (rand() < 0.6) part(g, box(Math.min(6, fw - 2), 1.2, 0.25, 1), kit.sign(pick(rand, WORDS), warm), 0, 5.2, front + 0.15);
+  if (rand() < 0.6) signBoard(g, Math.min(6, fw - 2), 1.2, 0.25, kit.steel(palette.graphite, 0.6), kit.sign(pick(rand, WORDS), warm), 0, 5.2, front + 0.15);
   if (rand() < 0.5) part(g, box(fw + 0.3, 0.14, fw + 0.3, 1), kit.glow(warm, 2), 0, 2 * F - 0.12, 0);
 }
 
@@ -107,7 +107,7 @@ function kiosk(kit, g, rand, lit, x, z) {
   const warm = pick(rand, WARM);
   part(g, box(3, 2.6, 2.4, 1), kit.steel(palette.charcoal), x, 1.5, z);
   if (lit) {
-    part(g, box(2.6, 0.6, 0.15, 1), kit.sign(pick(rand, WORDS), warm), x, 3.2, z + 1.25);
+    signBoard(g, 2.6, 0.6, 0.15, kit.steel(palette.graphite, 0.6), kit.sign(pick(rand, WORDS), warm), x, 3.2, z + 1.25);
     part(g, box(2.4, 0.9, 0.1, 1), kit.glow(palette.warmWindow, 1), x, 1.4, z + 1.22);
   }
 }

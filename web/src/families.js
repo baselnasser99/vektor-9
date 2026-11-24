@@ -6,7 +6,7 @@
 // merges per sector and only draws near the camera (city.js, merge.js).
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part } from './geometry.js';
+import { box, cyl, part, signBoard } from './geometry.js';
 import { pipe, warningLamp } from './parts.js';
 import { dress, podium } from './tiles.js';
 import { roof, roofType } from './roofs.js';
@@ -142,7 +142,7 @@ function office(c) {
   if (lit && seed % 2) warningLamp(kit, c.g, fw * 0.46 + 0.05, 2.4, fw * 0.3, 0.3); // security panel at the lobby
   if (lit && seed === 4 && f >= 14) { // now and then a narrow red corporate sign up one corner
     const h = Math.min(12, (split - lobby) * 0.35);
-    part(c.g, box(0.3, h, 1.1, 1), kit.sign(['NOVA', 'VX9', 'SEIRA'][f % 3], palette.crimson, true), w / 2 + 0.5, split - F - h / 2, w / 2 - 1);
+    signBoard(c.g, 1.1, h, 0.3, kit.steel(palette.graphite, 0.6), kit.sign(['NOVA', 'VX9', 'SEIRA'][f % 3], palette.crimson, true), w / 2 + 0.5, split - F - h / 2, w / 2 - 1, Math.PI / 2, true);
   }
   let top = w, from = lobby;
   if (split < H) {

@@ -1,7 +1,7 @@
 // Close-up mid-rise for the sample page, with more detail than city buildings carry.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part } from './geometry.js';
+import { box, cyl, part, signBoard } from './geometry.js';
 import { antennaArray, dronePad, edgeLights, railing, waterTank } from './parts.js';
 import { F } from './world.js';
 
@@ -15,8 +15,8 @@ export function midRise(kit, floors = 12) {
   part(g, box(12, base, 12), kit.concrete(palette.slate), 0, F, 0);
   part(g, box(11, 2.6, 0.1), kit.glow(palette.neonOrange, 0.6), 0, 1.6, 6.01);
   part(g, box(12.4, 0.25, 1.8), kit.mat('box_profile_metal_sheet', palette.neonPink), 0, 3.2, 6.9).rotation.x = 0.12;
-  part(g, box(6, 1.2, 0.25), kit.sign('ODEN 24', palette.neonOrange), -2, 5.2, 6.15);
-  part(g, box(0.25, 5, 1.2), kit.sign('NOVA', palette.neonPink, true), 6.15, 4.5, 4.6);
+  signBoard(g, 6, 1.2, 0.25, kit.steel(palette.graphite, 0.6), kit.sign('ODEN 24', palette.neonOrange), -2, 5.2, 6.15);
+  signBoard(g, 1.2, 5, 0.25, kit.steel(palette.graphite, 0.6), kit.sign('NOVA', palette.neonPink, true), 6.15, 4.5, 4.6, Math.PI / 2);
   part(g, box(12.3, 0.14, 12.3), kit.glow(palette.neonRed, 2), 0, base - 0.12, 0);
 
   // Glass tower with mullion fins and slab edges
@@ -49,7 +49,7 @@ export function midRise(kit, floors = 12) {
   sign.castShadow = false;
 
   // Vertical LED screen and an old fire escape on the back
-  part(g, box(0.3, bodyH * 0.6, 2.8), kit.sign('VX9', palette.neonViolet, true), 5.4, base + bodyH * 0.55, -2.6);
+  signBoard(g, 2.8, bodyH * 0.6, 0.3, kit.steel(palette.graphite, 0.6), kit.sign('VX9', palette.neonViolet, true), 5.4, base + bodyH * 0.55, -2.6, Math.PI / 2);
   for (let y = base + 3; y + 9 < roof; y += 9) {
     const fe = kit.piece('modular_fire_escape');
     fe.position.set(0, y, -5.4);

@@ -2,7 +2,7 @@
 // plant.js replaced the power plant's, ADR-0018).
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, part, rng } from './geometry.js';
+import { box, cyl, part, rng, signBoard } from './geometry.js';
 import { SHOPS, pick } from './world.js';
 
 const AWNINGS = [palette.deepRed, palette.oliveGrey, palette.armorWhite, palette.hazardPaint, palette.warningYellow];
@@ -68,10 +68,7 @@ export function market(kit, rand, lit, fw, s) {
   }
   // The ridge sign on two posts, its place along the ridge by seed.
   const sw = Math.min(5.5, nx - 1.5);
-  // Its face is a plane each side: box UVs are in metres, so a box would show a slice of the name.
-  part(g, box(sw, 1, 0.18, 0), m.graphite, cx + signShift, top[0] + 0.75, top[1]);
-  const face = new THREE.PlaneGeometry(sw - 0.1, 0.9);
-  for (const s2 of [1, -1]) part(g, face, m.sign, cx + signShift, top[0] + 0.75, top[1] + s2 * 0.1).rotation.y = s2 < 0 ? Math.PI : 0;
+  signBoard(g, sw, 1, 0.18, m.graphite, m.sign, cx + signShift, top[0] + 0.75, top[1], 0, true);
   for (const s2 of [-1, 1]) part(d, box(0.1, 0.5, 0.1, 0), m.graphite, cx + signShift + s2 * sw * 0.35, top[0] + 0.1, top[1]);
 
   // An open colonnade along a side: `len` long, its inner face (the nave's wall) at the origin, out to +z, turned and
