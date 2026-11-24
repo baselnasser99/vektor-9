@@ -45,3 +45,4 @@ The telecom tower is the city's defining landmark. Built from code primitives (A
 
 ## Update (2026-11-23): power plants back in code
 - The power plant no longer uses this approach: ADR-0018 builds it in code, in three layouts per seed, and removes its glTF. `tools/blender/power_plant.py` is kept for reference only.
+- The market hall no longer uses this approach either: ADR-0019 builds it in code, with variants per seed, and removes its glTF. `tools/blender/market_hall.py` is kept for reference only.
