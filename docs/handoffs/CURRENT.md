@@ -1,11 +1,22 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-24 00:09 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
-Branch: `main` at this handoff commit, on top of `dfc7686` (the #80 merge)
+Updated: 2026-11-24 20:04 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
+Branch: `main` at this handoff commit, on top of `44f2294` (the #81 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- State after #81: `main` at `44f22946608a2a7d3c0476e79f224e57b054d8ef` (#81 merge) on `4df7811` (the previous handoff). SIM_VERSION 4, schema 6, nothing deployed.
+- PR #81 (merge `44f2294`, head `7dd8acc`, CI passed): code-built market halls and the sign fix, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged.
+  - `market.js` `market(kit, rand, lit, fw, s)` on the 9 to 11 m footprint: a nave with a clerestory band under a ribbed barrel or a sawtooth roof; an open colonnade of steel posts along the front and, on some halls, along one end, its bays holding stalls (lit opening, counter, goods, awning, amber lamp) or shutters; a loading bay at the back; the shop's name from `SHOPS` on a ridge sign, the hall number (HALL 01 to 12) on the fascia. Dark in a blackout: with `t.on` false every lamp, sign and lit opening goes dark.
+  - The tile's generator gives the hall one draw (the shop name), as the glTF did, so placement draws are unchanged; every variant (roof, open sides, wall, awning colours, sign place, number, stall or shutter per bay) comes from `rng(t.s * 23 + 17)`. Mix on v4 seed 7 (66 halls): barrel 32 (front 11, front+left 13, front+right 8), sawtooth 34 (16, 8, 10).
+  - The `market_hall` glTF (`web/assets/models/market_hall`, 402,758 B) removed, with its load in `main.js` and its `web/assets/LICENSE.md` line. `tools/blender/market_hall.py` kept, marked retired. First visit 18.70 MB uncompressed (10.95 MB gzip), from 19.09 MB (11.02 MB), counted from every file view 01 loads.
+  - Per hall 478 to 846 always-drawn triangles plus 420 to 684 detail, from 3,791 plus 2,247. City triangles: v4 seed 7 3,337,357 to 3,016,017; v3 seed 3 1,244,513 to 1,201,325; v3 seed 7 1,393,185 to 1,334,689 (old hall triangles added from its file; Node mock with empty models).
+  - Sign fix: `geometry.js` `signBoard` puts a backing box behind a plane carrying the whole sign texture (box UVs are in metres and showed a stretched slice of the word). Used for the plant gate sign, shop podium and kiosk signs, the corporate corner sign, the hall's ridge sign and the three signs on the sample page.
+  - Frame time (`?bench=1000x625`, median of 3 alternating loads against origin/main): view 01 37.9 to 36.7 ms, view 35 37.1 to 36.0. Draw calls +9 and +11. Black share 0 % to 2.8 % on hall shots at road, sidewalk and high, 12.9 % on one close sidewalk frame of dark shutters; view 01 0.08 %, view 35 0 %. Screenshots stay local.
+  - Tests: `tests/js/market.test.mjs` (same tile gives the same hash, consecutive halls differ, one tile draw, all six roof and open-side variants on v4 seed 7, a dark hall has no lit material); `mesh_geometry.test.mjs` covers every variant, lit and dark; `tests/js/signs.test.mjs` (every sign material in the merged city of all three fixtures, and the plant, hall and podium alone, sits on 0-to-1 UVs; it failed on the code before the fix).
+  - ADR-0019 (market halls built in code; ADR-0005 gets an update note), the style guide's market hall section, view 35 in `docs/visual/VIEWS.md`.
+- Blender: the pipeline runs headless (`blender -b --factory-startup --python`): `market_hall.py`, exported to scratch, rebuilt a `.bin` byte-identical to the committed one in about 10 s. The only build is Blender 5.4.0 Alpha in the owner's Downloads folder, not on PATH. A stable LTS build is required before new kit pieces are made (ADR-0019).
 - State after #80: `main` at `dfc76865f23699914ae82c4a668e7e4233cf3ef6` (#80 merge) on `2bf17ff` (the previous handoff). SIM_VERSION 4, schema 6, nothing deployed.
 - PR #80 (merge `dfc7686`, head `008e3ed`, CI passed): code-built power plants, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged.
   - `plant.js` `powerPlant(kit, rand, lit)` and `plantOn(kit, t)`: three layouts (a single hyperboloid cooling tower with a stack; twin towers behind a long hall; a reactor drum with two stacks), mirrored or not, from the tile's own generator `rng(t.s * 19 + 11)`, so the tile's placement draws are unchanged. Each has a turbine hall, a transformer yard and a low back wall. Layout mix on v4 seed 7: 9 single tower, 7 twin, 5 reactor.
@@ -203,6 +214,11 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - ADR-0011's interchange text may still describe the old slim barriers and the concrete deck; amend it in a later docs change.
 
 ## Checks
+- On `main` @ `44f2294` (detached, this worktree without `snapshots/`, as in CI):
+  - Node suite → 303 tests: 297 passed, 0 failed, 6 todo.
+  - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (measured on the PR branch).
+  - `ruff check` and `ruff format --check` → pass (PR branch). No changed file has CR bytes.
+- CI on PR #81 head `7dd8acc`: `lint-and-test` passed.
 - On `main` @ `dfc7686` (detached, this worktree without `snapshots/`, as in CI):
   - Node suite → 293 tests: 287 passed, 0 failed, 6 todo.
   - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (measured on the PR branch).
@@ -267,7 +283,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 
 ## Next
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
-1. Market halls, code-built, following the direction proposed in the plant session: a barrel or sawtooth roof by footprint, open colonnade sides with stalls, warm spill light, a roof-ridge sign from `SHOPS`, dark in a blackout.
+1. Blender detail kit for plants and halls: stall kit, roller shutter, transformer, cooling-tower base, loading dock, stack platform, as shared instanced parts assembled by code. Needs a stable Blender LTS first.
 2. Court kiosks redesign: they read as oversized rounded boxes.
 3. Variety for repetitive towers and houses.
 4. Old town look. Owner decision first: renderer only, or lower houses through a sim change before genesis.
