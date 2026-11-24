@@ -55,6 +55,7 @@ Extra views, for the subjects named:
 | 32 | The closed stub at x -80.5 from the cross street at road level (1.7 m): the kerb across its mouth, the bollards, the walk's paving beyond | `-80.5,1.7,-70,-80.5,0.6,-110` |
 | 33 | The closed stub at x -80.5 from above its mouth: the square corners, the kerb across it, the cross street's stop lines | `-80.5,40,-62,-80.5,0,-100` |
 | 34 | A power plant from above, the reactor layout at (277, -108): the drum, both stacks, the hall's gable roof, the transformer yard | `294,70,-92,277,0,-108` |
+| 35 | Market halls near the city's +z edge, from outside it looking in, around (-185, 370): barrel and sawtooth roofs, open ends, ridge signs | `-180,90,480,-185,0,370` |
 
 View 18 stays low: the expressway deck runs above the boulevard there, and a camera at 10 m sits on it.
 

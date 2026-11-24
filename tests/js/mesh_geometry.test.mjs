@@ -5,7 +5,8 @@
 // Covered, each on its own so a failure names its builder: the interchange, the streets, the verge, the whole city
 // as merged (city.js buildCity: those three again with every tile, prop, the railway and the HQ, through a kit whose
 // Blender models are empty groups), the desert, the traffic with its signals and the trains (instanced, their
-// geometry as built), and the power plant in each of its layouts, mirrored and not, lit and dark. Not covered,
+// geometry as built), the power plant in each of its layouts, mirrored and not, and the market hall in each roof
+// and open side, both lit and dark. Not covered,
 // browser only or not meshes: the Blender models' own geometry, people and
 // figures, the HQ's eye, the aircars, the sky (atmosphere.js) and steam.
 import { test } from 'node:test';
@@ -17,6 +18,7 @@ import { blockCuts, buildInterchange } from '../../web/src/interchange.js';
 import { rng } from '../../web/src/geometry.js';
 import { traffic, trains } from '../../web/src/life.js';
 import { mergeByMaterial } from '../../web/src/merge.js';
+import { market } from '../../web/src/market.js';
 import { powerPlant } from '../../web/src/plant.js';
 import { buildStreets } from '../../web/src/streets.js';
 import { verge } from '../../web/src/terrain.js';
@@ -112,6 +114,19 @@ test('power plants, every layout and mirror, lit and dark: finite positions, uni
     for (const lit of [true, false]) {
       const wrong = problems(powerPlant(kit, rng(s), lit));
       assert.deepEqual(wrong.slice(0, 20), [], `${layout}, mirrored ${mirrored}, lit ${lit}: ${wrong.length} problems`);
+    }
+  }
+});
+
+test('market halls, every roof and open side, lit and dark: finite positions, unit normals and no zero-area triangle', () => {
+  const seen = new Set();
+  for (let s = 0; seen.size < 6; s++) {
+    const fw = 9 + (s % 5) * 0.5, { roof, open } = market(kit, rng(s), true, fw, s).userData;
+    if (seen.has(`${roof} ${open}`)) continue;
+    seen.add(`${roof} ${open}`);
+    for (const lit of [true, false]) {
+      const wrong = problems(market(kit, rng(s), lit, fw, s));
+      assert.deepEqual(wrong.slice(0, 20), [], `${roof}, ${open}, lit ${lit}: ${wrong.length} problems`);
     }
   }
 });
