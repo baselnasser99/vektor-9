@@ -1,6 +1,6 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-24 20:04 (+02:00)
+Updated: 2026-11-25 14:59 (+02:00)
 Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
 Branch: `main` at this handoff commit, on top of `44f2294` (the #81 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
@@ -207,7 +207,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
   - Outskirts style: wasteland versus "the megacity goes on".
   - Old town look: only 12 of its 220 houses are below the 16-floor old-style limit (`families.js:20`).
   - Target hardware: the baseline runs 34 to 50 ms per frame on Intel UHD 630.
-- First visit is 19 MB uncompressed; check whether sample-only models (`utility_box_01`, the three `modular_*`) load on the main page.
+- First visit is 18.70 MB uncompressed (10.95 MB gzip) after #81; check whether sample-only models (`utility_box_01`, the three `modular_*`) load on the main page.
 - Ramp lane ids in `tests/fixtures/lane-moves-seed7.json` contain `undefined` for fields ramps don't have (unique and stable, but untidy).
 - graphify is installed for code-only use and is not part of any prompt.
 - The desert causeways (`desert.js`) are concrete and have no barriers, so the surface changes where the expressway meets the highway at the city edge (outskirts, O1).
