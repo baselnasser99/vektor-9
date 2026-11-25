@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, outward, part, signBoard } from './geometry.js';
+import { kitPart } from './parts.js';
 import { ADS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
@@ -115,8 +116,8 @@ function kiosk(kit, g, rand, lit, x, z) {
 // The headquarters' court (ADR-0015): a tile of the forecourt the simulation reserves across the avenue from the
 // campus. Its own paving edge to edge, so the tiles read as one square and not as sidewalk: warm stone slabs, 3.5 m
 // along x (toward the avenue and the HQ) by 1.75 m, in running bond over dark joints, the pattern carried on across
-// tile edges; steel bollards along its kerb where it meets the avenue (kerb: the tile's +x side does); a lit kiosk on
-// some tiles.
+// tile edges; steel bollards along its kerb where it meets the avenue (kerb: the tile's +x side does); a security
+// kiosk on some tiles (securityKiosk, below).
 const SLAB = [3.5, 1.75], JOINT = 0.08;
 export function court(kit, rand, lit, kerb) {
   const g = new THREE.Group(), stone = kit.concrete(palette.courtStone), h = TILE / 2;
@@ -130,8 +131,29 @@ export function court(kit, rand, lit, kerb) {
     }
   }
   if (kerb) for (let z = -TILE / 2 + 1.5; z < TILE / 2; z += 2.5) part(g, cyl(0.1, 0.1, 0.9, 8), kit.steel(palette.charcoal, 0.6), TILE / 2 - 0.6, 0.65, z);
-  if (rand() < 0.35) kiosk(kit, g, rand, lit, -3, -3);
+  if (rand() < 0.35) securityKiosk(kit, g, rand, lit, kerb);
   return g;
+}
+
+// The court's security kiosk, the detail kit's (tools/blender/detail_kiosk.py, ADR-0020), front +z. On a kerb tile it
+// stands by the kerb facing the avenue, mostly with its barrier arm out along the kerb; elsewhere at (-3, -3), turned
+// any of four ways. The seed picks the door's side (away from the arm), the canopy's colour and the post's name; its
+// lit slot (service slot, downlight), lamp (ceiling light, monitor), sign and the glass's warm cast are dark in a blackout.
+const CANOPIES = [palette.deepRed, palette.armorWhite, palette.hazardPaint, palette.oliveGrey];
+const POSTS = ['GATE A', 'GATE B', 'POST 3', 'POST 7', 'CHECK 2', 'WATCH 9']; // invented post names
+function securityKiosk(kit, g, rand, lit, kerb) {
+  const dark = kit.steel(palette.charcoal, 0.6), door = kit.steel(palette.charcoal, 0.5);
+  const on = (make) => (lit ? make() : dark), glass = kit.veil(palette.glassBand, 0.35, ...(lit ? [palette.warmWindow, 0.5] : []));
+  const arm = kerb && rand() < 0.75, canopy = pick(rand, CANOPIES), name = pick(rand, POSTS);
+  const [x, z, turn] = kerb ? [4.6, 3, Math.PI / 2] : [-3, -3, Math.floor(rand() * 4) * (Math.PI / 2)];
+  const shut = arm || rand() < 0.5 ? 'door_r' : 'door_l'; // the arm swings out on the +x side
+  const k = kitPart(kit, g, 'kiosk', { base: kit.concrete(palette.slate), frame: kit.steel(palette.graphite, 0.6),
+    panel: kit.steel(palette.gunmetal, 0.6), glass, canopy: kit.steel(canopy, 0.6),
+    door_l: door, door_r: door, boom: kit.steel(palette.armorWhite, 0.6), stripe: kit.steel(palette.deepRed, 0.7),
+    lit: on(() => kit.glow(palette.warmWindow, 2.5)), lamp: on(() => kit.glow(palette.warmWindow, 1)),
+    sign: on(() => kit.sign(name, palette.coldCyan)) }, x, 0.19, z, turn);
+  for (const slot of [shut, ...(arm ? [] : ['boom', 'stripe'])]) k.getObjectByName(slot).removeFromParent();
+  k.userData.kiosk = { arm, door: shut === 'door_r' ? 'door_l' : 'door_r', canopy, name, turn }; // for the tests and probes
 }
 
 // Construction site: bare concrete core in scaffolding, hoarding at street level, work lights, sometimes a tower crane.

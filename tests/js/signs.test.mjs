@@ -9,7 +9,7 @@ import { rng } from '../../web/src/geometry.js';
 import { market } from '../../web/src/market.js';
 import { powerPlant } from '../../web/src/plant.js';
 import { podium } from '../../web/src/tiles.js';
-import { fixture } from './harness.mjs';
+import { KIT_SCENES, fixture } from './harness.mjs';
 
 const mats = new Map();
 const tag = (name) => mats.get(name) ?? mats.set(name, Object.assign(new THREE.MeshStandardMaterial(), { name, emissiveMap: new THREE.Texture() })).get(name);
@@ -56,4 +56,13 @@ test('the plant gate, the market ridge and the shop podium signs are on whole qu
   const { all, wrong } = signs(...roots);
   assert.ok(all.size >= 3, `${all.size} signs`);
   assert.deepEqual(wrong, []);
+});
+
+test('the court kiosk\'s sign (the detail kit part) is on a whole quad', () => {
+  const quads = [];
+  KIT_SCENES['kit-detail/kiosk'].traverse((m) => m.isMesh && m.material.name === 'sign' && quads.push(m));
+  assert.equal(quads.length, 1);
+  const uv = quads[0].geometry.attributes.uv.array;
+  assert.equal(uv.length, 8, 'one quad');
+  assert.ok(uv.every((v) => v === 0 || v === 1), [...uv].join(' '));
 });
