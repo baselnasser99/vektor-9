@@ -1,11 +1,20 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-25 17:21 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). Blender detail kit (PR #82). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
-Branch: `main` at this handoff commit, on top of `ea8e1dd` (the #82 merge)
+Updated: 2026-11-26 01:08 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). Blender detail kit (PR #82). Court kiosks from the detail kit (PR #83). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
+Branch: `main` at this handoff commit, on top of `ae61490` (the #83 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). Ignored `snapshots/` (v4), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- State after #83: `main` at `ae61490147e810713679eb9bc5ed8c06e6201391` (#83 merge) on `ccd5559` (the previous handoff). SIM_VERSION 4, schema 6, nothing deployed.
+- PR #83 (merge `ae61490`, head `59420c3`, CI passed): court kiosks from the detail kit, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged.
+  - One Blender kit part, `tools/blender/detail_kiosk.py` (`kit-detail/kiosk`, 1,110 triangles, 12 slots): a glazed booth on a bevelled plinth (frame, mullions, panels, solid back), a `lit` slot (service slot and canopy downlight), a `lamp` slot (ceiling light and monitor, softer), a canopy overhanging every side, a sign board (UVs 0..1), a door on each side (`door_l`, `door_r`) and a barrier arm (`boom`, `stripe`). Two runs give byte-identical files; manifest updated.
+  - `tiles.js` `securityKiosk` replaces the code-built box on the court tiles that drew a kiosk before (same first draw; 5 on v4 seed 7, 3 on v3 seed 3). The seed picks facing, the door kept, canopy colour (deepRed, armorWhite, hazardPaint, oliveGrey) and post name (invented: GATE A, POST 7, ...). On the avenue kerb it faces the traffic, keeps the arm 3 times in 4, and the door away from the arm. 854 triangles as drawn, 1,006 with the arm.
+  - Night: `lit` at `warmWindow` 2.5, `lamp` at 1, and the glass (`kit.veil(palette.glassBand, 0.35)`) takes a faint `warmWindow` glow; all of it and the sign go dark in a blackout. `kit.veil` takes an optional glow colour and intensity; existing veils keep their material names.
+  - Plaza kiosks (278 on v4 seed 7, 978 on v3 seed 3), the HQ guard booth and the street drinks kiosks are unchanged.
+  - Numbers: city triangles on v4 seed 7 3,162,905 to 3,166,657 (+3,752); v3 seed 3 1,218,035 to 1,220,425. Kiosk files +92,876 B (about 12 KB gzip). Frame time (`?bench=1000x625`, median of 3 alternating loads against origin/main): view 16 38.3 to 39.3 ms (about +1.0), view 01 39.0 to 38.2 (noise). Draw calls +15 and +8. Black share 0 % on every shot. Screenshots stay local.
+  - Tests: `tests/js/kiosk.test.mjs` (400 seeds: determinism, arm only on the kerb, one door away from the arm, all canopy colours and both door sides, nothing lit and no warm glass in a blackout); `signs.test.mjs` checks the kiosk's sign quad; `mesh_geometry` covers the part.
+  - ADR-0020 amendment (2026-11-26): the kiosk part, removable doors and arm, two lit slots, and each sign text and canopy colour as its own draw call (a plaza rollout needs a shared sign atlas first). Style guide court paragraph.
 - State after #82: `main` at `ea8e1dd526469ba18e88e5deb6c3a5ce099e91b0` (#82 merge) on `02fe477` (the previous handoff). SIM_VERSION 4, schema 6, nothing deployed.
 - PR #82 (merge `ea8e1dd`, head `7374075`, CI passed): the Blender detail kit for plants and halls, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged.
   - Six parts made in Blender by deterministic scripts (`tools/blender/detail_stall.py`, `detail_shutter.py`, `detail_transformer.py`, `detail_tower_base.py`, `detail_dock.py`, `detail_stack_head.py`, sharing `detail.py`), exported to `web/assets/models/kit-detail/` (`.gltf` + `.bin`, 188,684 B in all): stall 352 triangles, roller shutter 228, transformer 518, tower leg ring 684, loading dock 272, stack-head platform with caged ladder 716. Two runs give byte-identical files.
@@ -186,7 +195,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - Empty worktree folders that Windows kept locked.
 
 ## Conventions
-- After every shot run, contact sheets go in the shot folder: `sheet-<subject>.png`, every compared version side by side (before and after, or each version), at most 2400 px wide, each tile labelled with version, view name and black share; plus `sheet-overview.png` with small thumbnails of every shot. Every report lists them at the end.
+- After every shot run, contact sheets go in the shot folder: `sheet-<subject>.png`, every compared version side by side (before and after, or each version), as a grid of at most 4 tiles per row with before and after pairs side by side in the same row, at most 2400 px wide, each tile labelled with version, view name and black share; plus `sheet-overview.png` with small thumbnails of every shot. Every report lists them at the end.
 - Visual shots must be captured in real time, at least 30 s after load. Headless virtual time captures walkers mid fade-in at about a tenth of their size.
 - Shots and bench runs go through headless Chrome over CDP in real time, never the app's browser pane (hidden, it runs as a throttled background page and captures partly drawn black frames).
 - No tests while a shot or bench server is up: the Node tests move `snapshots/` aside, and a page loading then gets a 404.
@@ -196,6 +205,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - Traffic outcomes change with lane sampling density (adding points to a lane, even on its own line, changes later traffic) and can expose the junction overlap at (293, -80). Keep new lane points on the existing chords where a lane's length must stay the same.
 
 ## Open
+- The 278 plaza kiosks on v4 seed 7 still use the old code-built box. Rolling the kiosk part out to them needs a shared sign atlas first, to keep draw calls flat (ADR-0020 amendment, 2026-11-26).
 - ADR-0018 and ADR-0019 need a one-line pointer to ADR-0020 (their small parts are now the detail kit).
 - The fill's side reads as a plain tall wall from road level (polish later).
 - Known: a single zero normal anywhere becomes NaN in the half-float render target, and bloom spreads it across the frame (the #75 black screen; `merge.js` asserts against flat-scaled parts for the same reason).
@@ -228,6 +238,11 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - ADR-0011's interchange text may still describe the old slim barriers and the concrete deck; amend it in a later docs change.
 
 ## Checks
+- On `main` @ `ae61490` (detached, this worktree without `snapshots/`, every server stopped, as in CI):
+  - Node suite → 315 tests: 309 passed, 0 failed, 6 todo.
+  - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (measured on the PR branch).
+  - `ruff check` and `ruff format --check` → pass (PR branch). No changed text file has CR bytes.
+- CI on PR #83 head `59420c3`: `lint-and-test` passed.
 - On `main` @ `ea8e1dd` (detached, this worktree without `snapshots/`, as in CI):
   - Node suite → 312 tests: 306 passed, 0 failed, 6 todo.
   - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (measured on the PR branch).
@@ -302,10 +317,11 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 
 ## Next
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
-1. Court kiosks, as one Blender kit kiosk varied by code (the detail kit's pipeline, ADR-0020): they read as oversized rounded boxes.
+1. HQ court dressing: planters with trees, light columns, benches, wayfinding pillars, a central feature, standing people; the open axis to the HQ kept clear.
 2. Variety for repetitive towers and houses.
 3. Old town look. Owner decision first: renderer only, or lower houses through a sim change before genesis.
-4. The remaining `URBAN_MASTERPLAN` steps, the masterplan table and frontier dressing first (542 empty lots drawn as parking).
-5. Traffic work: the junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin, reopen the stubs to cars and add the HQ-to-court crossing (see Parked).
-6. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
-7. Then: outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
+4. Plaza kiosks with a shared sign atlas.
+5. The remaining `URBAN_MASTERPLAN` steps, the masterplan table and frontier dressing first (542 empty lots drawn as parking).
+6. Traffic work: the junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin, reopen the stubs to cars and add the HQ-to-court crossing (see Parked).
+7. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
+8. Then: outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
