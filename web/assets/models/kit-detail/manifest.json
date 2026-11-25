@@ -1,0 +1,18 @@
+{
+ "blender": "5.2.5 LTS",
+ "made_by": "tools/blender/detail_<part>.py (tools/blender/detail.py)",
+ "sha256": {
+  "dock.bin": "b516c072585a729d2a4c898ab6884753700520db815a8312bd09a487599a109a",
+  "dock.gltf": "42586128f6ca2c249b8c1ff01aad93b659c1286d5e5bb63f206e6b97c1e081e7",
+  "shutter.bin": "2385e2a646bb8f233507e84d191e84eaf5223e38932c06fee29df4c3a2f4a3b6",
+  "shutter.gltf": "ad8a5874362339dc99ce8658c4e36b0d7f03707d96117ce4f46da71abbc70736",
+  "stack_head.bin": "ab183652d0ce007fc2adc47a815a040891a9801f4b5d626159b2837632d99fa9",
+  "stack_head.gltf": "e83016c029e5a58580566f7a7c78c23c330cedfb12d1d7f5f9c2d2b4e01f1308",
+  "stall.bin": "599e80af9dd31fa3d048657ee9915007f9b7c65a2981ed6f2b59eb289c0ae9ce",
+  "stall.gltf": "04c177e84fbc6365226dad8a00bfe93f874adbd49c1d3310390b0a6182fe6723",
+  "tower_base.bin": "581ec45782685e341b036c3a17d4cf8455ca9cfb364fa44b4a31e542ac9f2a1e",
+  "tower_base.gltf": "3c14b2c4deaca5f7e9283f9238f5da81467a40f2b6e34a063729453bee18ea72",
+  "transformer.bin": "5cf8fd1fd3d3b0067e0b4452323597f54ceeb369db10860b9032bb91790b177f",
+  "transformer.gltf": "b4964ace4caf92374c8fae4d2851860d2ccf510fca929253f01601026b89858c"
+ }
+}

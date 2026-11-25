@@ -3,6 +3,22 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, ring } from './geometry.js';
 
+// The detail kit (tools/blender/detail_*.py, web/assets/models/kit-detail): parts plant.js and market.js place on
+// every plant and hall, drawn for the whole city as one instanced mesh per part and material (merge.js).
+export const KIT_DETAIL = ['stall', 'shutter', 'transformer', 'tower_base', 'dock', 'stack_head'].map((n) => `kit-detail/${n}`);
+
+// One detail kit part in parent: kit.model with a material for each of its slots (roles), marked for instancing, at
+// (x, y, z), turned about the vertical and scaled (never mirrored or flat: an instance cannot flip its faces).
+export function kitPart(kit, parent, name, roles, x, y, z, turn = 0, sx = 1, sy = 1, sz = 1) {
+  const o = kit.model(`kit-detail/${name}`, roles);
+  o.userData.instanced = true;
+  o.position.set(x, y, z);
+  o.rotation.y = turn;
+  o.scale.set(sx, sy, sz);
+  parent.add(o);
+  return o;
+}
+
 // A small steady crimson warning lamp (kit.warning), s metres across, on machinery, masts, frames and corners.
 export const warningLamp = (kit, parent, x, y, z, s = 0.6) => part(parent, box(s, s, s, 0), kit.warning(), x, y, z);
 

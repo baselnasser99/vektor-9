@@ -7,12 +7,14 @@ import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { plantOn, powerPlant } from '../../web/src/plant.js';
 import { rng } from '../../web/src/geometry.js';
-import { fixture } from './harness.mjs';
+import { fixture, kitModel } from './harness.mjs';
 
-// A kit whose materials are named after the call that made them ("glow:…", "sign:KALDRA GRID"), one per name.
+// A kit whose materials are named after the call that made them ("glow:…", "sign:KALDRA GRID"), one per name, with the
+// real detail kit parts (their lit slots count as lights below).
 const mats = new Map();
 const tag = (name) => mats.get(name) ?? mats.set(name, Object.assign(new THREE.MeshStandardMaterial(), { name })).get(name);
-const kit = new Proxy({}, { get: (_, k) => (...a) => tag(`${String(k)}:${a[0]}`) });
+const model = kitModel(() => new THREE.Group());
+const kit = new Proxy({}, { get: (_, k) => (k === 'model' ? model : (...a) => tag(`${String(k)}:${a[0]}`)) });
 
 // Every mesh's material name and world-space positions, in build order.
 function hash(g) {
@@ -62,5 +64,15 @@ test('a blacked-out plant has no lit material; a lit one has its glows, sign and
   for (const [name, s] of variants()) {
     assert.deepEqual([...lights(powerPlant(kit, rng(s), true))].sort(), ['glow', 'sign', 'warning'], name);
     assert.deepEqual([...lights(powerPlant(kit, rng(s), false))], [], name);
+  }
+});
+
+test('no lamp or glow on any plant touches the operator\'s sign, at every hall height', () => {
+  for (let s = 0; s < 300; s++) {
+    const g = powerPlant(kit, rng(s), true), glows = [], signs = [];
+    g.updateMatrixWorld(true);
+    g.traverse((m) => m.isMesh && (m.material.name.startsWith('sign:') ? signs : m.material.name.startsWith('glow:') ? glows : []).push(new THREE.Box3().setFromObject(m)));
+    const board = signs[0].clone().expandByVector(new THREE.Vector3(0, 0, 0.25)); // the backing box behind the face, and a hand's width in front
+    for (const b of glows) assert.ok(!b.intersectsBox(board), `seed ${s}: a glow at y ${b.min.y.toFixed(2)} to ${b.max.y.toFixed(2)} touches the sign`);
   }
 });

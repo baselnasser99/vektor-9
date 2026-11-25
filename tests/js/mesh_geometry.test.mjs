@@ -4,10 +4,10 @@
 // with zero normals and blacked out the screen from (194, 22, -2) (docs/visual/VIEWS.md, view 31).
 // Covered, each on its own so a failure names its builder: the interchange, the streets, the verge, the whole city
 // as merged (city.js buildCity: those three again with every tile, prop, the railway and the HQ, through a kit whose
-// Blender models are empty groups), the desert, the traffic with its signals and the trains (instanced, their
-// geometry as built), the power plant in each of its layouts, mirrored and not, and the market hall in each roof
-// and open side, both lit and dark. Not covered,
-// browser only or not meshes: the Blender models' own geometry, people and
+// Blender models are empty groups but for the detail kit's real parts), the desert, the traffic with its signals and
+// the trains (instanced, their geometry as built), every detail kit part (web/assets/models/kit-detail) as exported,
+// the power plant in each of its layouts, mirrored and not, and the market hall in each roof and open side, both lit
+// and dark. Not covered, browser only or not meshes: the other Blender models' own geometry, people and
 // figures, the HQ's eye, the aircars, the sky (atmosphere.js) and steam.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,15 +22,16 @@ import { market } from '../../web/src/market.js';
 import { powerPlant } from '../../web/src/plant.js';
 import { buildStreets } from '../../web/src/streets.js';
 import { verge } from '../../web/src/terrain.js';
-import { fixture } from './harness.mjs';
+import { KIT_SCENES, fixture, kitModel } from './harness.mjs';
 
 const mats = new Map();
 const tag = (name) => mats.get(name) ?? mats.set(name, Object.assign(new THREE.MeshStandardMaterial(), { name, emissiveMap: new THREE.Texture() })).get(name);
-const model = () => { // an empty Blender model whose named parts appear when asked for
+const empty = () => { // an empty Blender model whose named parts appear when asked for
   const g = new THREE.Group(), find = g.getObjectByName.bind(g);
   g.getObjectByName = (n) => find(n) ?? g.add(Object.assign(new THREE.Group(), { name: n })).children.at(-1);
   return g;
 };
+const model = kitModel(empty); // the detail kit's parts are real
 const kit = new Proxy({}, { get: (_, k) => (k === 'model' ? model : k === 'foldDetail' ? (g) => g : (...a) => tag(`${String(k)}:${a[0]}`)) });
 const AREA = 1e-8; // m²: below this a triangle has no real extent
 
@@ -103,6 +104,13 @@ for (const name of ['sim-v3-seed7-t288.json.gz', 'sim-v3-seed3-t288.json.gz']) {
       assert.deepEqual(wrong.slice(0, 20), [], `${wrong.length} problems`);
     });
   }
+}
+
+for (const [name, scene] of Object.entries(KIT_SCENES)) {
+  test(`detail kit ${name}: finite positions, unit normals and no zero-area triangle`, () => {
+    const wrong = problems(scene);
+    assert.deepEqual(wrong.slice(0, 20), [], `${wrong.length} problems`);
+  });
 }
 
 test('power plants, every layout and mirror, lit and dark: finite positions, unit normals and no zero-area triangle', () => {

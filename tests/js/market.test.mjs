@@ -7,12 +7,14 @@ import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { market } from '../../web/src/market.js';
 import { rng } from '../../web/src/geometry.js';
-import { fixture } from './harness.mjs';
+import { fixture, kitModel } from './harness.mjs';
 
-// A kit whose materials are named after the call that made them ("glow:…", "sign:KUROTECH"), one per name.
+// A kit whose materials are named after the call that made them ("glow:…", "sign:KUROTECH"), one per name, with the
+// real detail kit parts (their lit slots count as lights below).
 const mats = new Map();
 const tag = (name) => mats.get(name) ?? mats.set(name, Object.assign(new THREE.MeshStandardMaterial(), { name })).get(name);
-const kit = new Proxy({}, { get: (_, k) => (...a) => tag(`${String(k)}:${a[0]}`) });
+const model = kitModel(() => new THREE.Group());
+const kit = new Proxy({}, { get: (_, k) => (k === 'model' ? model : (...a) => tag(`${String(k)}:${a[0]}`)) });
 
 // Every mesh's material name and world-space positions, in build order.
 function hash(g) {

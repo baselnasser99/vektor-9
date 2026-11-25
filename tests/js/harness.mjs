@@ -14,6 +14,8 @@ const ctx2d = new Proxy(function () {}, {
   set: () => true,
 });
 globalThis.document ??= { createElement: () => ({ width: 1, height: 1, getContext: () => ctx2d }) };
+// three's FileLoader reports progress with the browser's ProgressEvent, which Node lacks.
+globalThis.ProgressEvent ??= class extends Event { constructor(type, init) { super(type); Object.assign(this, init); } };
 
 const THREE = await import('three');
 const { cityPlan } = await import('../../web/src/city.js');
@@ -31,6 +33,34 @@ const model = () => {
   return g;
 };
 const kit = new Proxy({}, { get: (_, k) => (k === 'model' ? model : k === 'foldDetail' ? (g) => g : () => mat) });
+
+// The detail kit's parts (parts.js KIT_DETAIL), read from web/assets/models with three's own loader; each .bin is
+// handed over as a data URL, since Node's fetch has no file URLs.
+const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+const { KIT_DETAIL } = await import('../../web/src/parts.js');
+const models = new THREE.LoadingManager();
+models.setURLModifier((url) => (url.endsWith('.bin') ? `data:application/octet-stream;base64,${readFileSync(url).toString('base64')}` : url));
+export const KIT_SCENES = Object.fromEntries(await Promise.all(KIT_DETAIL.map(async (name) => {
+  const path = `web/assets/models/${name}.gltf`;
+  const gltf = await new Promise((ok, fail) => new GLTFLoader(models).parse(readFileSync(path, 'utf8'), path.replace(/[^/]+$/, ''), ok, fail));
+  return [name, gltf.scene];
+})));
+
+// kit.model (materials.js) for test kits: a detail kit part with roles[slot] on each mesh, throwing on a slot without a
+// material as the real one does; any other model is empty (empty(): a group with its "detail" child).
+export function kitModel(empty) {
+  return (name, roles) => {
+    if (!KIT_SCENES[name]) return empty();
+    const g = KIT_SCENES[name].clone();
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      const slot = o.material.name;
+      o.material = roles[slot];
+      if (!o.material) throw new Error(`${name}: no material for slot ${slot}`);
+    });
+    return g;
+  };
+}
 
 // The snapshot for a seed: snapshots/004032.json for seed 7 if it is there, else a fresh one-day run of the sim.
 export function snapshot(seed) {
