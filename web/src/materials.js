@@ -203,7 +203,8 @@ export async function loadKit(renderer, models = [], base = './assets') {
     maps[name] = { map, normalMap, aoMap: arm, roughnessMap: arm, metalnessMap: arm };
   }));
   const gltf = new GLTFLoader(), scenes = {};
-  await Promise.all(models.map(async (name) => (scenes[name] = (await gltf.loadAsync(`${base}/models/${name}/${name}.gltf`)).scene)));
+  const url = (name) => `${base}/models/${name.includes('/') ? name : `${name}/${name}`}.gltf`; // a kit's parts share a folder
+  await Promise.all(models.map(async (name) => (scenes[name] = (await gltf.loadAsync(url(name))).scene)));
 
   const cache = new Map();
   // Cached by key; the key doubles as the material's name, which ?bench uses to report where triangles go.

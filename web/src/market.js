@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, cyl, part, rng, signBoard } from './geometry.js';
+import { kitPart } from './parts.js';
 import { SHOPS, pick } from './world.js';
 
 const AWNINGS = [palette.deepRed, palette.oliveGrey, palette.armorWhite, palette.hazardPaint, palette.warningYellow];
@@ -14,7 +15,8 @@ const AWNINGS = [palette.deepRed, palette.oliveGrey, palette.armorWhite, palette
 // (three or four along the front, by the footprint) holding stalls with counters, awnings and lamps, or shutters;
 // a loading bay at the back; the shop's name on a sign on the ridge, the hall number on the colonnade's fascia.
 // Warm light spills from the open bays, the clerestory glows, the stalls' lamps are aged amber; all dark in a
-// blackout (lit false). Small parts (ribs, mullions, goods, sign posts, bumpers) go into `detail`.
+// blackout (lit false). Small parts (ribs, mullions, sign posts) go into `detail`. The detail kit (parts.js kitPart)
+// gives the stalls, the shutters and the loading dock.
 export function market(kit, rand, lit, fw, s) {
   const [name] = pick(rand, SHOPS), own = rng(s * 23 + 17);
   const g = new THREE.Group(), d = new THREE.Group();
@@ -32,6 +34,7 @@ export function market(kit, rand, lit, fw, s) {
     lamp: off(kit.glow(palette.agedAmber, 1.2)), sign: off(kit.sign(name, palette.glare)),
     number: off(kit.sign(`HALL ${String(1 + Math.floor(own() * 12)).padStart(2, '0')}`, palette.agedAmber)), // twelve numbers: each is a texture
   };
+  const shutter = { slats: m.sheet, frame: m.graphite };
   const L = fw, D = fw, c = 2.2, y0 = 0.2, Hw = 3.9 + own() * 0.6, Hc = 0.9, yr = y0 + Hw + Hc;
   const x0 = -L / 2 + (open === 'front+left' ? c : 0), x1 = L / 2 - (open === 'front+right' ? c : 0);
   const zb = -D / 2, zf = D / 2 - c, nx = x1 - x0, nd = zf - zb, cx = (x0 + x1) / 2, cz = (zb + zf) / 2;
@@ -73,16 +76,13 @@ export function market(kit, rand, lit, fw, s) {
 
   // An open colonnade along a side: `len` long, its inner face (the nave's wall) at the origin, out to +z, turned and
   // placed in the hall. Steel posts, a beam, a lean-to roof down from the nave and a fascia; under it, bay by bay,
-  // a stall (lit opening, counter, goods, awning, lamp) or a shutter where the nave's wall is behind (walled, by the
-  // bay's centre along it). number: the hall number on its fascia, toward the end it gives (1 or -1), or none (0).
+  // a lit opening behind the kit's stall (counter, goods, framed awning, lamp, menu board), or the kit's shutter, where
+  // the nave's wall is behind (walled, by the bay's centre along it). number: the hall number on its fascia, toward the end it gives (1 or -1), or none (0).
   const aisle = (len, x, z, turn, number, walled = () => true) => {
-    const a = new THREE.Group(), ad = new THREE.Group(), Hp = 3.5, bays = Math.max(2, Math.round(len / 3)), bw = len / bays;
-    for (const o of [a, ad]) {
-      o.position.set(x, 0, z);
-      o.rotation.y = turn;
-    }
+    const a = new THREE.Group(), Hp = 3.5, bays = Math.max(2, Math.round(len / 3)), bw = len / bays;
+    a.position.set(x, 0, z);
+    a.rotation.y = turn;
     g.add(a);
-    d.add(ad);
     for (let k = 0; k <= bays; k++) part(a, box(0.22, Hp, 0.22, 0), m.steel, -len / 2 + 0.11 + (k * (len - 0.22)) / bays, y0 + Hp / 2, c - 0.15);
     part(a, box(len, 0.25, 0.25, 0), m.steel, 0, y0 + Hp + 0.12, c - 0.15);
     const drop = Hw - Hp - 0.25, run = c + 0.3;
@@ -93,15 +93,13 @@ export function market(kit, rand, lit, fw, s) {
     for (let k = 0; k < bays; k++) {
       const bx = -len / 2 + (k + 0.5) * bw;
       if (!walled(bx)) continue; // the corner where the front meets an open end: a way in
-      if (own() < 0.3) { // shuttered
-        part(a, box(bw - 0.5, 2.8, 0.08, 0), m.sheet, bx, y0 + 1.4, 0.04);
+      if (own() < 0.3) { // shuttered, 2.8 m tall (its hood clears the colonnade's beam)
+        kitPart(kit, a, 'shutter', shutter, bx, y0, 0, 0, (bw - 0.5) / 3, 2.8 / 3, 1);
         continue;
       }
       part(a, box(bw - 0.5, 2.6, 0.06, 0), m.spill, bx, y0 + 1.3, 0.03);
-      part(a, box(bw - 0.7, 1, 0.6, 0), k % 2 ? m.trim : m.graphite, bx, y0 + 0.5, 0.6);
-      for (const gx of [-0.4, 0.3]) part(ad, box(0.4, 0.3, 0.35, 0), m.mech, bx + gx * (bw - 0.7), y0 + 1.15, 0.6);
-      part(a, box(bw - 0.3, 0.08, 1.1, 0), awnings[k % 2], bx, y0 + 2.6, 0.75).rotation.x = 0.3;
-      part(a, box(0.3, 0.12, 0.2, 0), m.lamp, bx, y0 + 2.4, 0.95);
+      kitPart(kit, a, 'stall', { counter: k % 2 ? m.trim : m.graphite, goods: m.mech, frame: m.graphite, awning: awnings[k % 2], lit: m.lamp },
+        bx, y0, 0, 0, bw / 3.2); // modelled for a 3.2 m bay
     }
   };
   const side = own() < 0.5 ? 1 : -1; // the end the hall number goes to
@@ -109,13 +107,10 @@ export function market(kit, rand, lit, fw, s) {
   if (open === 'front+left') aisle(nd, x0, cz, -Math.PI / 2, 0);
   if (open === 'front+right') aisle(nd, x1, cz, Math.PI / 2, 0);
 
-  // The loading bay at the back: a dock, a roller door in a hazard frame, a canopy and a lamp, bumpers.
-  const lx = cx + (own() - 0.5) * (nx - 4);
-  part(g, box(3.4, 0.9, 0.8, 0), m.plinth, lx, 0.45, zb - 0.4);
-  part(g, box(3, 3, 0.1, 0), m.sheet, lx, 0.9 + 1.5, zb - 0.05);
-  for (const s2 of [-1, 1]) part(g, box(0.25, 3.3, 0.15, 0), m.hazard, lx + s2 * 1.62, 0.9 + 1.65, zb - 0.1);
-  part(g, box(4, 0.12, 1.3, 0), m.sheet, lx, 4.2, zb - 0.6);
-  part(g, box(0.4, 0.15, 0.25, 0), m.lamp, lx, 4.05, zb - 0.3);
-  for (const s2 of [-1, 1]) part(d, box(0.3, 0.4, 0.15, 0), m.dark, lx + s2 * 1.1, 0.55, zb - 0.85);
+  // The kit's loading dock at the back (platform, steps, hazard posts, canopy, lamp) with the kit's shutter in its
+  // 3 m by 2.8 m door, kept 2.7 m in from the nave's ends so its steps stay on the wall.
+  const lx = cx + (own() - 0.5) * (nx - 5.4);
+  kitPart(kit, g, 'dock', { concrete: m.plinth, frame: m.graphite, hazard: m.hazard, dark: m.dark, lit: m.lamp }, lx, 0, zb, Math.PI);
+  kitPart(kit, g, 'shutter', shutter, lx, 0.9, zb, Math.PI, 1, 2.8 / 3, 1);
   return g;
 }

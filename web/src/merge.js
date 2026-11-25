@@ -8,21 +8,32 @@ import * as THREE from 'three';
 // (city.js), except under groups marked userData.rigid.
 // Groups marked userData.lod (a key, e.g. a sector) are merged apart, one group of meshes per key, returned in
 // out.userData.lods with userData.lod set, so they can be shown only near the camera.
+// Groups marked userData.instanced (detail kit parts, parts.js kitPart) are not baked: every mesh in them sharing a
+// geometry and a material becomes one InstancedMesh in the always-drawn group, placed by its world matrix.
+// shortcut: instances are not warped, so they must sit under a rigid group (a settled lot); assert below.
 // Groups marked userData.building (a number) give it to every facade vertex inside as aBuilding (facade.js), so a
 // building's windows share their light tones.
 export function mergeByMaterial(root, warp) {
   root.updateMatrixWorld(true);
   const sets = new Map(); // lod key (undefined: always drawn) -> material -> meshes
+  const instances = new Map(); // geometry -> material -> world matrices
   root.traverse((o) => {
     // Flags pass down: traverse visits a parent before its children, so copying the parent's is enough (the
     // outermost lod or building wins, as before; rigid: moved whole by its builder, no warp).
     const up = o !== root && o.parent.userData;
     if (up) {
       if (up.rigid) o.userData.rigid = true;
+      if (up.instanced) o.userData.instanced = true;
       if (up.lod !== undefined) o.userData.lod = up.lod;
       if (up.building !== undefined) o.userData.building = up.building;
     }
     if (!o.isMesh) return;
+    if (o.userData.instanced) {
+      console.assert(!warp || o.userData.rigid, 'merge: an instanced part outside a rigid group would miss the warp');
+      const byMat = instances.get(o.geometry) ?? instances.set(o.geometry, new Map()).get(o.geometry);
+      (byMat.get(o.material) ?? byMat.set(o.material, []).get(o.material)).push(o.matrixWorld.clone());
+      return;
+    }
     const key = o.userData.lod;
     if (!sets.has(key)) sets.set(key, new Map());
     const buckets = sets.get(key);
@@ -30,6 +41,14 @@ export function mergeByMaterial(root, warp) {
     buckets.get(o.material).push(o);
   });
   const out = bake(sets.get(undefined) ?? new Map(), warp);
+  for (const [geometry, byMat] of instances) for (const [material, at] of byMat) {
+    const mesh = new THREE.InstancedMesh(geometry, material, at.length);
+    at.forEach((m, k) => mesh.setMatrixAt(k, m));
+    mesh.computeBoundingSphere(); // over every instance, for culling
+    mesh.castShadow = !material.transparent;
+    mesh.receiveShadow = true;
+    out.add(mesh);
+  }
   out.userData.lods = [...sets].filter(([key]) => key !== undefined).map(([key, buckets]) => {
     const g = bake(buckets, warp);
     g.userData.lod = key;
