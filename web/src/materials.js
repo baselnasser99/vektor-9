@@ -221,9 +221,9 @@ export async function loadKit(renderer, models = [], base = './assets') {
       color, metalness: 0.25, roughness: Math.max(roughness, 0.6), normalMap: maps.rusty_painted_metal.normalMap, normalScale: new THREE.Vector2(0.35, 0.35) })),
     glass: (color = palette.glassBand) => once(`glass:${color}`, () =>
       new THREE.MeshStandardMaterial({ color, metalness: 0.2, roughness: 0.4 })),
-    // See-through tinted glass, e.g. over the reactor core.
-    veil: (color, opacity) => once(`veil:${color}:${opacity}`, () =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.25, transparent: true, opacity })),
+    // See-through tinted glass, e.g. over the reactor core; glow tints it as if lit from behind (a booth's interior).
+    veil: (color, opacity, glow = null, intensity = 0) => once(`veil:${color}:${opacity}${glow === null ? '' : `:${glow}:${intensity}`}`, () =>
+      new THREE.MeshStandardMaterial({ color, roughness: 0.25, transparent: true, opacity, emissive: glow ?? 0, emissiveIntensity: intensity * NEON })),
     glow: (color, intensity = 2.5) => once(`glow:${color}:${intensity}`, () =>
       new THREE.MeshStandardMaterial({ color: palette.deepNavy, emissive: color, emissiveIntensity: intensity * NEON })),
     // The one red warning light (masts, machinery, industry, security indicators): deep crimson, steady, never

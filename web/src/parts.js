@@ -4,8 +4,8 @@ import { palette } from './palette.js';
 import { box, cyl, part, ring } from './geometry.js';
 
 // The detail kit (tools/blender/detail_*.py, web/assets/models/kit-detail): parts plant.js and market.js place on
-// every plant and hall, drawn for the whole city as one instanced mesh per part and material (merge.js).
-export const KIT_DETAIL = ['stall', 'shutter', 'transformer', 'tower_base', 'dock', 'stack_head'].map((n) => `kit-detail/${n}`);
+// every plant and hall, and tiles.js on the HQ's court, drawn for the whole city as one instanced mesh per part and material (merge.js).
+export const KIT_DETAIL = ['stall', 'shutter', 'transformer', 'tower_base', 'dock', 'stack_head', 'kiosk'].map((n) => `kit-detail/${n}`);
 
 // One detail kit part in parent: kit.model with a material for each of its slots (roles), marked for instancing, at
 // (x, y, z), turned about the vertical and scaled (never mirrored or flat: an instance cannot flip its faces).

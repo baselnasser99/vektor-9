@@ -1,5 +1,6 @@
-"""Shared by the detail kit scripts (tools/blender/detail_*.py): small parts that web/src/plant.js
-and web/src/market.js place as shared instanced meshes on every plant and hall.
+"""Shared by the detail kit scripts (tools/blender/detail_*.py): small parts that web/src/plant.js,
+web/src/market.js and web/src/tiles.js place as shared instanced meshes on every plant and hall
+and on the headquarters' court.
 
 Blender: only the stable LTS build named in web/assets/models/kit-detail/manifest.json ("blender",
 5.2.5 LTS), installed at "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe". No alpha
@@ -40,6 +41,8 @@ ID = Matrix()
 for slot, like in {
     "counter": "panel", "goods": "mech", "frame": "graphite", "awning": "awning_a", "lit": "lamp",
     "slats": "steel", "tank": "mech", "bushing": "titanium", "grate": "dark",
+    "base": "concrete", "canopy": "deepred", "door_l": "dark", "door_r": "dark", "boom": "armor",
+    "stripe": "deepred",
 }.items():  # fmt: skip
     kit.ROLES.setdefault(slot, kit.ROLES[like])
 
