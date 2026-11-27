@@ -83,13 +83,13 @@ export function edgeLights(kit, parent, w, h, d, x, y0, z, color = palette.sodiu
 }
 
 // Sodium street lamp: curved pole with a warm head; returns the head position for an optional real light.
-export function streetLamp(kit, parent, x, z, facing = 0) {
+export function streetLamp(kit, parent, x, z, facing = 0, lit = true) {
   const g = new THREE.Group(), pole = kit.steel(palette.charcoal, 0.6);
   part(g, cyl(0.09, 0.12, 6, 6), pole, 0, 3, 0);
   part(g, new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 6, 0), new THREE.Vector3(0, 6.9, 0),
     new THREE.Vector3(1.6, 6.7, 0)), 6, 0.07, 4), pole);
   part(g, box(0.7, 0.18, 0.35, 1), pole, 1.7, 6.65, 0);
-  part(g, box(0.55, 0.06, 0.25, 1), kit.glow(palette.sodium, 8), 1.7, 6.54, 0).castShadow = false;
+  part(g, box(0.55, 0.06, 0.25, 1), lit ? kit.glow(palette.sodium, 8) : pole, 1.7, 6.54, 0).castShadow = false; // lit false: a blackout
   g.position.set(x, 0, z);
   g.rotation.y = facing;
   parent.add(g);

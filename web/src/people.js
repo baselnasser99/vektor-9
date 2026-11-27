@@ -430,6 +430,19 @@ function hqPlaces(hq, hqAt, rand) {
   return out;
 }
 
+// A small group standing on the HQ's court (tiles.js dressCourt: c.count people, 2 to 5, round (c.x, c.z)), facing its
+// middle, loosely spaced (a wider ring for more people, each a little in or out), within 0.8 m of the spot, up on the
+// court's paving (COURT_FLOOR). Nobody walks across the court: it is not on the walking network.
+const COURT_FLOOR = 0.38; // the site tile at 0.18 (city.js), its slabs' top 0.2 above that (tiles.js court)
+function courtGroup({ x, z, count }, rand) {
+  const turn = rand() * Math.PI * 2, members = Array.from({ length: count }, (_, i) => {
+    const a = turn + (i * Math.PI * 2) / count + (rand() - 0.5) * 0.5, rr = 0.35 + count * 0.07 + (rand() - 0.5) * 0.16;
+    const mx = x + Math.sin(a) * rr, mz = z + Math.cos(a) * rr;
+    return { x: mx, z: mz, heading: Math.atan2(x - mx, z - mz), y: COURT_FLOOR };
+  });
+  return { members, acts: ['talk', 'talk', 'device', 'look'], first: true };
+}
+
 // Every seat people can take: both places on each bench and every cafe stool (streets.js). Each knows the way it
 // faces, where to stand before sitting (in front of a bench, behind a stool), the walk it is on and which side, the
 // sidewalk point across from it (lane: a walker's own distance in from the kerb), and the nearest corner of that
@@ -475,7 +488,7 @@ function seatsOf(benches, food, layout, net) {
   return out;
 }
 
-export function people({ snap, layout, warp, benches, lamps, food, hq, clock, camera, controls, onFrame, still }) {
+export function people({ snap, layout, warp, benches, lamps, food, hq, standing = [], clock, camera, controls, onFrame, still }) {
   const params = new URLSearchParams(location.search);
   const net = network(layout), info = districts(snap, layout, net), { S, G, N, adj, dist, next } = net;
   // The headquarters (headquarters.js), if there is one: its frame (u across its front, w out from it), its paved
@@ -507,6 +520,7 @@ export function people({ snap, layout, warp, benches, lamps, food, hq, clock, ca
       [spots[i], spots[j]] = [spots[j], spots[i]];
     }
     if (hq && s.k === hq.sector) spots.unshift(...hqPlaces(hq, hqAt, rand)); // always among the first out
+    for (const c of standing) if (c.sector === s.k) spots.unshift(courtGroup(c, rand)); // the HQ's court: always out too
     const most = Math.round(s.dens * PER_SECTOR * 2.5), share = Math.min(0.75, 0.3 * CROWD.idle);
     s.slots = [];
     for (let count = 0, si = 0; count < most;) {
