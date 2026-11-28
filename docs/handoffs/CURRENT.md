@@ -1,6 +1,6 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-28 14:31 (+02:00)
+Updated: 2026-11-28 14:38 (+02:00)
 Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). Blender detail kit (PR #82). Court kiosks from the detail kit (PR #83). HQ court dressing (PR #84). Facade variants (PR #85). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
 Branch: `main` at this handoff commit, on top of `ae27364` (the #85 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). `snapshots/` (v4) not gitignored (see open items), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
@@ -351,10 +351,11 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
 1. Threaded `tools/serve.py`: the local server drops loads under headless capture bursts (see Conventions).
 2. Frontier dressing: the thin masterplan table first, then empty lots no longer drawn as whole blocks of parked cars: vacant ground, fencing, work yards, some parking (owner feedback 2026-11-28: blocks of parked cars look out of place; 542 empty lots on v4 seed 7 are drawn as parking).
-3. Massing variants for offices and luxury (lever 2 of the variety survey).
-4. Old town look. Owner decision first: renderer only, or lower houses through a sim change before genesis.
-5. Plaza kiosks with a shared sign atlas.
-6. The remaining `URBAN_MASTERPLAN` steps.
-7. Traffic work: the junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin, reopen the stubs to cars and add the HQ-to-court crossing (see Parked).
-8. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
-9. Then: outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
+3. City gateways on the three at-grade highway arrivals: a checkpoint where each causeway meets the ring road (booths, raised barriers, gantry, lights; cars pass without stopping, since stopping changes pinned traffic numbers and belongs to the traffic work), plus lane paint and edge lines along the causeways. Renderer only. Owner feedback 2026-11-28: the bare causeway looks unfinished.
+4. Massing variants for offices and luxury (lever 2 of the variety survey).
+5. Old town look. Owner decision first: renderer only, or lower houses through a sim change before genesis.
+6. Plaza kiosks with a shared sign atlas.
+7. The remaining `URBAN_MASTERPLAN` steps.
+8. Traffic work: the junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin, reopen the stubs to cars and add the HQ-to-court crossing (see Parked).
+9. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
+10. Then: outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
