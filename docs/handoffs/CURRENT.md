@@ -1,11 +1,13 @@
 # Current handoff | Vektor-9
 
-Updated: 2026-11-28 14:38 (+02:00)
-Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). Blender detail kit (PR #82). Court kiosks from the detail kit (PR #83). HQ court dressing (PR #84). Facade variants (PR #85). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
-Branch: `main` at this handoff commit, on top of `ae27364` (the #85 merge)
+Updated: 2026-11-28 15:23 (+02:00)
+Milestone: M1 (the city goes live). S1 done (PR #65 merged, ADR-0017 Proposed). Traffic step 1 done (PR #66). Line endings and the flaky-test deadline done (PR #67). Road arrows from the lane graph done (PR #68). Road readability done (PR #69). Interchange paint and the ramp crossings test done (PR #70); its low-end work was reverted. Median ramp landings done (PR #71). Loop landings done (PR #72). Sweep landings done (PR #73). Landing polish done (PR #74). Parapet black screen fixed (PR #75). Signal lenses fixed (PR #76). Geometry checks for every built mesh (PR #77). Dead-end stubs closed (PR #78). HQ court paving (PR #79). Code-built power plants (PR #80). Code-built market halls and sign fix (PR #81). Blender detail kit (PR #82). Court kiosks from the detail kit (PR #83). HQ court dressing (PR #84). Facade variants (PR #85). Local server burst fix (PR #86). The sim is at SIM_VERSION 4, schema 6. Nothing is deployed
+Branch: `main` at this handoff commit, on top of `0cf74a3` (the #86 merge)
 Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT_PLAN.md`, `AWS_*.md`, `URBAN_*`, `urban-audit/`) unless the owner has removed them (see Kept). `snapshots/` (v4) not gitignored (see open items), `snapshots-v3/`, `snapshots-v2/` and `snapshots-v1/` are shared: don't clean them
 
 ## Done (verified)
+- State after #86: `main` at `0cf74a366e349a85fd79b5469982e5ef95e35c1c` (#86 serve bursts) on `429134c` (the previous handoff). SIM_VERSION 4, schema 6, nothing deployed. First visit unchanged (no `web/` change).
+- PR #86 (merge `0cf74a3`, head `8f6d05b`, CI passed): `tools/serve.py` listen backlog 128 (`request_queue_size`; at the default 5, 112 of 200 simultaneous connections were refused and got through only on retry, none at 128) and `mimetypes.init()` at startup (a fresh server's first burst stalled past 10 s while every handler thread read the Windows registry). The server was already threaded (`ThreadingHTTPServer`) since M0c. Test: `tests/test_serve.py` (50 concurrent GETs, all 200 with `no-store`, backlog at least 64, clean shutdown; 3 of 3 on the branch, 1 of 3 on the old server). The headless check (6 loads of view 16 from a fresh server) was 0 of 6 blank on both the old and the new server, so it did not reproduce the earlier dropped loads; if they recur, record how many servers were running and the burst size.
 - State after #85: `main` at `ae2736475bd9d04772211d498c85b2069f042936` (#85 facade variants) on `75486fb` (the previous handoff). SIM_VERSION 4, schema 6, nothing deployed.
 - PR #85 (merge `ae27364`, head `bb943c8`, CI passed): facade variants, renderer only. No sim, snapshot or lane change: `tests/fixtures/lane-moves-seed7.json` unchanged, the left-turn checks pass.
   - Apartment, office, luxury and mega buildings each take one of four window grids and one of four tones (today's, rust, teal, blue: wall, glass and frame), 16 facades per family, picked by a per-tile hash of column, row and map seed (`facade.js` `facadeVariant`). Homes' grids keep the 2.8 m bay (balconies and bay windows are sized to it); every grid stays within 10 % of today's pane area; lighting identity unchanged. The old town, the signature towers, the heavy and flagship landmarks and the HQ keep today's facade.
@@ -218,7 +220,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - No tests while a shot or bench server is up: the Node tests move `snapshots/` aside, and a page loading then gets a 404.
 - "Before" servers are served from a `git archive origin/main` into scratch, verified by comparing the served `web/src/interchange.js` hash with `git show origin/main:web/src/interchange.js`.
 - Every shot is checked for its snapshot loading (no 404) and for black frames (mean brightness and near-black share); a failing shot is retaken.
-- The local Python dev server (`tools/serve.py`) can refuse connections (`ERR_CONNECTION_REFUSED`) under a burst of module requests in headless runs, leaving a page half loaded. Rerun incomplete loads; a threaded server may be worth adding.
+- The local Python dev server (`tools/serve.py`, threaded since M0c) could refuse connections (`ERR_CONNECTION_REFUSED`) under a burst of module requests in headless runs, leaving a page half loaded. #86 raised its listen backlog to 128 and loads the type table at startup. Still rerun incomplete loads; if drops recur, record how many servers were running and the burst size.
 - Traffic outcomes change with lane sampling density (adding points to a lane, even on its own line, changes later traffic) and can expose the junction overlap at (293, -80). Keep new lane points on the existing chords where a lane's length must stay the same.
 
 ## Open
@@ -237,7 +239,7 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - Make the Node harness's use of `snapshots/` opt-in, so local and CI runs match.
 - Building variety: facade variants done (#85); massing variants for offices and luxury are next (lever 2 of the survey); later kit parts keep a download size budget, and the Blender skills apply there.
 - Facade tones read only faintly at view 16 (mostly dark glass at that distance); revisit after the massing variants.
-- Local branches `court-dressing` and `facade-variants` (both merged) to delete in cleanup.
+- Local branches `court-dressing`, `facade-variants` and `serve-threaded` (all merged) to delete in cleanup.
 - Skill hygiene: about 140 user-level skills of unconfirmed origin load in every session; review and prune.
 - S2 to S4. S2 must give every CDK-created function (the `BucketDeployment` handler included) an explicit log group with retention, or the template tests fail. S2 also adds a test that the staged Lambda asset has no CR bytes in its `.py` files.
 - Older checkouts keep CRLF working files until Git rewrites them; no test checks the working tree. See the pre-D1 rule under PR #67.
@@ -262,6 +264,10 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 - ADR-0011's interchange text may still describe the old slim barriers and the concrete deck; amend it in a later docs change.
 
 ## Checks
+- On `serve-threaded` @ `8f6d05b` (same tree as `main` @ `0cf74a3`; every server stopped):
+  - `uv run pytest` (without the infra groups) → 214 passed, 1 skipped; `ruff check` and `ruff format --check` → pass.
+  - Node suite unchanged at 328 tests (322 passed, 6 todo), not rerun: no `web/` change.
+- CI on PR #86 head `8f6d05b`: `lint-and-test` passed.
 - On `facade-variants` @ `bb943c8` (same tree as `main` @ `ae27364`; this worktree without `snapshots/`, every server stopped, as in CI):
   - Node suite → 328 tests: 322 passed, 0 failed, 6 todo.
   - `uv run pytest` (without the infra groups) → 213 passed, 1 skipped (unchanged, not rerun: no Python changed).
@@ -349,13 +355,12 @@ Working tree: untracked duplicates of `docs/proposals/` at the repo root (`AUDIT
 
 ## Next
 Visual work before AWS (owner decision, 2026-11-15). One session at a time. Each visual PR uses `docs/visual/VIEWS.md` for before/after shots and frame times.
-1. Threaded `tools/serve.py`: the local server drops loads under headless capture bursts (see Conventions).
-2. Frontier dressing: the thin masterplan table first, then empty lots no longer drawn as whole blocks of parked cars: vacant ground, fencing, work yards, some parking (owner feedback 2026-11-28: blocks of parked cars look out of place; 542 empty lots on v4 seed 7 are drawn as parking).
-3. City gateways on the three at-grade highway arrivals: a checkpoint where each causeway meets the ring road (booths, raised barriers, gantry, lights; cars pass without stopping, since stopping changes pinned traffic numbers and belongs to the traffic work), plus lane paint and edge lines along the causeways. Renderer only. Owner feedback 2026-11-28: the bare causeway looks unfinished.
-4. Massing variants for offices and luxury (lever 2 of the variety survey).
-5. Old town look. Owner decision first: renderer only, or lower houses through a sim change before genesis.
-6. Plaza kiosks with a shared sign atlas.
-7. The remaining `URBAN_MASTERPLAN` steps.
-8. Traffic work: the junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin, reopen the stubs to cars and add the HQ-to-court crossing (see Parked).
-9. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
-10. Then: outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
+1. Frontier dressing: the thin masterplan table first, then empty lots no longer drawn as whole blocks of parked cars: vacant ground, fencing, work yards, some parking (owner feedback 2026-11-28: blocks of parked cars look out of place; 542 empty lots on v4 seed 7 are drawn as parking).
+2. City gateways on the three at-grade highway arrivals: a checkpoint where each causeway meets the ring road (booths, raised barriers, gantry, lights; cars pass without stopping, since stopping changes pinned traffic numbers and belongs to the traffic work), plus lane paint and edge lines along the causeways. Renderer only. Owner feedback 2026-11-28: the bare causeway looks unfinished.
+3. Massing variants for offices and luxury (lever 2 of the variety survey).
+4. Old town look. Owner decision first: renderer only, or lower houses through a sim change before genesis.
+5. Plaza kiosks with a shared sign atlas.
+6. The remaining `URBAN_MASTERPLAN` steps.
+7. Traffic work: the junction overlap guard, and replacing the `life.js` turn fallback with an explicit rule (start from the ADR-0016 addendum, 2026-11-15, and `tests/fixtures/lane-moves-seed7.json`); then re-derive `SWEEP_HOLD` from the merge and drop the pin, reopen the stubs to cars and add the HQ-to-court crossing (see Parked).
+8. Interchange leftovers, parked: the slips of ramps 1 and 2 (move the split point so they can land at 14.3 percent or less, the `ramp_grades` todo; their open slab ends); the slips of ramps 0 and 3 at 14.6 percent; the `ramp_surface` seam todos; the sweeps clipping the expressway slab (the `ramp_landings` clipping todo).
+9. Then: outskirts O1 to O3; growth pace and landmark construction, in their own session; S2 (explicit log groups for all CDK functions; fix ADR-0017's stale text; fix the `AWS_M1_BACKLOG.md` status line; the test that the staged Lambda asset has no CR bytes in `.py` files), S3, S4, then D1, the dev deploy. D1 needs the owner's explicit approval. The pre-D1 LF checkout rule (under PR #67) stays.
