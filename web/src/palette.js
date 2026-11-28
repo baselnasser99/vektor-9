@@ -62,6 +62,15 @@ export const palette = {
   charcoal: 0x1e2333,
   gunmetal: 0x2f3648,
   slate: 0x4b5569,
+  // Facade tones (facade.js TONES): wall, glass and frame per tone, each building picks one; tone 0 is slate,
+  // deepNavy and charcoal above. A clear hue each (rust, teal, blue) but no lighter than slate, so lit windows and
+  // signs stay the brightest things on a wall.
+  facadeRust: 0x6b4436,
+  facadeTeal: 0x2b575b,
+  facadeBlue: 0x37507a,
+  glassRust: 0x341a13,
+  glassTeal: 0x0c3036,
+  glassBlue: 0x122448,
   courtStone: 0x857c70, // the HQ's court (tiles.js court): warm stone slabs, so it never reads as the slate sidewalks
   weatheredConcrete: 0x7e8992, // the telecom tower's old frame
   crownWhite: 0xc9ced3, // cool-grey highlights on the edges of its dark Reactor Crown

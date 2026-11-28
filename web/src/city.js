@@ -7,7 +7,7 @@ import { construction, court, courtPlan, plaza, storefront } from './tiles.js';
 import { market } from './market.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
-import { LOOK_STEP, lightingIdentity } from './facade.js';
+import { LOOK_STEP, VARIANT_STEP, facadeVariant, lightingIdentity } from './facade.js';
 import { buildStreets } from './streets.js';
 import { exoframe, flagship, retrofit, roofworks } from './landmarks.js';
 import { park, railGround, railLine, railway, verge, works } from './terrain.js';
@@ -239,7 +239,10 @@ export function buildCity(kit, snap) {
     const [dx, dz] = [frontage(col), frontage(row)], lot = new THREE.Group();
     lot.position.set(cx, 0, cz);
     // Its windows' light tones (facade.js): the tile, plus the building's lighting identity; 0 is anything outside a lot.
-    lot.userData.building = i + 1 + LOOK_STEP * lightingIdentity(t, family, col, row, snap.seed, signature.has(i));
+    // Then its facade variant, from its place alone; the old town and the landmarks keep today's facade.
+    const keep = inTown(col, row) || signature.has(i) || heavy.has(i) || i === flag;
+    lot.userData.building = i + 1 + LOOK_STEP * lightingIdentity(t, family, col, row, snap.seed, signature.has(i))
+      + VARIANT_STEP * facadeVariant(col, row, snap.seed, family, keep);
     lot.add(g);
     root.add(lot);
     if (t.k === 'house') towers.set(i, g); // for the skybridges over streets, which meet their walls
@@ -339,7 +342,7 @@ export function hqCut({ pos, mids }, hq) {
 // What is around each tile that never changes, for the building family rules (families.js familyOf): industry
 // (the old works or the railway within 2 tiles), a park within 3, the centre within 8 or 14 tiles, and whether it
 // is in the old town.
-function surroundings({ size: n, tiles }, { inTown }) {
+export function surroundings({ size: n, tiles }, { inTown }) {
   const c = n / 2;
   const any = (i, r, test) => {
     const [x, y] = [i % n, Math.floor(i / n)];
