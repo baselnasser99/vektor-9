@@ -4,8 +4,10 @@
 // The style seed drives every choice; a blacked-out tile has dark rooms and no neon.
 import * as THREE from 'three';
 import { palette } from './palette.js';
-import { box, cyl, outward, part, signBoard } from './geometry.js';
-import { kitPart } from './parts.js';
+import { box, cyl, outward, part, rng, signBoard } from './geometry.js';
+import { kitPart, streetLamp, tree } from './parts.js';
+import { lampPool } from './streets.js';
+import { ENTRANCE, HQ, siteFrame } from './headquarters.js';
 import { ADS, CAR_COLORS, F, SHOPS, TILE, WARM, WORDS, pick } from './world.js';
 
 // Shop podium: concrete base with a lit shopfront, awning, sign and an LED strip. Dark during a blackout.
@@ -119,7 +121,7 @@ function kiosk(kit, g, rand, lit, x, z) {
 // tile edges; steel bollards along its kerb where it meets the avenue (kerb: the tile's +x side does); a security
 // kiosk on some tiles (securityKiosk, below).
 const SLAB = [3.5, 1.75], JOINT = 0.08;
-export function court(kit, rand, lit, kerb) {
+export function court(kit, rand, lit, kerb, plan = null) {
   const g = new THREE.Group(), stone = kit.concrete(palette.courtStone), h = TILE / 2;
   part(g, box(TILE, 0.18, TILE, 1), kit.concrete(palette.gunmetal), 0, 0.09, 0); // the bed, seen in the joints
   for (let r = 0; r < TILE / SLAB[1]; r++) {
@@ -132,7 +134,145 @@ export function court(kit, rand, lit, kerb) {
   }
   if (kerb) for (let z = -TILE / 2 + 1.5; z < TILE / 2; z += 2.5) part(g, cyl(0.1, 0.1, 0.9, 8), kit.steel(palette.charcoal, 0.6), TILE / 2 - 0.6, 0.65, z);
   if (rand() < 0.35) securityKiosk(kit, g, rand, lit, kerb);
+  if (plan) dressCourt(kit, g, rand, lit, plan); // no plan (courtPlan's guard, or a tile built alone): paving and kiosk only
   return g;
+}
+
+// The court as a whole (city.js gives each tile its part): the court is the site tiles the campus does not take. For
+// each tile: the view axes in its frame (z of the line out from each tower's entrance and from the gateway between
+// them, across the avenue; kept clear AXIS m either side), which of its sides face a street, and what it holds of the
+// court's one central feature (on the far column of the outer half, the one farther from the city's centre, beside
+// its axis), two open gathering spots by it, and its two or three wayfinding pillars (one by each axis where it meets
+// the avenue, sometimes one more by the feature's axis on the far column), each with the places it may stand, in
+// order; and whether it is in the outer half (sparse: fewer trees, spaced unevenly). Map tile index -> plan.
+// Guard: the axes run along x, so only a campus facing -x or +x (every v3 and v4 seed) gets a plan; any other facing
+// gets none, and its court is drawn bare (paving, bollards, kiosks).
+export const AXIS = 2.5;
+export const facesX = (heading) => Math.abs(Math.abs(Math.sin(heading)) - 1) < 1e-6;
+export function courtPlan(snap, { n, pos }, hq) {
+  const out = new Map(), cells = snap.tiles.flatMap((t, i) => (t.k === 'site' && !hq?.tiles.has(i) ? [i] : []));
+  if (!hq || !cells.length || !facesX(hq.heading)) return out; // the guard (above)
+  const { at } = siteFrame(hq), z = (i) => pos(Math.floor(i / n)), x = (i) => pos(i % n);
+  const doors = [-1, 1].map((s) => at(s * HQ.TOWER[0], ENTRANCE.DOOR_OUT)[1]).sort((a, b) => a - b), axes = [doors[0], hq.z, doors[1]];
+  const cols = [...new Set(cells.map((i) => i % n))].sort((a, b) => a - b), r = rng(snap.seed * 31 + 7);
+  const [kerbCol, farCol] = Math.abs(pos(cols[0]) - hq.x) < Math.abs(pos(cols.at(-1)) - hq.x) ? [cols[0], cols.at(-1)] : [cols.at(-1), cols[0]];
+  const toHQ = Math.sign(hq.x - pos(kerbCol)), street = (a, b) => Math.abs(a - b) > TILE + 0.5;
+  const tileAt = (col, wz) => cells.find((i) => i % n === col && Math.abs(z(i) - wz) <= TILE / 2);
+  const outer = Math.abs(doors[0]) > Math.abs(doors[1]) ? 0 : 1, nearer = (i) => (Math.abs(z(i) - doors[0]) < Math.abs(z(i) - doors[1]) ? 0 : 1);
+  for (const i of cells) {
+    const col = i % n, row = Math.floor(i / n);
+    out.set(i, { axes: axes.map((a) => a - z(i)), things: [], sparse: nearer(i) === outer, street: { px: street(pos(col + 1), x(i)), nx: street(pos(col - 1), x(i)),
+      pz: street(pos(row + 1), z(i)), nz: street(pos(row - 1), z(i)) } });
+  }
+  const put = (kind, i, spots) => i !== undefined && out.get(i).things.push([kind, spots.map(([wx, wz]) => [wx - x(i), wz - z(i)])]);
+  r(); // what the feature's half drew when it was picked at random, so the pillars stay as they were
+  doors.forEach((a, k) => {
+    const half = cells.filter((i) => Math.abs(z(i) - a) < Math.abs(z(i) - doors[1 - k])), mid = half.reduce((m, i) => m + z(i), 0) / half.length;
+    const away = Math.sign(mid - a) || 1, side = r() < 0.5 ? -1 : 1, by = [side, -side].map((s) => a + s * (AXIS + 1.1));
+    const kerbX = [3.2, 1.2, -1].map((u) => pos(kerbCol) + toHQ * u);
+    for (const wz of by) put('pillar', tileAt(kerbCol, wz), kerbX.map((wx) => [wx, wz]));
+    if (k !== outer) return;
+    const fz = a + away * 7.5;
+    put('feature', tileAt(farCol, fz), [0, 1.5, -1.5].flatMap((u) => [0, 1, -1].map((v) => [pos(farCol) + toHQ * u, fz + away * v])));
+    put('gather', tileAt(farCol, fz + away * 5), [0, 1.5, -1.5].map((u) => [pos(farCol) + toHQ * u, fz + away * 5])); // beyond the plinth
+    put('gather', tileAt(kerbCol, fz), [-2.5, -1, 0.5].map((u) => [pos(kerbCol) + toHQ * u, fz])); // in front of it, toward the avenue
+    if (r() < 0.5) for (const wz of by) put('pillar', tileAt(farCol, wz), [3.5, 0, -3.5].map((u) => [pos(farCol) + toHQ * u, wz]));
+  });
+  return out;
+}
+
+// The court's dressing on one tile (plan: from courtPlan): its share of the feature and the pillars (each at the first
+// of its places that is free; a pillar's places on both sides of its axis, so it stands on whichever side has room),
+// and the gathering spots by the feature, kept open for a group; then, from a loose 3 x 3 grid (jittered), a lighting
+// column like the street's with its pool of light (POOL m, whole on the tile), up to four planters with trees (three in the
+// outer half, spaced unevenly; some with a bench beside), and up to two spots for small groups standing about, apart
+// and off the axes' edges (g.userData.standing: [x, z, count] in the tile's frame, for people.js). All of it in one
+// group (name 'dressing'). Nothing on a view axis, within CLEAR.KIOSK m of the kiosk, within CLEAR.KERB m of a side
+// facing a street, or over the tile's edge (a building that replaces the tile takes all of it). In a blackout the
+// column, the pool, the pillars' panels and the emblem are dark.
+export const CLEAR = { KIOSK: 1.5, KERB: 1, EDGE: 0.4 };
+const POOL = 3; // a court lamp's pool radius (the street's are 5 m; a 14 m tile has no room for those)
+function dressCourt(kit, tile, rand, lit, { axes = [], street = {}, things = [], sparse = false }) {
+  const h = TILE / 2, used = [], kiosk = tile.children.find((c) => c.userData.kiosk), g = new THREE.Group();
+  tile.updateMatrixWorld(true);
+  const kb = kiosk && new THREE.Box3().setFromObject(kiosk).expandByScalar(CLEAR.KIOSK);
+  const standing = [];
+  g.name = 'dressing';
+  tile.add(g);
+  const fits = (x, z, r, beside = null) => { // beside: one placed thing it may touch (a bench its planter)
+    const edge = (s) => (street[s] ? CLEAR.KERB : CLEAR.EDGE) + r;
+    if (x + edge('px') > h || x - edge('nx') < -h || z + edge('pz') > h || z - edge('nz') < -h) return false;
+    if (axes.some((a) => Math.abs(z - a) < AXIS + r)) return false;
+    if (kb && x + r > kb.min.x && x - r < kb.max.x && z + r > kb.min.z && z - r < kb.max.z) return false;
+    return used.every((u) => u === beside || Math.hypot(u[0] - x, u[1] - z) >= u[2] + r + 0.6);
+  };
+  const dark = kit.steel(palette.charcoal, 0.6), frame = kit.steel(palette.graphite, 0.6);
+  for (const [kind, spots] of things) {
+    const r = { feature: 1.8, gather: 1.6 }[kind] ?? 0.5, at = spots.find(([x, z]) => fits(x, z, r));
+    if (!at || (kind === 'pillar' && used.some((u) => u[3] === 'pillar'))) continue; // one pillar a tile
+    const [x, z] = at;
+    used.push([x, z, r, kind]);
+    if (kind === 'gather') { // an open spot for a group of three to five
+      standing.push([x, z, 3 + Math.floor(rand() * 3)]);
+    } else if (kind === 'feature') { // a stepped plinth carrying the court's emblem: three lit cyan blades turned against each other on a steel stem, a lit crystal over them
+      const emblem = lit ? kit.glow(palette.coldCyan, 1.6) : dark, e = new THREE.Group();
+      part(g, box(3, 0.3, 3, 1), kit.concrete(palette.slate), x, 0.35, z);
+      part(g, box(2.2, 0.9, 2.2, 1), kit.concrete(palette.charcoal), x, 0.95, z);
+      e.position.set(x, 1.4, z);
+      g.add(e);
+      part(e, cyl(0.06, 0.08, 1.7, 8), frame, 0, 0.85, 0);
+      [0, 1, 2].forEach((k) => (part(e, box(1.2 - k * 0.2, 0.07, 0.42, 0), emblem, 0, 0.4 + k * 0.42, 0).rotation.y = (k * Math.PI) / 3.5));
+      part(e, new THREE.OctahedronGeometry(0.3, 0), emblem, 0, 1.95, 0).scale.set(0.8, 1.7, 0.8);
+    } else { // a wayfinding pillar, its panel lit on both faces, read along the court
+      part(g, box(0.5, 0.2, 0.5, 0), frame, x, 0.3, z);
+      signBoard(g, 0.4, 2.2, 0.22, frame, lit ? kit.sign('COURT', palette.coldCyan, true) : dark, x, 1.5, z, Math.PI / 2, true);
+    }
+  }
+  const spots = [];
+  for (const a of [-4.5, 0, 4.5]) for (const b of [-4.5, 0, 4.5]) spots.push([a + (rand() - 0.5) * 1.4, b + (rand() - 0.5) * 1.4, rand()]);
+  spots.sort((p, q) => p[2] - q[2]);
+  let lamp = false, trees = 0, groups = 0;
+  for (const [x, z, k] of spots) {
+    // its arm turned (from k, then on round) to the first way whose head is clear and whose whole pool lies on the tile
+    const turn = !lamp && fits(x, z, 0.4) && [0, 1, 2, 3].map((j) => ((Math.floor(k * 4) + j) % 4) * (Math.PI / 2)).find((t) => {
+      const hx = x + Math.cos(t) * 1.7, hz = z - Math.sin(t) * 1.7;
+      return fits(hx, hz, 0.4) && Math.max(Math.abs(hx), Math.abs(hz)) + POOL <= h;
+    });
+    if (turn !== undefined && turn !== false) {
+      used.push([x, z, 0.4, 'lamp']);
+      const head = streetLamp(kit, g, x, z, turn, lit);
+      if (lit) part(g, new THREE.CircleGeometry(POOL, 20), lampPool(), head.x, 0.22, head.z).rotation.x = -Math.PI / 2;
+      lamp = true;
+      continue;
+    }
+    const tall = 4.5 + k, crown = tall * 0.28; // the crown's reach (parts.js tree) keeps the clearances, not just the planter
+    const room = sparse ? k * 0.15 : 0; // the outer half's spacing, uneven: room kept round each of its trees
+    if (trees < (sparse ? 3 : 4) && k < 0.8 && fits(x, z, Math.max(1, crown) + room)) { // a planter with a tree, now and then a bench beside it
+      used.push([x, z, Math.max(1, crown) + room, 'planter']);
+      part(g, box(1.5, 0.55, 1.5, 1), kit.concrete(palette.gunmetal), x, 0.475, z);
+      part(g, box(1.2, 0.04, 1.2, 0), kit.concrete(palette.charcoal), x, 0.76, z);
+      const raised = new THREE.Group();
+      raised.position.y = 0.7;
+      g.add(raised);
+      tree(kit, raised, x, z, tall);
+      trees++;
+      const bx = x + (k < 0.4 ? -1 : 1) * 1.65;
+      if (rand() < 0.45 && fits(bx, z, 0.95, used.at(-1))) {
+        used.push([bx, z, 0.95, 'bench']);
+        part(g, box(0.5, 0.45, 1.8, 1), kit.steel(palette.charcoal, 0.8), bx, 0.425, z);
+      }
+      continue;
+    }
+    if (groups < 2 && fits(x, z, 1.1)) { // open paving kept for a small group (2 to 5)
+      used.push([x, z, 1.1, 'group']);
+      const count = 2 + Math.floor(rand() * 4);
+      groups++;
+      // People only where the group stands apart (3.7 m from another) and 2 m off an axis band's edge, so groups never line it.
+      const apart = standing.every(([sx, sz]) => Math.hypot(sx - x, sz - z) >= 3.7);
+      if (apart && !axes.some((a) => Math.abs(z - a) < AXIS + 2)) standing.push([x, z, count]);
+    }
+  }
+  Object.assign(tile.userData, { court: used, standing }); // used: [x, z, r, kind] in the tile's frame, for the tests and probes
 }
 
 // The court's security kiosk, the detail kit's (tools/blender/detail_kiosk.py, ADR-0020), front +z. On a kerb tile it

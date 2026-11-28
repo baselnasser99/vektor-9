@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { palette } from './palette.js';
 import { box, outward, part, rng } from './geometry.js';
 import { plantOn } from './plant.js';
-import { construction, court, plaza, storefront } from './tiles.js';
+import { construction, court, courtPlan, plaza, storefront } from './tiles.js';
 import { market } from './market.js';
 import { building, familyOf } from './families.js';
 import { mergeByMaterial } from './merge.js';
@@ -217,6 +217,7 @@ export function buildCity(kit, snap) {
     heavy.delete(i);
   }
   if (hqTiles.has(flag)) flag = -1;
+  const courts = courtPlan(snap, layout, hq), standing = []; // the HQ's court: each tile's dressing; where people stand on it (people.js)
   const cuts = layout.expressway ? blockCuts(layout).verge : []; // the verge left out where a landed ramp's lane runs (a sweep's closed sidewalk, a slip road low over it), and a metre either side
   snap.tiles.forEach((t, i) => {
     const col = i % n, row = Math.floor(i / n);
@@ -231,7 +232,7 @@ export function buildCity(kit, snap) {
     const g = { house: () => building(kit, t, rand, fw, family, col + 2 * row, signature.has(i)), build: () => construction(kit, t.f, rand, t.on, fw),
       market: () => market(kit, rand, t.on, fw, t.s), plant: () => plantOn(kit, t), lot: () => plaza(kit, rand, t.on),
       rail: () => railGround(kit), park: () => park(kit, rand, t.on), works: () => works(kit, rand, t.on), road: () => verge(kit, cuts.map((c) => c.map(([x, z]) => [x - pos(col), z - pos(row)]))),
-      site: () => court(kit, rand, t.on, (col + 1) % HALF === 0) }[t.k](); // the HQ's own site tiles are skipped above
+      site: () => court(kit, rand, t.on, (col + 1) % HALF === 0, courts.get(i)) }[t.k](); // the HQ's own site tiles are skipped above
     // Perimeter blocks: lots on a street or alley push their building up to it, so streets get a continuous wall
     // and each quarter-block keeps a courtyard behind; inner lots sit anywhere on theirs.
     const [cx, cz] = [pos(col), pos(row)], slack = TILE - 1 - fw;
@@ -242,6 +243,7 @@ export function buildCity(kit, snap) {
     lot.add(g);
     root.add(lot);
     if (t.k === 'house') towers.set(i, g); // for the skybridges over streets, which meet their walls
+    for (const [x, z, count] of g.userData.standing ?? []) standing.push({ sector, x: pos(col) + x, z: pos(row) + z, count }); // unwarped, as people.js takes them
     if (TERRAIN.includes(t.k)) { // terrain fills its whole tile, square to the grid
       g.position.y = 0.18;
       return settle(lot, warp);
@@ -322,7 +324,7 @@ export function buildCity(kit, snap) {
   }
   const details = city.userData.lods.map((g) => ({ group: g, at: detail.get(g.userData.lod) }));
   return { city, details, warp, rail, hub: streets.hub, roads: streets.roads, parked, lines: streets.lines, edge: streets.hi,
-    benches: streets.benches, lamps: streets.lamps, food: streets.food, hq: hq && { x: hq.x, z: hq.z, heading: hq.heading, sector: hq.sector, street: hq.street } };
+    benches: streets.benches, lamps: streets.lamps, food: streets.food, standing, hq: hq && { x: hq.x, z: hq.z, heading: hq.heading, sector: hq.sector, street: hq.street } };
 }
 
 // Where the headquarters' campus covers the mid street it straddles: that corridor, along the axis it runs, over

@@ -47,7 +47,7 @@ const kit = await loadKit(renderer, [...ROOFTECH, ...HQ_MODELS, 'telecom_tower',
   'prop_vending', 'prop_sign', 'prop_cabinet', 'prop_camera', 'prop_locker', 'prop_utility', 'ix_gantry', 'ix_wall', 'ix_depot', 'ix_stock', 'ix_monument',
   ...KIT_DETAIL]);
 facadeClock(((snap.tick * 5) / 60) % 24, onFrame); // ticks are 5 minutes; room lights follow the hour
-const { city, details, warp, hub, rail, roads, parked, edge, lines, benches, lamps, food, hq } = buildCity(kit, snap);
+const { city, details, warp, hub, rail, roads, parked, edge, lines, benches, lamps, food, hq, standing } = buildCity(kit, snap);
 // Small building parts (balconies, rooftop plant, pipes) only near the camera: one group per sector.
 const DETAIL = 400; // metres from a sector's centre
 scene.add(...details.map((d) => d.group));
@@ -61,7 +61,7 @@ scene.add(city, desert, farSprawl(edge), cars);
 // People on the sidewalks, crossing with the cars' lights (P shows the crowd settings).
 scene.add(steam(food, warp, onFrame));
 if (hq) scene.add(hqEye(hq, camera, onFrame), hqFleet(kit, hq, onFrame, stage.still)); // IKARO's eye and hovercars
-scene.add(people({ snap, layout, warp, benches, lamps, food, hq, clock: cars.userData.clock, camera, controls, onFrame, still: stage.still }));
+scene.add(people({ snap, layout, warp, benches, lamps, food, hq, standing, clock: cars.userData.clock, camera, controls, onFrame, still: stage.still }));
 if (rail) scene.add(trains(kit, rail, onFrame));
 scene.add(stars(sky), ...moon(sky), ...horizon(sky, onFrame), ...cloudDeck(REACH * 6, onFrame), ...airships(kit, half, onFrame),
   ...districtGlows(snap, layout, camera, onFrame));

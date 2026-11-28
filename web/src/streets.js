@@ -802,11 +802,11 @@ function perimeter(ctx) {
 
 // Sodium lamps along each segment, arms over the street, with a soft pool of light under each: about every 40 m on
 // both kerbs of main streets and the boulevard, staggered from kerb to kerb on narrower ones.
-let lampPools = null; // one material for every lamp's pool, so they all merge into one draw call
+let lampPools = null; // one material for every lamp's pool (the HQ's court's too, tiles.js), so they all merge into one draw call
+export const lampPool = () => (lampPools ??= new THREE.MeshBasicMaterial({ map: radialTexture(128), color: palette.sodium, transparent: true, opacity: 0.16,
+  blending: THREE.AdditiveBlending, depthWrite: false }));
 function lamps(ctx, s, segs) {
-  const { kit, root } = ctx;
-  const pools = (lampPools ??= new THREE.MeshBasicMaterial({ map: radialTexture(128), color: palette.sodium, transparent: true, opacity: 0.16,
-    blending: THREE.AdditiveBlending, depthWrite: false }));
+  const { kit, root } = ctx, pools = lampPool();
   const kerb = kerbOf(s) + 0.6, both = s.kind === 'street' || s.kind === 'boulevard';
   let flip = 1;
   for (const g of segs) {
